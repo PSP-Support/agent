@@ -1,0 +1,289 @@
+import { Bot, InlineKeyboard } from "grammy";
+import pg from "pg";
+import http from "node:http";
+
+const { Pool } = pg;
+const token = process.env.BOT_TOKEN;
+const databaseUrl = process.env.DATABASE_URL;
+
+if (!token) throw new Error("Missing BOT_TOKEN environment variable");
+if (!databaseUrl) throw new Error("Missing DATABASE_URL environment variable");
+
+const pool = new Pool({
+  connectionString: databaseUrl,
+  ssl: process.env.PGSSLMODE === "disable" ? false : { rejectUnauthorized: false }
+});
+
+const bot = new Bot(token);
+
+const COMPANY_TYPES = [
+  { id: "cafe", name: "کافه کوچک ☕", price: 25000, income: 900, description: "کسب‌وکار کوچک با درآمد پایدار" },
+  { id: "shop", name: "فروشگاه 🛍️", price: 80000, income: 3200, description: "فروشگاه شهری" },
+  { id: "factory", name: "کارخانه 🏭", price: 250000, income: 11500, description: "تولید صنعتی" },
+  { id: "tech", name: "شرکت فناوری 💻", price: 600000, income: 31000, description: "شرکت فناوری با درآمد بالا" }
+];
+
+const money = (n) => "$" + Math.floor(Number(n)).toLocaleString("en-US");
+const mainKeyboard = () => new InlineKeyboard()
+  .text("👤 پروفایل", "profile").text("🏢 شرکت‌های من", "my_companies").row()
+  .text("🛒 خرید شرکت", "buy_menu").text("💵 دریافت درآمد", "collect").row()
+  .text("🏆 رتبه‌بندی", "leaderboard").text("🎁 پاداش روزانه", "daily").row()
+  .text("ℹ️ راهنما", "help");
+
+async function initDb() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS players (
+      telegram_id BIGINT PRIMARY KEY,
+      username TEXT,
+      display_name TEXT NOT NULL,
+      balance BIGINT NOT NULL DEFAULT 100000,
+      last_collect TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      last_daily DATE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE TABLE IF NOT EXISTS player_companies (
+      id BIGSERIAL PRIMARY KEY,
+      telegram_id BIGINT NOT NULL REFERENCES players(telegram_id) ON DELETE CASCADE,
+      company_type TEXT NOT NULL,
+      level INTEGER NOT NULL DEFAULT 1,
+      bought_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS player_companies_owner_idx ON player_companies(telegram_id);
+  `);
+}
+
+async function ensurePlayer(ctx) {
+  const from = ctx.from;
+  const name = [from.first_name, from.last_name].filter(Boolean).join(" ") || "بازیکن";
+  await pool.query(
+    `INSERT INTO players (telegram_id, username, display_name)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (telegram_id) DO UPDATE SET username = EXCLUDED.username, display_name = EXCLUDED.display_name`,
+    [String(from.id), from.username ?? null, name]
+  );
+}
+
+async function playerData(id) {
+  const p = await pool.query("SELECT * FROM players WHERE telegram_id=$1", [String(id)]);
+  const c = await pool.query(
+    `SELECT company_type, level, COUNT(*)::int AS count
+     FROM player_companies WHERE telegram_id=$1 GROUP BY company_type, level`,
+    [String(id)]
+  );
+  const totalIncome = await pool.query(
+    `SELECT COALESCE(SUM((ct.income * pc.level)::bigint),0)::bigint AS income
+     FROM player_companies pc
+     JOIN (VALUES ${COMPANY_TYPES.map((_,i)=>`($${i*3+1}::text,$${i*3+2}::bigint,$${i*3+3}::bigint)`).join(",")})
+       AS ct(id, price, income) ON ct.id=pc.company_type
+     WHERE pc.telegram_id=$${COMPANY_TYPES.length*3+1}`,
+    [...COMPANY_TYPES.flatMap(x=>[x.id,x.price,x.income]), String(id)]
+  );
+  return { player: p.rows[0], companies: c.rows, income: Number(totalIncome.rows[0].income) };
+}
+
+function homeText() {
+  return `🏙️ *OPEN MANY*\n\nبه امپراتوری اقتصادی خودت خوش اومدی!\nشرکت بخر، درآمد جمع کن و در رتبه‌بندی بالا برو.`;
+}
+
+bot.command("start", async (ctx) => {
+  await ensurePlayer(ctx);
+  await ctx.reply(homeText(), { parse_mode: "Markdown", reply_markup: mainKeyboard() });
+});
+bot.command("menu", async (ctx) => {
+  await ensurePlayer(ctx);
+  await ctx.reply(homeText(), { parse_mode: "Markdown", reply_markup: mainKeyboard() });
+});
+
+bot.callbackQuery("profile", async (ctx) => {
+  const d = await playerData(ctx.from.id);
+  const count = d.companies.reduce((sum,x)=>sum+Number(x.count),0);
+  await ctx.editMessageText(
+    `👤 *پروفایل شما*\n\n💰 سرمایه: ${money(d.player.balance)}\n🏢 تعداد شرکت‌ها: ${count}\n📈 درآمد هر ساعت: ${money(d.income)}\n🗓️ عضویت: ${new Date(d.player.created_at).toLocaleDateString("fa-IR")}`,
+    { parse_mode: "Markdown", reply_markup: new InlineKeyboard().text("🔙 بازگشت", "home") }
+  );
+  await ctx.answerCallbackQuery();
+});
+
+bot.callbackQuery("my_companies", async (ctx) => {
+  const d = await playerData(ctx.from.id);
+  if (!d.companies.length) {
+    await ctx.editMessageText("هنوز شرکتی نداری. از بخش «خرید شرکت» اولین کسب‌وکارت رو بخر!", {
+      reply_markup: new InlineKeyboard().text("🛒 خرید شرکت", "buy_menu").row().text("🔙 بازگشت", "home")
+    });
+  } else {
+    const lines = d.companies.map(c => {
+      const t = COMPANY_TYPES.find(x=>x.id===c.company_type);
+      return `${t?.name ?? c.company_type} — سطح ${c.level} × ${c.count}`;
+    });
+    await ctx.editMessageText(`🏢 *شرکت‌های شما*\n\n${lines.join("\n")}\n\n📈 درآمد ساعتی: ${money(d.income)}`, {
+      parse_mode: "Markdown", reply_markup: new InlineKeyboard().text("🔧 ارتقای شرکت", "upgrade_menu").row().text("🔙 بازگشت", "home")
+    });
+  }
+  await ctx.answerCallbackQuery();
+});
+
+bot.callbackQuery("buy_menu", async (ctx) => {
+  const kb = new InlineKeyboard();
+  for (const c of COMPANY_TYPES) kb.text(`${c.name} | ${money(c.price)}`, `buy:${c.id}`).row();
+  kb.text("🔙 بازگشت", "home");
+  await ctx.editMessageText("🛒 *فروشگاه شرکت‌ها*\n\nیک کسب‌وکار برای خرید انتخاب کن:", { parse_mode: "Markdown", reply_markup: kb });
+  await ctx.answerCallbackQuery();
+});
+
+bot.callbackQuery(/^buy:(.+)$/, async (ctx) => {
+  const type = COMPANY_TYPES.find(x=>x.id===ctx.match[1]);
+  if (!type) return ctx.answerCallbackQuery({ text: "شرکت پیدا نشد", show_alert: true });
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const p = await client.query("SELECT balance FROM players WHERE telegram_id=$1 FOR UPDATE", [String(ctx.from.id)]);
+    if (!p.rows.length || Number(p.rows[0].balance) < type.price) {
+      await client.query("ROLLBACK");
+      return ctx.answerCallbackQuery({ text: "سرمایه کافی نیست!", show_alert: true });
+    }
+    await client.query("UPDATE players SET balance=balance-$2 WHERE telegram_id=$1", [String(ctx.from.id), type.price]);
+    await client.query("INSERT INTO player_companies (telegram_id, company_type) VALUES ($1,$2)", [String(ctx.from.id), type.id]);
+    await client.query("COMMIT");
+    await ctx.answerCallbackQuery({ text: "شرکت با موفقیت خریداری شد! 🎉" });
+    await ctx.editMessageText(`✅ *${type.name} خریداری شد!*\n\n${type.description}\n📈 درآمد پایه: ${money(type.income)} در ساعت`, {
+      parse_mode: "Markdown", reply_markup: new InlineKeyboard().text("🏢 شرکت‌های من", "my_companies").row().text("🔙 منوی اصلی", "home")
+    });
+  } catch (e) {
+    await client.query("ROLLBACK");
+    console.error(e);
+    await ctx.answerCallbackQuery({ text: "خطا در خرید. دوباره تلاش کن.", show_alert: true });
+  } finally { client.release(); }
+});
+
+bot.callbackQuery("collect", async (ctx) => {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const p = await client.query("SELECT balance,last_collect FROM players WHERE telegram_id=$1 FOR UPDATE", [String(ctx.from.id)]);
+    if (!p.rows.length) throw new Error("Player missing");
+    const now = Date.now();
+    const elapsed = Math.max(0, Math.min(24*60*60, (now - new Date(p.rows[0].last_collect).getTime())/1000));
+    const income = await client.query(
+      `SELECT COALESCE(SUM((ct.income * pc.level)::bigint),0)::bigint AS income
+       FROM player_companies pc JOIN (VALUES ${COMPANY_TYPES.map((_,i)=>`($${i*2+1}::text,$${i*2+2}::bigint)`).join(",")})
+       AS ct(id,income) ON ct.id=pc.company_type WHERE pc.telegram_id=$${COMPANY_TYPES.length*2+1}`,
+      [...COMPANY_TYPES.flatMap(x=>[x.id,x.income]), String(ctx.from.id)]
+    );
+    const earned = Math.floor(Number(income.rows[0].income) * elapsed / 3600);
+    if (earned <= 0) {
+      await client.query("ROLLBACK");
+      return ctx.answerCallbackQuery({ text: "هنوز درآمدی برای دریافت نداری. شرکت بخر یا کمی صبر کن!", show_alert: true });
+    }
+    await client.query("UPDATE players SET balance=balance+$2,last_collect=NOW() WHERE telegram_id=$1", [String(ctx.from.id), earned]);
+    await client.query("COMMIT");
+    await ctx.answerCallbackQuery({ text: `درآمد ${money(earned)} دریافت شد!` });
+    await ctx.editMessageText(`💵 *درآمد دریافت شد!*\n\nمبلغ: ${money(earned)}\n💰 درآمد به سرمایه‌ات اضافه شد.`, {
+      parse_mode: "Markdown", reply_markup: new InlineKeyboard().text("👤 پروفایل", "profile").row().text("🔙 منوی اصلی", "home")
+    });
+  } catch (e) {
+    await client.query("ROLLBACK"); console.error(e);
+    await ctx.answerCallbackQuery({ text: "خطا در دریافت درآمد", show_alert: true });
+  } finally { client.release(); }
+});
+
+bot.callbackQuery("upgrade_menu", async (ctx) => {
+  const rows = await pool.query(
+    `SELECT id,company_type,level FROM player_companies WHERE telegram_id=$1 ORDER BY id`,
+    [String(ctx.from.id)]
+  );
+  if (!rows.rows.length) {
+    await ctx.answerCallbackQuery({ text: "اول باید شرکت بخری.", show_alert: true }); return;
+  }
+  const kb = new InlineKeyboard();
+  for (const c of rows.rows) {
+    const type = COMPANY_TYPES.find(x=>x.id===c.company_type);
+    const cost = Math.floor(type.price * c.level * 0.75);
+    kb.text(`${type.name} سطح ${c.level} → ${c.level+1} (${money(cost)})`, `upgrade:${c.id}`).row();
+  }
+  kb.text("🔙 بازگشت", "my_companies");
+  await ctx.editMessageText("🔧 *ارتقای شرکت*\n\nشرکت موردنظر رو انتخاب کن:", { parse_mode: "Markdown", reply_markup: kb });
+  await ctx.answerCallbackQuery();
+});
+
+bot.callbackQuery(/^upgrade:(\d+)$/, async (ctx) => {
+  const id = Number(ctx.match[1]);
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const q = await client.query(
+      "SELECT pc.*,p.balance FROM player_companies pc JOIN players p ON p.telegram_id=pc.telegram_id WHERE pc.id=$1 AND pc.telegram_id=$2 FOR UPDATE",
+      [id, String(ctx.from.id)]
+    );
+    if (!q.rows.length) { await client.query("ROLLBACK"); return ctx.answerCallbackQuery({ text: "شرکت پیدا نشد.", show_alert: true }); }
+    const c = q.rows[0], type = COMPANY_TYPES.find(x=>x.id===c.company_type);
+    const cost = Math.floor(type.price * c.level * 0.75);
+    if (Number(c.balance) < cost) { await client.query("ROLLBACK"); return ctx.answerCallbackQuery({ text: "سرمایه کافی نیست.", show_alert: true }); }
+    await client.query("UPDATE players SET balance=balance-$2 WHERE telegram_id=$1", [String(ctx.from.id), cost]);
+    await client.query("UPDATE player_companies SET level=level+1 WHERE id=$1", [id]);
+    await client.query("COMMIT");
+    await ctx.answerCallbackQuery({ text: "شرکت ارتقا یافت! 🔧" });
+    await ctx.editMessageText(`🎉 *ارتقا موفق بود!*\n\n${type.name}\nسطح جدید: ${c.level+1}\nهزینه: ${money(cost)}`, {
+      parse_mode: "Markdown", reply_markup: new InlineKeyboard().text("🔧 ارتقای دیگر", "upgrade_menu").row().text("🔙 منوی اصلی", "home")
+    });
+  } catch (e) { await client.query("ROLLBACK"); console.error(e); await ctx.answerCallbackQuery({ text: "خطا در ارتقا", show_alert: true }); }
+  finally { client.release(); }
+});
+
+bot.callbackQuery("daily", async (ctx) => {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const q = await client.query("SELECT last_daily FROM players WHERE telegram_id=$1 FOR UPDATE", [String(ctx.from.id)]);
+    const today = new Date().toISOString().slice(0,10);
+    if (q.rows[0].last_daily && new Date(q.rows[0].last_daily).toISOString().slice(0,10) === today) {
+      await client.query("ROLLBACK");
+      return ctx.answerCallbackQuery({ text: "پاداش امروز رو قبلاً گرفتی. فردا برگرد!", show_alert: true });
+    }
+    const reward = 10000;
+    await client.query("UPDATE players SET balance=balance+$2,last_daily=$3 WHERE telegram_id=$1", [String(ctx.from.id), reward, today]);
+    await client.query("COMMIT");
+    await ctx.answerCallbackQuery({ text: `پاداش ${money(reward)} دریافت شد! 🎁` });
+    await ctx.editMessageText(`🎁 *پاداش روزانه*\n\n${money(reward)} به حسابت اضافه شد!`, {
+      parse_mode: "Markdown", reply_markup: new InlineKeyboard().text("👤 پروفایل", "profile").row().text("🔙 منوی اصلی", "home")
+    });
+  } catch (e) { await client.query("ROLLBACK"); console.error(e); await ctx.answerCallbackQuery({ text: "خطا در دریافت پاداش" }); }
+  finally { client.release(); }
+});
+
+bot.callbackQuery("leaderboard", async (ctx) => {
+  const q = await pool.query("SELECT display_name,balance FROM players ORDER BY balance DESC LIMIT 10");
+  const text = q.rows.length ? q.rows.map((p,i)=>`${i+1}. ${p.display_name} — ${money(p.balance)}`).join("\n") : "هنوز بازیکنی ثبت نشده.";
+  await ctx.editMessageText(`🏆 *رتبه‌بندی سرمایه‌داران*\n\n${text}`, {
+    parse_mode: "Markdown", reply_markup: new InlineKeyboard().text("🔙 بازگشت", "home")
+  });
+  await ctx.answerCallbackQuery();
+});
+
+bot.callbackQuery("help", async (ctx) => {
+  await ctx.editMessageText("ℹ️ *راهنمای Open Many*\n\n1. از فروشگاه شرکت بخر.\n2. شرکت‌ها به مرور درآمد تولید می‌کنند.\n3. درآمدت را دریافت کن.\n4. شرکت‌ها را ارتقا بده.\n5. هر روز پاداش بگیر و در رتبه‌بندی پیشرفت کن.", {
+    parse_mode: "Markdown", reply_markup: new InlineKeyboard().text("🔙 بازگشت", "home")
+  });
+  await ctx.answerCallbackQuery();
+});
+
+bot.callbackQuery("home", async (ctx) => {
+  await ctx.editMessageText(homeText(), { parse_mode: "Markdown", reply_markup: mainKeyboard() });
+  await ctx.answerCallbackQuery();
+});
+
+bot.catch((err) => console.error("Bot error:", err));
+
+const server = http.createServer((req, res) => {
+  if (req.url === "/healthz" || req.url === "/") {
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify({ status: "ok", game: "Open Many" }));
+  } else {
+    res.writeHead(404); res.end("Not found");
+  }
+});
+const port = Number(process.env.PORT || 3000);
+server.listen(port, () => console.log(`Open Many health server listening on ${port}`));
+
+await initDb();
+await bot.start();
+console.log("Open Many bot is running.");
