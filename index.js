@@ -617,6 +617,27 @@ bot.command("seize",async ctx=>{if(!await adminOnly(ctx))return;const [id,compan
 bot.command("grantcompany",async ctx=>{if(!await adminOnly(ctx))return;const [id,typeId,...name]=(ctx.match||"").trim().split(/\\s+/),type=COMPANY_TYPES.find(x=>x.id===typeId);if(!/^\\d+$/.test(id||"")||!type)return ctx.reply("استفاده: /grantcompany PLAYER_ID TYPE_ID نام شرکت\nانواع: "+COMPANY_TYPES.map(x=>x.id).join(", "));const companyName=name.join(" ")||type.name;await pool.query("INSERT INTO player_companies(telegram_id,company_type,company_name,brand_name,employee_count,approved_by,approval_status) VALUES($1,$2,$3,$3,$4,$5,'approved')",[id,typeId,companyName,type.employees,ownerTelegramId]);await ctx.reply("شرکت "+companyName+" به بازیکن "+id+" اضافه شد.");});
 bot.command("seasonrank",async ctx=>{if(!await adminOnly(ctx))return;const [id,rank,points]=(ctx.match||"").trim().split(/\\s+/).map(Number);if(!Number.isSafeInteger(id)||!Number.isSafeInteger(rank)||rank<1||!Number.isSafeInteger(points)||points<0)return ctx.reply("استفاده: /seasonrank PLAYER_ID RANK POINTS");const level=Math.max(1,Math.floor(points/100)+1);const q=await pool.query("UPDATE players SET last_season_rank=$2,season_points=$3,player_level=$4,reputation=LEAST(100,GREATEST(-100,reputation+CASE WHEN $2<=3 THEN 10 WHEN $2<=10 THEN 5 ELSE 0 END)) WHERE telegram_id=$1 RETURNING display_name",[id,rank,points,level]);await ctx.reply(q.rowCount?"رتبه فصل قبلی ثبت شد. Level "+level:"بازیکن پیدا نشد.");});
 bot.command("startup",async ctx=>{await ensurePlayer(ctx);const raw=(ctx.match||"").trim();if(!raw)return ctx.reply("مشخصات استارتاپ را این‌طور بفرست:\n/startup نام شرکت | شعار | شهر\nمثال: /startup آفتاب تک | فناوری برای زندگی | تهران");const [name,tagline,city]=raw.split("|").map(x=>x.trim());if(!name||name.length>40||!tagline||tagline.length>100||!city||city.length>40)return ctx.reply("هر سه مورد نام، شعار و شهر لازم است؛ نام و شهر حداکثر ۴۰ و شعار ۱۰۰ حرف.");await pool.query("UPDATE players SET startup_name=$2,startup_tagline=$3,startup_city=$4 WHERE telegram_id=$1",[String(ctx.from.id),name,tagline,city]);await ctx.reply("🚀 هویت استارتاپ ثبت شد\n\n🏢 "+name+"\n💬 "+tagline+"\n📍 "+city);});
+bot.command("companies",async ctx=>{
+  await ensurePlayer(ctx);
+  const q=await pool.query("SELECT id,company_type,company_name,level,employee_count FROM player_companies WHERE telegram_id=$1 AND approval_status='approved' ORDER BY id",[String(ctx.from.id)]);
+  if(!q.rows.length)return ctx.reply("هنوز شرکت فعالی نداری. /buycompany را برای ارسال درخواست بزن.");
+  const lines=q.rows.map(x=>{const t=COMPANY_TYPES.find(z=>z.id===x.company_type);return "#"+x.id+" "+(x.company_name||t?.name||x.company_type)+" | Level "+x.level+" | "+x.employee_count+" کارمند";});
+  return ctx.reply("🏢 شرکت‌های شما\n\n"+lines.join("\n"));
+});
+bot.command("buycompany",async ctx=>{
+  await ensurePlayer(ctx);
+  const kb=new InlineKeyboard();
+  const p=await pool.query("SELECT player_level,last_season_rank,reputation FROM players WHERE telegram_id=$1",[String(ctx.from.id)]);
+  const perf=p.rows[0]||{player_level:1,last_season_rank:null,reputation:0};
+  const unlocked=COMPANY_TYPES.filter(t=>!t.special||(Number(perf.player_level)>=t.minLevel&&Number(perf.reputation)>=20&&Number(perf.last_season_rank)>0&&Number(perf.last_season_rank)<=t.maxRank));
+  for(const t of unlocked)kb.text(t.name+" | "+money(t.price),"buy:"+t.id).row();
+  kb.text("🔙 بازگشت","home");
+  return ctx.reply("🏗️ فرصت‌های تأسیس\n\nنوع کسب‌وکار را انتخاب کن؛ درخواست برای بررسی مدیر ارسال می‌شود.",{reply_markup:kb});
+});
+bot.command("economy",ctx=>ctx.reply("🌐 گزارش اقتصاد و سود و زیان را از بخش «بازار و اقتصاد» در منوی پایین باز کن.",{reply_markup:new Keyboard().text("🌐 بازار و اقتصاد").resized().persistent(false)}));
+bot.command("bank",ctx=>ctx.reply("🏦 بانک، اعتبار و تسویه از بخش «امور مالی» در منوی پایین در دسترس است.",{reply_markup:new Keyboard().text("💰 امور مالی").resized().persistent(false)}));
+bot.command("progress",ctx=>ctx.reply("🏆 مأموریت‌ها، دستاوردها و رتبه‌بندی از بخش «رقابت و پیشرفت» در منوی پایین در دسترس است.",{reply_markup:new Keyboard().text("🏆 رقابت و پیشرفت").resized().persistent(false)}));
+
 \nfunction isOwner(ctx){return !!ownerTelegramId&&String(ctx.from?.id)===ownerTelegramId;}
 async function adminOnly(ctx){if(isOwner(ctx))return true;if(ctx.callbackQuery)await ctx.answerCallbackQuery({text:"فقط مدیر کل دسترسی دارد.",show_alert:true}).catch(()=>{});else await ctx.reply("⛔ فقط مدیر کل دسترسی دارد.");return false;}
 function adminKeyboard(){return new InlineKeyboard().text("🕓 درخواست‌ها","admin:pending").row().text("👥 بازیکنان","admin:players").row().text("📊 آمار","admin:stats");}
@@ -654,6 +675,12 @@ await registerRealism(bot,pool);
 const publicCommands = [
   { command: "start", description: "شروع بازی و داشبورد" },
   { command: "menu", description: "نمایش منوی بازی" },
+  { command: "startup", description: "ثبت نام و مشخصات استارتاپ" },
+  { command: "buycompany", description: "درخواست تأسیس کسب‌وکار" },
+  { command: "companies", description: "شرکت‌ها و کارکنان من" },
+  { command: "economy", description: "گزارش بازار و اقتصاد" },
+  { command: "bank", description: "بانک و امور مالی" },
+  { command: "progress", description: "رتبه، مأموریت و دستاوردها" },
   { command: "myid", description: "نمایش شناسه تلگرام" }
 ];
 await bot.api.setMyCommands(publicCommands, { scope: { type: "default" }, language_code: "fa" }).catch(err => console.error("Set public commands failed:", err));
@@ -670,7 +697,12 @@ if (ownerTelegramId && /^\\d+$/.test(ownerTelegramId)) {
     { command: "balance", description: "مشاهده موجودی: /balance ID" },
     { command: "setbalance", description: "تنظیم موجودی: /setbalance ID AMOUNT" },
     { command: "give", description: "هدیه پول: /give ID AMOUNT" },
-    { command: "broadcast", description: "پیام همگانی: /broadcast TEXT" }
+    { command: "broadcast", description: "پیام همگانی: /broadcast TEXT" },
+    { command: "take", description: "کسر پول: /take ID AMOUNT" },
+    { command: "fine", description: "جریمه: /fine ID AMOUNT دلیل" },
+    { command: "seize", description: "سلب مالکیت: /seize PLAYER_ID COMPANY_ID" },
+    { command: "grantcompany", description: "اعطای شرکت: /grantcompany ID TYPE نام" },
+    { command: "seasonrank", description: "ثبت رتبه فصل: /seasonrank ID RANK POINTS" }
   ], { scope: { type: "chat", chat_id: Number(ownerTelegramId) }, language_code: "fa" }).catch(err => console.error("Set owner commands failed:", err));
 }
 await bot.api.setChatMenuButton({ menu_button: { type: "commands" } }).catch(err => console.error("Set command menu button failed:", err));
