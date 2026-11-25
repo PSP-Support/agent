@@ -53,28 +53,6 @@ bot.use(async (ctx, next) => {
   }
   return next();
 });
-bot.use(async (ctx, next) => {
-  const text = ctx.message?.text;
-  if (!ctx.from || !ctx.chat || !text) return next();
-  const key = String(ctx.chat.id) + ":" + String(ctx.from.id) + ":" + text;
-  const now = Date.now();
-  const previous = recentTextUpdates.get(key) || 0;
-  if (now - previous < 1800) {
-    console.log("[DUPLICATE_TAP_IGNORED]", JSON.stringify({
-      userId: ctx.from.id,
-      text,
-      updateId: ctx.update?.update_id
-    }));
-    return;
-  }
-  recentTextUpdates.set(key, now);
-  if (recentTextUpdates.size > 500) {
-    for (const [k, timestamp] of recentTextUpdates) {
-      if (now - timestamp > 10000) recentTextUpdates.delete(k);
-    }
-  }
-  return next();
-});
 
 bot.use(async (ctx, next) => {
   if (!ctx.from) return next();
