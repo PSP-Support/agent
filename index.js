@@ -388,36 +388,23 @@ bot.callbackQuery(/^corp:(approve|reject):(\d+)$/,async ctx=>{
   finally{client.release();}
 });
 bot.callbackQuery("collect", async (ctx) => {
-  const client = await pool.connect();
-  try {
+  const client=await pool.connect();
+  try{
     await client.query("BEGIN");
-    const p = await client.query("SELECT balance,last_collect FROM players WHERE telegram_id=$1 FOR UPDATE", [String(ctx.from.id)]);
-    if (!p.rows.length) throw new Error("Player missing");
-    const now = Date.now();
-    const elapsed = Math.max(0, Math.min(24*60*60, (now - new Date(p.rows[0].last_collect).getTime())/1000));
-    const income = await client.query(
-      `SELECT COALESCE(SUM((ct.income * pc.level)::bigint),0)::bigint AS income
-       FROM player_companies pc JOIN (VALUES ${COMPANY_TYPES.map((_,i)=>`($${i*2+1}::text,$${i*2+2}::bigint)`).join(",")})
-       AS ct(id,income) ON ct.id=pc.company_type WHERE pc.telegram_id=$${COMPANY_TYPES.length*2+1}`,
-      [...COMPANY_TYPES.flatMap(x=>[x.id,x.income]), String(ctx.from.id)]
-    );
-    const netHourly = await netHourlyForPlayer(pool,ctx.from.id);
-    const earned = Math.floor(netHourly * elapsed / 3600);
-    if (earned <= 0) {
-      await client.query("ROLLBACK");
-      return ctx.answerCallbackQuery({ text: "هنوز درآمدی برای دریافت نداری. شرکت بخر یا کمی صبر کن!", show_alert: true });
-    }
-    await client.query("UPDATE players SET balance=balance+$2,last_collect=NOW() WHERE telegram_id=$1", [String(ctx.from.id), earned]);
-    await client.query("INSERT INTO finance_transactions(telegram_id,transaction_type,amount,description) VALUES($1,$2,$3,$4)",[String(ctx.from.id),"operating_income",earned,"سود عملیاتی خالص پس از هزینه‌ها"]);
+    const p=await client.query("SELECT balance,last_collect FROM players WHERE telegram_id=$1 FOR UPDATE",[String(ctx.from.id)]);
+    if(!p.rows.length)throw new Error("Player missing");
+    const anchor=new Date(p.rows[0].last_collect).getTime(),now=Date.now();
+    const intervals=Math.min(8,Math.floor(Math.max(0,now-anchor)/(3*3600000)));
+    if(intervals<1){await client.query("ROLLBACK");return ctx.answerCallbackQuery({text:"پرداخت خودکار هر ۳ ساعت انجام می‌شود؛ هنوز نوبت بعدی نرسیده.",show_alert:true});}
+    const netHourly=await netHourlyForPlayer(pool,ctx.from.id),earned=Math.floor(netHourly*3*intervals);
+    const newAnchor=new Date(anchor+intervals*3*3600000);
+    await client.query("UPDATE players SET balance=balance+$2,last_collect=$3 WHERE telegram_id=$1",[String(ctx.from.id),earned,newAnchor]);
+    await client.query("INSERT INTO finance_transactions(telegram_id,transaction_type,amount,description) VALUES($1,'operating_income',$2,$3)",[String(ctx.from.id),earned,"پرداخت سود؛ "+intervals+" دوره سه‌ساعته"]);
     await client.query("COMMIT");
-    await ctx.answerCallbackQuery({ text: `درآمد ${money(earned)} دریافت شد!` });
-    await ctx.editMessageText(`💵 *درآمد دریافت شد!*\n\nمبلغ: ${money(earned)}\n💰 درآمد به سرمایه‌ات اضافه شد.`, {
-      parse_mode: "Markdown", reply_markup: new InlineKeyboard().text("👤 پروفایل", "profile").row().text("🔙 منوی اصلی", "home")
-    });
-  } catch (e) {
-    await client.query("ROLLBACK"); console.error(e);
-    await ctx.answerCallbackQuery({ text: "خطا در دریافت درآمد", show_alert: true });
-  } finally { client.release(); }
+    await ctx.answerCallbackQuery({text:"پرداخت سود انجام شد: "+money(earned)});
+    return ctx.editMessageText("💵 *پرداخت سود انجام شد*\\n\\nدوره‌ها: "+intervals+" × ۳ ساعت\\nواریزی: "+money(earned)+"\\n\\nپرداخت خودکار هر ۳ ساعت انجام می‌شود.",{parse_mode:"Markdown",reply_markup:new InlineKeyboard().text("📒 دفتر مالی","quick:finance").row().text("🏠 منوی اصلی","home")});
+  }catch(e){await client.query("ROLLBACK");console.error(e);return ctx.answerCallbackQuery({text:"خطا در پرداخت سود.",show_alert:true});}
+  finally{client.release();}
 });
 
 bot.callbackQuery("upgrade_menu", async (ctx) => {
@@ -745,6 +732,26 @@ bot.callbackQuery(/^adminplayer:confirm:(ban|unban):(\d+)$/,async ctx=>{
   return ctx.editMessageText(q.rowCount?"✅ "+q.rows[0].display_name+" — "+(action==="ban"?"مسدود شد":"رفع مسدودی شد"):"بازیکن پیدا نشد یا وضعیت از قبل همین بود.",{reply_markup:new InlineKeyboard().text("👥 بازیکنان","adminpanel:players").row().text("⬅️ پنل","adminpanel:back")});
 });
 bot.callbackQuery(/^adminfin:player:(\d+)$/,async ctx=>{if(!await adminOnly(ctx))return;const id=ctx.match[1];await ctx.answerCallbackQuery();const kb=new InlineKeyboard();for(const amount of [5000,10000,25000,50000])kb.text(money(amount),"adminfin:give:"+id+":"+amount).text("−"+money(amount),"adminfin:take:"+id+":"+amount).row();kb.text("⬅️ انتخاب بازیکن","adminpanel:finance").row().text("⬅️ پنل","adminpanel:back");return ctx.editMessageText("👤 بازیکن: "+id+"\n\nمبلغ را انتخاب کن؛ دکمه مثبت هدیه و دکمه منفی کسر می‌کند.",{reply_markup:kb});});
+const adminCustomAmount = new Map();
+bot.callbackQuery(/^adminfin:custom:(\\d+)$/,async ctx=>{
+  if(!await adminOnly(ctx))return;
+  adminCustomAmount.set(String(ctx.from.id),{playerId:ctx.match[1],expires:Date.now()+120000});
+  await ctx.answerCallbackQuery();
+  return ctx.reply("✍️ مبلغ دلخواه را به عدد وارد کن (مثلاً 250000).\\nتا ۲ دقیقه فرصت داری.");
+});
+bot.on("message:text",async ctx=>{
+  const pending=adminCustomAmount.get(String(ctx.from.id));
+  if(!pending)return;
+  if(Date.now()>pending.expires){adminCustomAmount.delete(String(ctx.from.id));return ctx.reply("زمان ورود مبلغ تمام شد؛ از پنل دوباره شروع کن.");}
+  if(!await adminOnly(ctx))return;
+  const raw=ctx.message.text.replace(/[٬,\\s]/g,""),amount=Number(raw);
+  if(!/^\\d+$/.test(raw)||!Number.isSafeInteger(amount)||amount<=0||amount>9000000000000)return ctx.reply("مبلغ نامعتبر است. یک عدد مثبت وارد کن.");
+  adminCustomAmount.delete(String(ctx.from.id));
+  const q=await pool.query("UPDATE players SET balance=balance+$2 WHERE telegram_id=$1 RETURNING display_name,balance",[pending.playerId,amount]);
+  if(!q.rowCount)return ctx.reply("بازیکن پیدا نشد.");
+  await pool.query("INSERT INTO finance_transactions(telegram_id,transaction_type,amount,description) VALUES($1,'admin_gift',$2,'هدیه با مبلغ دلخواه مدیر')",[pending.playerId,amount]);
+  return ctx.reply("✅ واریز انجام شد\\nبازیکن: "+q.rows[0].display_name+"\\nمبلغ: "+money(amount)+"\\nموجودی جدید: "+money(q.rows[0].balance));
+});
 bot.callbackQuery(/^adminfin:(give|take):(\d+):(\d+)$/,async ctx=>{if(!await adminOnly(ctx))return;const action=ctx.match[1],id=ctx.match[2],amount=Number(ctx.match[3]);if(!Number.isSafeInteger(amount)||amount<=0)return ctx.answerCallbackQuery({text:"مبلغ نامعتبر است.",show_alert:true});const sql=action==="give"?"UPDATE players SET balance=balance+$2 WHERE telegram_id=$1 RETURNING display_name,balance":"UPDATE players SET balance=balance-$2 WHERE telegram_id=$1 AND balance>=$2 RETURNING display_name,balance";const q=await pool.query(sql,[id,amount]);if(!q.rowCount)return ctx.answerCallbackQuery({text:action==="take"?"موجودی کافی نیست یا بازیکن پیدا نشد.":"بازیکن پیدا نشد.",show_alert:true});await pool.query("INSERT INTO finance_transactions(telegram_id,transaction_type,amount,description) VALUES($1,$2,$3,$4)",[id,action==="give"?"admin_gift":"admin_deduction",action==="give"?amount:-amount,action==="give"?"هدیه مدیر کل":"کسر توسط مدیر کل"]);await ctx.answerCallbackQuery({text:"انجام شد: "+q.rows[0].display_name});return ctx.editMessageText("✅ عملیات مالی انجام شد\n\nبازیکن: "+q.rows[0].display_name+"\nمبلغ: "+money(amount)+"\nموجودی جدید: "+money(q.rows[0].balance),{reply_markup:new InlineKeyboard().text("💸 عملیات دیگر","adminpanel:finance").row().text("⬅️ پنل","adminpanel:back")});});
 bot.callbackQuery(/^adminbroadcast:(1|2|3)$/,async ctx=>{if(!await adminOnly(ctx))return;const messages={"1":"🎮 به Open Many خوش آمدید! شرکت بسازید، درآمد کسب کنید و در رقابت اقتصادی پیشرفت کنید. از منوی دکمه‌ای بازی استفاده کنید.","2":"🏗️ رویداد توسعه کسب‌وکار فعال است! برای رشد درآمد، شرکت جدید تأسیس کنید و کسب‌وکارهای خود را ارتقا دهید.","3":"🎁 پاداش روزانه‌تان را از بخش امور مالی دریافت کنید و مأموریت روزانه را تکمیل کنید."};const msg=messages[ctx.match[1]];await ctx.answerCallbackQuery({text:"ارسال پیام آغاز شد."});const q=await pool.query("SELECT telegram_id FROM players WHERE approval_status='approved'");let ok=0,fail=0;for(const p of q.rows){try{await bot.api.sendMessage(String(p.telegram_id),msg,{reply_markup:quickKeyboard(p.telegram_id)});ok++;}catch{fail++;}}return ctx.editMessageText("📣 ارسال تمام شد\nموفق: "+ok+" | ناموفق: "+fail,{reply_markup:new InlineKeyboard().text("📣 پیام دیگر","adminpanel:broadcast").row().text("⬅️ پنل","adminpanel:back")});});
 bot.callbackQuery("adminpanel:back",async ctx=>{if(!await adminOnly(ctx))return;await ctx.answerCallbackQuery();return ctx.editMessageText("🛡️ پنل مدیر کل — یک بخش انتخاب کن:",{reply_markup:adminKeyboard()});});
