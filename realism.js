@@ -105,7 +105,7 @@ export async function registerRealism(bot,pool) {
     await ctx.reply("👨‍💼 *مدیریت عملیاتی شرکت‌ها*\n\nبرای استخدام، تعدیل نیرو، تعمیر تجهیزات یا افزایش روحیه شرکت را انتخاب کن.",{parse_mode:"Markdown",reply_markup:kb});
   });
 
-  bot.callbackQuery(/^manage:(\\d+)$/,async ctx=>{
+  bot.callbackQuery(/^manage:(\d+)$/,async ctx=>{
     const id=Number(ctx.match[1]);
     const q=await pool.query("SELECT id,company_type,level,employee_count,morale,equipment_condition FROM player_companies WHERE id=$1 AND telegram_id=$2",[id,String(ctx.from.id)]);
     if(!q.rows.length)return ctx.answerCallbackQuery({text:"شرکت متعلق به شما نیست.",show_alert:true});
@@ -128,7 +128,7 @@ export async function registerRealism(bot,pool) {
     await ctx.answerCallbackQuery();
   });
 
-  bot.callbackQuery(/^manageact:(hire|fire|repair|morale):(\\d+)$/,async ctx=>{
+  bot.callbackQuery(/^manageact:(hire|fire|repair|morale):(\d+)$/,async ctx=>{
     const action=ctx.match[1],id=Number(ctx.match[2]),client=await pool.connect();
     const price={hire:1200,fire:0,repair:2500,morale:1500}[action];
     try{
