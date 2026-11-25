@@ -43,16 +43,25 @@ const COMPANY_TYPES = [
 ];
 
 const money = (n) => "$" + Math.floor(Number(n)).toLocaleString("en-US");
-const bottomKeyboard = () => new Keyboard()
-  .text("📊 وضعیت بازی").text("🏢 شرکت‌های من").row()
-  .text("🌐 اقتصاد واقعی").text("🏦 بانک و وام").row()
-  .text("👨‍💼 مدیریت شرکت‌ها").row()
-  .text("📒 دفتر مالی").row()
-  .text("🛒 خرید شرکت").text("💵 دریافت درآمد").row()
-  .text("🧭 مأموریت روزانه").text("🏅 دستاوردها").row()
-  .text("👤 پروفایل").text("🏆 رتبه‌بندی").row()
-  .text("🎁 پاداش روزانه").text("ℹ️ راهنما").row()
-  .text("🧰 دسترسی آسان").resized().persistent(false);
+// Compact main menu with expandable Telegram reply-keyboard sections.
+const menuSection = new Map();
+const mainKeyboard = () => new Keyboard()
+  .text("📊 مرکز بازی").text("🏢 کسب‌وکارها").row()
+  .text("💰 امور مالی").text("🌐 بازار و اقتصاد").row()
+  .text("🏆 رقابت و پیشرفت").text("⚙️ بیشتر").resized().persistent(false);
+const sectionKeyboard = (section) => {
+  const k = new Keyboard();
+  if (section === "business") k.text("🏢 شرکت‌های من").text("🛒 خرید شرکت").row().text("👨‍💼 مدیریت شرکت‌ها").row();
+  else if (section === "finance") k.text("💵 دریافت درآمد").text("🏦 بانک و وام").row().text("📒 دفتر مالی").row();
+  else if (section === "market") k.text("🌐 اقتصاد واقعی").row();
+  else if (section === "progress") k.text("🧭 مأموریت روزانه").text("🏅 دستاوردها").row().text("🏆 رتبه‌بندی").text("🎁 پاداش روزانه").row();
+  else if (section === "more") k.text("👤 پروفایل").text("ℹ️ راهنما").row().text("🧰 دسترسی آسان").row();
+  return k.text("🔙 منوی اصلی").resized().persistent(false);
+};
+const bottomKeyboard = (userId) => {
+  const section = menuSection.get(String(userId));
+  return section ? sectionKeyboard(section) : mainKeyboard();
+};
 
 async function initDb() {
   await pool.query(`
@@ -167,13 +176,13 @@ bot.command("start", async (ctx) => {
     const msg = status === "banned" ? "⛔ دسترسی حساب شما مسدود شده است." : status === "rejected" ? "❌ درخواست عضویت شما رد شده است." : "🕓 درخواست عضویت شما ثبت شد و منتظر تأیید مدیر کل است.";
     return ctx.reply(msg, { reply_markup: new Keyboard().text("🔄 بررسی وضعیت").resized().persistent() });
   }
-  await ctx.reply(await dashboardText(ctx.from.id), { parse_mode: "Markdown", reply_markup: bottomKeyboard() });
+  await ctx.reply(await dashboardText(ctx.from.id), { parse_mode: "Markdown", reply_markup: bottomKeyboard(ctx.from.id) });
 });
 
 bot.hears("🧰 دسترسی آسان", async ctx => {
   const userCommands = "/start — ورود و داشبورد\n/menu — نمایش منوی بازی\n/myid — نمایش شناسه تلگرام\n\n🌐 اقتصاد واقعی — بازار و سود و زیان\n🏦 بانک و وام — اعتبار و تسویه\n👨‍💼 مدیریت شرکت‌ها — استخدام و تعمیر\n📒 دفتر مالی — تاریخچه تراکنش‌هان\nدکمه‌های بازی از کیبورد پایین در دسترس هستند.";
   const adminCommands = "\n\n🛡️ دستورات مدیر کل:\n/admin — پنل مدیریت\n/pending — درخواست‌های عضویت\n/approve ID — تأیید بازیکن\n/reject ID — رد درخواست\n/ban ID — مسدود کردن\n/unban ID — رفع مسدودی\n/players — فهرست بازیکنان\n/balance ID — مشاهده موجودی\n/setbalance ID AMOUNT — تنظیم موجودی\n/give ID AMOUNT — هدیه پول\n/broadcast متن — پیام همگانی";
-  await ctx.reply("🧰 دسترسی آسان\n\n"+userCommands+(String(ctx.from.id)===ownerTelegramId?adminCommands:""), {reply_markup:bottomKeyboard()});
+  await ctx.reply("🧰 دسترسی آسان\n\n"+userCommands+(String(ctx.from.id)===ownerTelegramId?adminCommands:""), {reply_markup:bottomKeyboard(ctx.from.id)});
 });
 bot.command("menu", async (ctx) => {
   await ensurePlayer(ctx);
@@ -361,12 +370,38 @@ bot.callbackQuery("home", async (ctx) => {
 
 
 
+
+// Main menu sections open focused submenus instead of showing every action at once.
+const menuSections = [
+  ["📊 مرکز بازی", null, "📊 مرکز بازی"],
+  ["🏢 کسب‌وکارها", "business", "🏢 کسب‌وکارها"],
+  ["💰 امور مالی", "finance", "💰 امور مالی"],
+  ["🌐 بازار و اقتصاد", "market", "🌐 بازار و اقتصاد"],
+  ["🏆 رقابت و پیشرفت", "progress", "🏆 رقابت و پیشرفت"],
+  ["⚙️ بیشتر", "more", "⚙️ بیشتر"]
+];
+for (const [label, section, title] of menuSections) {
+  bot.hears(label, async ctx => {
+    if (!section) {
+      menuSection.delete(String(ctx.from.id));
+      await ctx.reply(await dashboardText(ctx.from.id), { parse_mode: "Markdown", reply_markup: mainKeyboard() });
+      return;
+    }
+    menuSection.set(String(ctx.from.id), section);
+    await ctx.reply(title + "\n\nاز گزینه‌های این بخش انتخاب کن:", { reply_markup: sectionKeyboard(section) });
+  });
+}
+bot.hears("🔙 منوی اصلی", async ctx => {
+  menuSection.delete(String(ctx.from.id));
+  await ctx.reply(await dashboardText(ctx.from.id), { parse_mode: "Markdown", reply_markup: mainKeyboard() });
+});
+
 // Dashboard: full game overview and company status
 bot.hears("📊 وضعیت بازی", async (ctx) => {
   await ensurePlayer(ctx);
   await ctx.reply(await dashboardText(ctx.from.id), {
     parse_mode: "Markdown",
-    reply_markup: bottomKeyboard()
+    reply_markup: bottomKeyboard(ctx.from.id)
   });
 });
 
@@ -407,7 +442,7 @@ bot.callbackQuery("mission_claim", async (ctx) => {
     await client.query("UPDATE players SET balance=balance+5000,last_mission=$2 WHERE telegram_id=$1", [String(ctx.from.id), today]);
     await client.query("COMMIT");
     await ctx.answerCallbackQuery({ text: "۵,۰۰۰ دلار جایزه مأموریت دریافت شد! 🎉" });
-    await ctx.reply(await dashboardText(ctx.from.id), { parse_mode: "Markdown", reply_markup: bottomKeyboard() });
+    await ctx.reply(await dashboardText(ctx.from.id), { parse_mode: "Markdown", reply_markup: bottomKeyboard(ctx.from.id) });
   } catch (e) {
     await client.query("ROLLBACK");
     console.error(e);
@@ -431,7 +466,7 @@ bot.hears("🏅 دستاوردها", async (ctx) => {
   ];
   const text = achievements.map(([done,title,goal]) => `${done ? "✅" : "🔒"} ${title}\n   ${goal}`).join("\n\n");
   await ctx.reply(`🏅 *تالار دستاوردها*\n\n${text}\n\n${achievements.filter(x=>x[0]).length} از ${achievements.length} دستاورد باز شده`, {
-    parse_mode: "Markdown", reply_markup: bottomKeyboard()
+    parse_mode: "Markdown", reply_markup: bottomKeyboard(ctx.from.id)
   });
 });
 
@@ -442,7 +477,7 @@ bot.hears("👤 پروفایل", async (ctx) => {
   const count = d.companies.reduce((sum,x)=>sum+Number(x.count),0);
   await ctx.reply(
     `👤 پروفایل شما\n\n💰 سرمایه: ${money(d.player.balance)}\n🏢 تعداد شرکت‌ها: ${count}\n📈 درآمد هر ساعت: ${money(d.income)}\n🗓️ عضویت: ${new Date(d.player.created_at).toLocaleDateString("fa-IR")}`,
-    { reply_markup: bottomKeyboard() }
+    { reply_markup: bottomKeyboard(ctx.from.id) }
   );
 });
 
@@ -482,7 +517,7 @@ bot.hears("🏆 رتبه‌بندی", async (ctx) => {
   await ensurePlayer(ctx);
   const q = await pool.query("SELECT display_name,balance FROM players ORDER BY balance DESC LIMIT 10");
   const leaderboardText = q.rows.length ? q.rows.map((p,i)=>`${i+1}. ${p.display_name} — ${money(p.balance)}`).join("\n") : "هنوز بازیکنی ثبت نشده.";
-  await ctx.reply(`🏆 رتبه‌بندی سرمایه‌داران\n\n${leaderboardText}`, { reply_markup: bottomKeyboard() });
+  await ctx.reply(`🏆 رتبه‌بندی سرمایه‌داران\n\n${leaderboardText}`, { reply_markup: bottomKeyboard(ctx.from.id) });
 });
 
 bot.hears("🎁 پاداش روزانه", async (ctx) => {
@@ -495,7 +530,7 @@ bot.hears("🎁 پاداش روزانه", async (ctx) => {
 bot.hears("ℹ️ راهنما", async (ctx) => {
   await ensurePlayer(ctx);
   await ctx.reply("ℹ️ راهنمای Open Many\n\n1. از فروشگاه شرکت بخر.\n2. شرکت‌ها به مرور درآمد تولید می‌کنند.\n3. درآمدت را دریافت کن.\n4. شرکت‌ها را ارتقا بده.\n5. هر روز پاداش بگیر و در رتبه‌بندی پیشرفت کن.", {
-    reply_markup: bottomKeyboard()
+    reply_markup: bottomKeyboard(ctx.from.id)
   });
 });
 
