@@ -5,6 +5,7 @@ import http from "node:http";
 const { Pool } = pg;
 const token = process.env.BOT_TOKEN;
 const databaseUrl = process.env.DATABASE_URL;
+const ownerTelegramId = String(process.env.OWNER_TELEGRAM_ID || '').trim();
 
 if (!token) throw new Error("Missing BOT_TOKEN environment variable");
 if (!databaseUrl) throw new Error("Missing DATABASE_URL environment variable");
@@ -15,6 +16,23 @@ const pool = new Pool({
 });
 
 const bot = new Bot(token);
+
+bot.use(async (ctx, next) => {
+  if (!ctx.from) return next();
+  const id=String(ctx.from.id), text=ctx.message?.text || "";
+  if (id===ownerTelegramId || /^\/(start|status|myid)(\s|$)/.test(text)) return next();
+  const q=await pool.query("SELECT approval_status FROM players WHERE telegram_id=$1",[id]);
+  const status=q.rows[0]?.approval_status;
+  if (!status) { if(ctx.message) await ctx.reply("برای ثبت درخواست عضویت /start را بزن."); return; }
+  if(status==="banned") { if(ctx.message) await ctx.reply("⛔ دسترسی شما مسدود شده است."); else await ctx.answerCallbackQuery({text:"حساب مسدود است.",show_alert:true}).catch(()=>{}); return; }
+  if(status!=="approved") { if(ctx.message) await ctx.reply("🕓 حساب شما هنوز تأیید نشده است."); else await ctx.answerCallbackQuery({text:"حساب در انتظار تأیید مدیر است.",show_alert:true}).catch(()=>{}); return; }
+  return next();
+});
+bot.command("myid", ctx => ctx.reply("Telegram ID شما: "+ctx.from.id+"\nاین عدد را در Railway در متغیر OWNER_TELEGRAM_ID قرار بده."));
+bot.hears("🔄 بررسی وضعیت", async ctx => {
+  const status=await ensurePlayer(ctx);
+  await ctx.reply(status==="approved"?"✅ حساب تأیید شده؛ /start را بزن.":status==="banned"?"⛔ حساب مسدود است.":status==="rejected"?"❌ درخواست رد شده است.":"🕓 هنوز منتظر تأیید مدیر کل هستی.");
+});
 
 const COMPANY_TYPES = [
   { id: "cafe", name: "کافه کوچک ☕", price: 25000, income: 900, description: "کسب‌وکار کوچک با درآمد پایدار" },
@@ -51,6 +69,10 @@ async function initDb() {
     );
     CREATE INDEX IF NOT EXISTS player_companies_owner_idx ON player_companies(telegram_id);
     ALTER TABLE players ADD COLUMN IF NOT EXISTS last_mission DATE;
+    ALTER TABLE players ADD COLUMN IF NOT EXISTS approval_status TEXT NOT NULL DEFAULT 'approved';
+    ALTER TABLE players ADD COLUMN IF NOT EXISTS approved_at TIMESTAMPTZ;
+    ALTER TABLE players ADD COLUMN IF NOT EXISTS approved_by BIGINT;
+    ALTER TABLE players ADD COLUMN IF NOT EXISTS admin_note TEXT;
   `);
 }
 
@@ -58,11 +80,15 @@ async function ensurePlayer(ctx) {
   const from = ctx.from;
   const name = [from.first_name, from.last_name].filter(Boolean).join(" ") || "بازیکن";
   await pool.query(
-    `INSERT INTO players (telegram_id, username, display_name)
-     VALUES ($1, $2, $3)
-     ON CONFLICT (telegram_id) DO UPDATE SET username = EXCLUDED.username, display_name = EXCLUDED.display_name`,
-    [String(from.id), from.username ?? null, name]
+    `INSERT INTO players (telegram_id, username, display_name, approval_status, approved_at)
+     VALUES ($1, $2, $3, $4, CASE WHEN $4='approved' THEN NOW() ELSE NULL END)
+     ON CONFLICT (telegram_id) DO UPDATE SET username = EXCLUDED.username, display_name = EXCLUDED.display_name,
+       approval_status = CASE WHEN EXCLUDED.telegram_id=$5 THEN 'approved' ELSE players.approval_status END,
+       approved_at = CASE WHEN EXCLUDED.telegram_id=$5 THEN COALESCE(players.approved_at,NOW()) ELSE players.approved_at END`,
+    [String(from.id), from.username ?? null, name, String(from.id) === ownerTelegramId ? 'approved' : 'pending', ownerTelegramId || '0']
   );
+  const result = await pool.query('SELECT approval_status FROM players WHERE telegram_id=$1', [String(from.id)]);
+  return result.rows[0]?.approval_status || 'pending';
 }
 
 async function playerData(id) {
@@ -131,7 +157,11 @@ function homeText() {
 }
 
 bot.command("start", async (ctx) => {
-  await ensurePlayer(ctx);
+  const status = await ensurePlayer(ctx);
+  if (status !== "approved" && String(ctx.from.id) !== ownerTelegramId) {
+    const msg = status === "banned" ? "⛔ دسترسی حساب شما مسدود شده است." : status === "rejected" ? "❌ درخواست عضویت شما رد شده است." : "🕓 درخواست عضویت شما ثبت شد و منتظر تأیید مدیر کل است.";
+    return ctx.reply(msg, { reply_markup: new Keyboard().text("🔄 بررسی وضعیت").resized().persistent() });
+  }
   await ctx.reply(await dashboardText(ctx.from.id), { parse_mode: "Markdown", reply_markup: bottomKeyboard() });
 });
 bot.command("menu", async (ctx) => {
@@ -455,6 +485,24 @@ bot.hears("ℹ️ راهنما", async (ctx) => {
     reply_markup: bottomKeyboard()
   });
 });
+
+
+function isOwner(ctx){return !!ownerTelegramId&&String(ctx.from?.id)===ownerTelegramId;}
+async function adminOnly(ctx){if(isOwner(ctx))return true;if(ctx.callbackQuery)await ctx.answerCallbackQuery({text:"فقط مدیر کل دسترسی دارد.",show_alert:true}).catch(()=>{});else await ctx.reply("⛔ فقط مدیر کل دسترسی دارد.");return false;}
+function adminKeyboard(){return new InlineKeyboard().text("🕓 درخواست‌ها","admin:pending").row().text("👥 بازیکنان","admin:players").row().text("📊 آمار","admin:stats");}
+bot.command("admin",async ctx=>{if(!await adminOnly(ctx))return;const q=await pool.query("SELECT COUNT(*)::int total,COUNT(*) FILTER(WHERE approval_status='pending')::int pending FROM players");await ctx.reply("🛡️ پنل مدیر کل\nکل بازیکنان: "+q.rows[0].total+"\nدر انتظار تأیید: "+q.rows[0].pending+"\n\n/pending درخواست‌ها\n/players بازیکنان\n/approve ID تأیید\n/reject ID رد\n/ban ID و /unban ID\n/balance ID\n/setbalance ID مبلغ\n/give ID مبلغ\n/broadcast پیام",{reply_markup:adminKeyboard()});});
+bot.command("pending",async ctx=>{if(!await adminOnly(ctx))return;const q=await pool.query("SELECT telegram_id,display_name,username FROM players WHERE approval_status='pending' ORDER BY created_at LIMIT 30");if(!q.rows.length)return ctx.reply("درخواست تأیید جدیدی وجود ندارد.");for(const p of q.rows)await ctx.reply(p.display_name+(p.username?" (@"+p.username+")":"")+"\nID: "+p.telegram_id,{reply_markup:new InlineKeyboard().text("✅ تأیید","admin:approve:"+p.telegram_id).text("❌ رد","admin:reject:"+p.telegram_id)});});
+bot.command("approve",async ctx=>{if(!await adminOnly(ctx))return;const id=(ctx.match||"").trim().split(/\s+/)[0];if(!/^\d+$/.test(id))return ctx.reply("استفاده: /approve TELEGRAM_ID");const q=await pool.query("UPDATE players SET approval_status='approved',approved_at=NOW(),approved_by=$2 WHERE telegram_id=$1 AND approval_status IN ('pending','rejected') RETURNING display_name",[id,ownerTelegramId]);if(q.rowCount)await bot.api.sendMessage(id,"✅ عضویت شما تأیید شد. برای ورود /start را بزن.").catch(()=>{});await ctx.reply(q.rowCount?"تأیید شد: "+q.rows[0].display_name:"بازیکن پیدا نشد یا قبلاً تأیید شده است.");});
+bot.command("reject",async ctx=>{if(!await adminOnly(ctx))return;const id=(ctx.match||"").trim().split(/\s+/)[0];if(!/^\d+$/.test(id))return ctx.reply("استفاده: /reject TELEGRAM_ID");const q=await pool.query("UPDATE players SET approval_status='rejected',admin_note='Rejected by owner' WHERE telegram_id=$1 AND approval_status='pending' RETURNING display_name",[id]);await ctx.reply(q.rowCount?"رد شد: "+q.rows[0].display_name:"درخواست pending پیدا نشد.");});
+bot.command("ban",async ctx=>{if(!await adminOnly(ctx))return;const id=(ctx.match||"").trim().split(/\s+/)[0];if(!/^\d+$/.test(id)||id===ownerTelegramId)return ctx.reply("استفاده: /ban TELEGRAM_ID (مدیر کل قابل مسدودسازی نیست)");const q=await pool.query("UPDATE players SET approval_status='banned' WHERE telegram_id=$1 RETURNING display_name",[id]);await ctx.reply(q.rowCount?"مسدود شد: "+q.rows[0].display_name:"بازیکن پیدا نشد.");});
+bot.command("unban",async ctx=>{if(!await adminOnly(ctx))return;const id=(ctx.match||"").trim().split(/\s+/)[0];if(!/^\d+$/.test(id))return ctx.reply("استفاده: /unban TELEGRAM_ID");const q=await pool.query("UPDATE players SET approval_status='approved',approved_at=COALESCE(approved_at,NOW()) WHERE telegram_id=$1 AND approval_status='banned' RETURNING display_name",[id]);await ctx.reply(q.rowCount?"رفع مسدودی شد: "+q.rows[0].display_name:"بازیکن مسدودشده پیدا نشد.");});
+bot.command("players",async ctx=>{if(!await adminOnly(ctx))return;const q=await pool.query("SELECT telegram_id,display_name,balance,approval_status FROM players ORDER BY created_at DESC LIMIT 30");await ctx.reply("👥 بازیکنان اخیر\n\n"+q.rows.map(p=>p.display_name+" | "+p.telegram_id+" | "+money(p.balance)+" | "+p.approval_status).join("\n"));});
+bot.command("balance",async ctx=>{if(!await adminOnly(ctx))return;const id=(ctx.match||"").trim().split(/\s+/)[0];if(!/^\d+$/.test(id))return ctx.reply("استفاده: /balance TELEGRAM_ID");const q=await pool.query("SELECT display_name,balance FROM players WHERE telegram_id=$1",[id]);await ctx.reply(q.rowCount?q.rows[0].display_name+"\nID: "+id+"\nسرمایه: "+money(q.rows[0].balance):"بازیکن پیدا نشد.");});
+bot.command("setbalance",async ctx=>{if(!await adminOnly(ctx))return;const [id,n]=(ctx.match||"").trim().split(/\s+/),amount=Number(n);if(!/^\d+$/.test(id||"")||!Number.isSafeInteger(amount)||amount<0)return ctx.reply("استفاده: /setbalance ID AMOUNT");const q=await pool.query("UPDATE players SET balance=$2 WHERE telegram_id=$1 RETURNING display_name",[id,amount]);await ctx.reply(q.rowCount?"سرمایه "+q.rows[0].display_name+" تنظیم شد: "+money(amount):"بازیکن پیدا نشد.");});
+bot.command("give",async ctx=>{if(!await adminOnly(ctx))return;const [id,n]=(ctx.match||"").trim().split(/\s+/),amount=Number(n);if(!/^\d+$/.test(id||"")||!Number.isSafeInteger(amount)||amount<=0)return ctx.reply("استفاده: /give ID AMOUNT");const q=await pool.query("UPDATE players SET balance=balance+$2 WHERE telegram_id=$1 RETURNING display_name,balance",[id,amount]);await ctx.reply(q.rowCount?"به "+q.rows[0].display_name+" "+money(amount)+" داده شد. موجودی: "+money(q.rows[0].balance):"بازیکن پیدا نشد.");});
+bot.command("broadcast",async ctx=>{if(!await adminOnly(ctx))return;const msg=(ctx.match||"").trim();if(!msg)return ctx.reply("استفاده: /broadcast متن");const q=await pool.query("SELECT telegram_id FROM players WHERE approval_status='approved'");let ok=0,fail=0;for(const p of q.rows){try{await bot.api.sendMessage(String(p.telegram_id),"📣 پیام مدیر کل\n\n"+msg);ok++;}catch{fail++;}}await ctx.reply("ارسال پایان یافت. موفق: "+ok+" | ناموفق: "+fail);});
+bot.callbackQuery(/^admin:(pending|players|stats)$/,async ctx=>{if(!await adminOnly(ctx))return;const a=ctx.match[1];await ctx.answerCallbackQuery();if(a==="pending")return ctx.reply("برای درخواست‌ها /pending را بزن.");if(a==="players")return ctx.reply("برای فهرست بازیکنان /players را بزن.");const q=await pool.query("SELECT COUNT(*)::int total,COUNT(*) FILTER(WHERE approval_status='approved')::int approved,COUNT(*) FILTER(WHERE approval_status='pending')::int pending,COUNT(*) FILTER(WHERE approval_status='banned')::int banned,COALESCE(SUM(balance),0)::bigint cash FROM players");const x=q.rows[0];return ctx.reply("📊 آمار بازی\nکل: "+x.total+"\nتأییدشده: "+x.approved+"\nدر انتظار: "+x.pending+"\nمسدود: "+x.banned+"\nسرمایه کل: "+money(x.cash),{reply_markup:adminKeyboard()});});
+bot.callbackQuery(/^admin:(approve|reject):(\d+)$/,async ctx=>{if(!await adminOnly(ctx))return;const a=ctx.match[1],id=ctx.match[2],status=a==="approve"?"approved":"rejected";const q=await pool.query("UPDATE players SET approval_status=$2,approved_at=CASE WHEN $2='approved' THEN NOW() ELSE approved_at END,approved_by=$3 WHERE telegram_id=$1 AND approval_status='pending' RETURNING display_name",[id,status,ownerTelegramId]);await ctx.answerCallbackQuery({text:q.rowCount?"انجام شد":"قبلاً بررسی شده یا یافت نشد"});if(q.rowCount&&a==="approve")await bot.api.sendMessage(id,"عضویت شما تأیید شد! /start را بزن.").catch(()=>{});await ctx.reply(q.rowCount?q.rows[0].display_name+" — "+status:"درخواست پیدا نشد.");});
 
 bot.catch((err) => console.error("Bot error:", err));
 
