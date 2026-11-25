@@ -96,6 +96,63 @@ export async function netHourlyForPlayer(pool,id) {
 }
 
 export async function registerRealism(bot,pool) {
+  bot.hears("👨‍💼 مدیریت شرکت‌ها",async ctx=>{
+    const q=await pool.query("SELECT id,company_type,level,employee_count,morale,equipment_condition FROM player_companies WHERE telegram_id=$1 ORDER BY id",[String(ctx.from.id)]);
+    if(!q.rows.length)return ctx.reply("ابتدا یک شرکت خریداری کن.");
+    const names={cafe:"کافه",shop:"فروشگاه",factory:"کارخانه",tech:"شرکت فناوری"};
+    const kb=new InlineKeyboard();
+    for(const row of q.rows)kb.text(`${names[row.company_type]||row.company_type} #${row.id} | ${row.employee_count} کارمند`,"manage:"+row.id).row();
+    await ctx.reply("👨‍💼 *مدیریت عملیاتی شرکت‌ها*\n\nبرای استخدام، تعدیل نیرو، تعمیر تجهیزات یا افزایش روحیه شرکت را انتخاب کن.",{parse_mode:"Markdown",reply_markup:kb});
+  });
+
+  bot.callbackQuery(/^manage:(\\d+)$/,async ctx=>{
+    const id=Number(ctx.match[1]);
+    const q=await pool.query("SELECT id,company_type,level,employee_count,morale,equipment_condition FROM player_companies WHERE id=$1 AND telegram_id=$2",[id,String(ctx.from.id)]);
+    if(!q.rows.length)return ctx.answerCallbackQuery({text:"شرکت متعلق به شما نیست.",show_alert:true});
+    const row=q.rows[0],names={cafe:"کافه",shop:"فروشگاه",factory:"کارخانه",tech:"شرکت فناوری"};
+    await ctx.editMessageText(`🏢 *${names[row.company_type]||row.company_type} #${row.id}*
+
+👷 کارکنان: ${row.employee_count}
+🙂 روحیه: ${Number(row.morale).toFixed(0)}/100
+🔧 سلامت تجهیزات: ${Number(row.equipment_condition).toFixed(0)}٪
+
+استخدام، حقوق رفاهی و تعمیرات روی بهره‌وری و درآمد اثر می‌گذارند.`,{parse_mode:"Markdown",reply_markup:new InlineKeyboard().text("➕ استخدام | 1,200","manageact:hire:"+id).text("➖ تعدیل","manageact:fire:"+id).row().text("🔧 تعمیر | 2,500","manageact:repair:"+id).text("🎉 رفاه | 1,500","manageact:morale:"+id).row().text("🔙 شرکت‌ها","manage:back")});
+    await ctx.answerCallbackQuery();
+  });
+
+  bot.callbackQuery("manage:back",async ctx=>{
+    const q=await pool.query("SELECT id,company_type,employee_count FROM player_companies WHERE telegram_id=$1 ORDER BY id",[String(ctx.from.id)]);
+    const names={cafe:"کافه",shop:"فروشگاه",factory:"کارخانه",tech:"شرکت فناوری"},kb=new InlineKeyboard();
+    for(const row of q.rows)kb.text(`${names[row.company_type]||row.company_type} #${row.id} | ${row.employee_count} کارمند`,"manage:"+row.id).row();
+    await ctx.editMessageText("👨‍💼 شرکت موردنظر را انتخاب کن:",{reply_markup:kb});
+    await ctx.answerCallbackQuery();
+  });
+
+  bot.callbackQuery(/^manageact:(hire|fire|repair|morale):(\\d+)$/,async ctx=>{
+    const action=ctx.match[1],id=Number(ctx.match[2]),client=await pool.connect();
+    const price={hire:1200,fire:0,repair:2500,morale:1500}[action];
+    try{
+      await client.query("BEGIN");
+      const q=await client.query("SELECT pc.*,p.balance FROM player_companies pc JOIN players p ON p.telegram_id=pc.telegram_id WHERE pc.id=$1 AND pc.telegram_id=$2 FOR UPDATE",[id,String(ctx.from.id)]);
+      if(!q.rows.length){await client.query("ROLLBACK");return ctx.answerCallbackQuery({text:"شرکت پیدا نشد.",show_alert:true});}
+      const row=q.rows[0];
+      if(action==="fire"&&Number(row.employee_count)<=1){await client.query("ROLLBACK");return ctx.answerCallbackQuery({text:"حداقل یک کارمند لازم است.",show_alert:true});}
+      if(Number(row.balance)<price){await client.query("ROLLBACK");return ctx.answerCallbackQuery({text:"سرمایه کافی نیست.",show_alert:true});}
+      if(action==="hire")await client.query("UPDATE player_companies SET employee_count=employee_count+1 WHERE id=$1",[id]);
+      if(action==="fire")await client.query("UPDATE player_companies SET employee_count=employee_count-1 WHERE id=$1",[id]);
+      if(action==="repair")await client.query("UPDATE player_companies SET equipment_condition=LEAST(100,equipment_condition+25) WHERE id=$1",[id]);
+      if(action==="morale")await client.query("UPDATE player_companies SET morale=LEAST(100,morale+15) WHERE id=$1",[id]);
+      if(price>0){
+        await client.query("UPDATE players SET balance=balance-$2 WHERE telegram_id=$1",[String(ctx.from.id),price]);
+        await client.query("INSERT INTO finance_transactions(telegram_id,company_id,transaction_type,amount,description) VALUES($1,$2,$3,$4,$5)",[String(ctx.from.id),id,action,-price,{hire:"استخدام نیروی جدید",repair:"تعمیر و نگهداری تجهیزات",morale:"هزینه رفاهی کارکنان"}[action]]);
+      }
+      await client.query("COMMIT");
+      await ctx.answerCallbackQuery({text:{hire:"استخدام انجام شد؛ هزینه حقوق در آینده افزایش می‌یابد.",fire:"تعدیل نیرو انجام شد.",repair:"تجهیزات تعمیر شد.",morale:"روحیه کارکنان افزایش یافت."}[action]});
+      await ctx.reply("عملیات شرکت انجام شد. سود ساعتی جدید را در «اقتصاد واقعی» بررسی کن.",{reply_markup:new Keyboard().text("🌐 اقتصاد واقعی").text("👨‍💼 مدیریت شرکت‌ها").resized().persistent()});
+    }catch(e){await client.query("ROLLBACK");console.error(e);await ctx.answerCallbackQuery({text:"خطا در عملیات شرکت.",show_alert:true});}
+    finally{client.release();}
+  });
+
   bot.hears("🌐 اقتصاد واقعی",async ctx=>{
     const m=await market(pool);
     const ops=await companyOperations(pool,ctx.from.id,m);
