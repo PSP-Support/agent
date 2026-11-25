@@ -193,8 +193,8 @@ async function dashboardText(id) {
       return `  ${type?.name ?? c.company_type} | سطح ${c.level} × ${c.count} | ${money(income)}/ساعت`;
     });
   const companySection = rows.length ? rows.join("\n") : "  هنوز کسب‌وکاری خریداری نکردی؛ از فروشگاه شروع کن!";
-  return `🌆 *OPEN MANY | مرکز فرماندهی*
-
+  const identity = p.startup_name ? `\n🚀 *${p.startup_name}*\n_${p.startup_tagline || "استارتاپ در مسیر رشد"}_ | 📍 ${p.startup_city || "شهر ثبت نشده"}\n` : "\n🚀 استارتاپ جدید | برای ثبت نام و مشخصات: /startup\n";
+  return `🌆 *OPEN MANY | مرکز فرماندهی*${identity}
 ━━━━━━━━━━━━━━━━
 💰 سرمایه نقدی: ${money(p.balance)}
 🏢 تعداد کسب‌وکارها: ${companyCount}
@@ -277,7 +277,7 @@ bot.callbackQuery("buy_menu", async ctx => {
   await ctx.answerCallbackQuery();
 });
 const companyNameDraft=new Map();
-bot.callbackQuery(/^buy:([a-z]+)$/,async ctx=>{
+bot.callbackQuery(/^buy:([a-z_]+)$/,async ctx=>{
   const type=COMPANY_TYPES.find(x=>x.id===ctx.match[1]);
   if(!type)return ctx.answerCallbackQuery({text:"نوع شرکت نامعتبر است.",show_alert:true});
   if(type.special){const p=await pool.query("SELECT player_level,last_season_rank,reputation FROM players WHERE telegram_id=$1",[String(ctx.from.id)]);const x=p.rows[0]||{};if(Number(x.player_level)<type.minLevel||Number(x.reputation)<20||!Number(x.last_season_rank)||Number(x.last_season_rank)>type.maxRank)return ctx.answerCallbackQuery({text:"این برند ممتاز با Level، اعتبار و رتبه فصل گذشته باز می‌شود.",show_alert:true});}
