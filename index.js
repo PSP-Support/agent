@@ -170,7 +170,7 @@ bot.command("start", async (ctx) => {
   await ctx.reply(await dashboardText(ctx.from.id), { parse_mode: "Markdown", reply_markup: bottomKeyboard() });
 });
 bot.hears("🧰 دسترسی آسان", async ctx => {
-  const userCommands = "/start — ورود و داشبورد\n/menu — نمایش منوی بازی\n/myid — نمایش شناسه تلگرام\n\nدکمه‌های بازی از کیبورد پایین در دسترس هستند.";
+  const userCommands = "/start — ورود و داشبورد\n/menu — نمایش منوی بازی\n/myid — نمایش شناسه تلگرام\n\n🌐 اقتصاد واقعی — بازار و سود و زیان\n🏦 بانک و وام — اعتبار و تسویه\n👨‍💼 مدیریت شرکت‌ها — استخدام و تعمیر\n📒 دفتر مالی — تاریخچه تراکنش‌هان\nدکمه‌های بازی از کیبورد پایین در دسترس هستند.";
   const adminCommands = "\n\n🛡️ دستورات مدیر کل:\n/admin — پنل مدیریت\n/pending — درخواست‌های عضویت\n/approve ID — تأیید بازیکن\n/reject ID — رد درخواست\n/ban ID — مسدود کردن\n/unban ID — رفع مسدودی\n/players — فهرست بازیکنان\n/balance ID — مشاهده موجودی\n/setbalance ID AMOUNT — تنظیم موجودی\n/give ID AMOUNT — هدیه پول\n/broadcast متن — پیام همگانی";
   await ctx.reply("🧰 دسترسی آسان\n\n"+userCommands+(String(ctx.from.id)===ownerTelegramId?adminCommands:""), {reply_markup:bottomKeyboard()});
 });
