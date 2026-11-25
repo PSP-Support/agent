@@ -120,7 +120,26 @@ _بازار هر ۶ ساعت نوسان می‌کند. سود پس از هزین
 📉 نرخ بهره سالانه: ${(Number(m.interest_rate)*100).toFixed(1)}٪
 🧾 سقف اعتبار: ${fmt(cap)}
 
-وام یک‌ساله؛ مبلغ اصل و بهره در سررسید ثبت می‌شود.`,{parse_mode:"Markdown",reply_markup:new InlineKeyboard().text("وام ۵۰,۰۰۰","loan:50000").text("وام ۱۰۰,۰۰۰","loan:100000").row().text("بازگشت","home")});
+وام یک‌ساله؛ مبلغ اصل و بهره در سررسید ثبت می‌شود.`,{parse_mode:"Markdown",reply_markup:new InlineKeyboard().text("وام ۵۰,۰۰۰","loan:50000").text("وام ۱۰۰,۰۰۰","loan:100000").row().text("💳 تسویه کامل بدهی","loan:repay").row().text("بازگشت","home")});
+  });
+
+  bot.callbackQuery("loan:repay",async ctx=>{
+    const client=await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const p=await client.query("SELECT balance FROM players WHERE telegram_id=$1 FOR UPDATE",[String(ctx.from.id)]);
+      const debt=await client.query("SELECT COALESCE(SUM(remaining),0)::bigint debt FROM player_loans WHERE telegram_id=$1 AND status='active'",[String(ctx.from.id)]);
+      const amount=Number(debt.rows[0].debt);
+      if(amount<=0){await client.query("ROLLBACK");return ctx.answerCallbackQuery({text:"بدهی فعالی نداری."});}
+      if(Number(p.rows[0].balance)<amount){await client.query("ROLLBACK");return ctx.answerCallbackQuery({text:"موجودی برای تسویه کافی نیست.",show_alert:true});}
+      await client.query("UPDATE players SET balance=balance-$2 WHERE telegram_id=$1",[String(ctx.from.id),amount]);
+      await client.query("UPDATE player_loans SET remaining=0,status='paid' WHERE telegram_id=$1 AND status='active'",[String(ctx.from.id)]);
+      await client.query("INSERT INTO finance_transactions(telegram_id,transaction_type,amount,description) VALUES($1,'loan_repayment',$2,'تسویه کامل وام‌های فعال')",[String(ctx.from.id),-amount]);
+      await client.query("COMMIT");
+      await ctx.answerCallbackQuery({text:"تمام بدهی‌ها تسویه شد."});
+      await ctx.reply("✅ بدهی به مبلغ "+fmt(amount)+" تسویه شد.");
+    } catch(e){await client.query("ROLLBACK");console.error(e);await ctx.answerCallbackQuery({text:"خطا در تسویه.",show_alert:true});}
+    finally{client.release();}
   });
 
   bot.callbackQuery(/^loan:(50000|100000)$/,async ctx=>{
