@@ -114,6 +114,14 @@ const mainKeyboard = () => new Keyboard()
   .text("📊 مرکز بازی").text("🏢 کسب‌وکارها").row()
   .text("💰 امور مالی").text("🌐 بازار و اقتصاد").row()
   .text("🏆 رقابت و پیشرفت").text("⚙️ بیشتر").resized().persistent(false);
+const quickKeyboard = (userId) => {
+  const kb=new InlineKeyboard()
+    .text("🏢 کسب‌وکارها","quick:business").text("💰 امور مالی","quick:finance").row()
+    .text("🏆 پیشرفت و جوایز","quick:progress").text("👤 پروفایل","profile").row()
+    .text("📊 داشبورد","quick:home").text("📘 راهنمای مرحله‌ای","guide:1");
+  if(String(userId)===ownerTelegramId)kb.row().text("🛡️ پنل مدیریت","quick:admin");
+  return kb;
+};
 const sectionKeyboard = (section) => {
   const k = new Keyboard();
   if (section === "business") k.text("🏢 شرکت‌های من").text("🛒 خرید شرکت").row().text("👨‍💼 مدیریت شرکت‌ها").row();
@@ -271,7 +279,7 @@ bot.command("start", async (ctx) => {
     const msg = status === "banned" ? "⛔ دسترسی حساب شما مسدود شده است." : status === "rejected" ? "❌ درخواست عضویت شما رد شده است." : "🕓 درخواست عضویت شما ثبت شد و منتظر تأیید مدیر کل است.";
     return ctx.reply(msg, { reply_markup: new Keyboard().text("🔄 بررسی وضعیت").resized().persistent() });
   }
-  await ctx.reply(await dashboardText(ctx.from.id), { parse_mode: "Markdown", reply_markup: bottomKeyboard(ctx.from.id) });
+  await ctx.reply(await dashboardText(ctx.from.id), { parse_mode: "Markdown", reply_markup: quickKeyboard(ctx.from.id) });
 });
 
 bot.hears("🧰 دسترسی آسان", async ctx => {
@@ -291,9 +299,18 @@ bot.callbackQuery(/^guide:(1|2|3|4|menu)$/,async ctx=>{
 });
 bot.callbackQuery("guide:list",async ctx=>{await ctx.answerCallbackQuery();return ctx.reply("📘 راهنمای مرحله‌ای",{reply_markup:new InlineKeyboard().text("۱. شروع","guide:1").text("۲. شرکت","guide:2").row().text("۳. مالی","guide:3").text("۴. پیشرفت","guide:4").row().text("🏠 منو","guide:menu")});});
 
+bot.callbackQuery(/^quick:(home|business|finance|progress|mission|admin)$/,async ctx=>{
+  const s=ctx.match[1];await ctx.answerCallbackQuery();
+  if(s==="admin"){if(String(ctx.from.id)!==ownerTelegramId)return ctx.reply("⛔ فقط مدیر کل دسترسی دارد.");return ctx.reply("🛡️ پنل مدیریت",{reply_markup:adminKeyboard()});}
+  if(s==="home")return ctx.editMessageText(await dashboardText(ctx.from.id),{parse_mode:"Markdown",reply_markup:quickKeyboard(ctx.from.id)});
+  if(s==="business")return ctx.editMessageText("🏢 مدیریت کسب‌وکار\n\nمرحله ۱: شرکت‌های خودت را ببین یا شرکت جدید انتخاب کن.\nمرحله ۲: برای ارتقا، شرکت را انتخاب کن.",{reply_markup:new InlineKeyboard().text("🏢 شرکت‌های من","my_companies").text("🛒 تأسیس شرکت","buy_menu").row().text("🔧 ارتقای شرکت","upgrade_menu").row().text("⬅️ منوی بازی","quick:home")});
+  if(s==="finance")return ctx.editMessageText("💰 امور مالی\n\nیک عملیات را انتخاب کن؛ نیازی به دستور یا تایپ نیست.",{reply_markup:new InlineKeyboard().text("💵 دریافت درآمد","collect").text("🎁 پاداش روزانه","daily").row().text("👤 مشاهده سرمایه","profile").row().text("⬅️ منوی بازی","quick:home")});
+  if(s==="progress")return ctx.editMessageText("🏆 پیشرفت و رقابت\n\nپاداش بگیر، مأموریتت را پیگیری کن و رتبه‌ات را ببین.",{reply_markup:new InlineKeyboard().text("🎁 پاداش روزانه","daily").text("🧭 مأموریت","quick:mission").row().text("🏆 رتبه‌بندی","leaderboard").row().text("⬅️ منوی بازی","quick:home")});
+  return ctx.reply("🧭 مأموریت روزانه\n\nبرای تکمیل مأموریت، حداقل یک کسب‌وکار داشته باش. جایزه را پس از تکمیل دریافت کن.",{reply_markup:new InlineKeyboard().text("🏢 خرید شرکت","buy_menu").row().text("🎁 دریافت پاداش مأموریت","mission_claim").row().text("⬅️ منوی بازی","quick:home")});
+});
 bot.command("menu", async (ctx) => {
   await ensurePlayer(ctx);
-  await ctx.reply(homeText(), { parse_mode: "Markdown", reply_markup: mainKeyboard() });
+  await ctx.reply(homeText(), { parse_mode: "Markdown", reply_markup: quickKeyboard(ctx.from.id) });
 });
 
 bot.callbackQuery("profile", async (ctx) => {
@@ -334,32 +351,20 @@ bot.callbackQuery("buy_menu", async ctx => {
   await ctx.editMessageText("🏗️ *فرصت‌های تأسیس شرکت*\n\n۲۰ نوع کسب‌وکار با هزینه، نیروی انسانی و درآمد متفاوت. هر تأسیس جدید برای بررسی مدیر ارسال می‌شود.",{parse_mode:"Markdown",reply_markup:kb});
   await ctx.answerCallbackQuery();
 });
-const companyNameDraft=new Map();
 bot.callbackQuery(/^buy:([a-z_]+)$/,async ctx=>{
   const type=COMPANY_TYPES.find(x=>x.id===ctx.match[1]);
   if(!type)return ctx.answerCallbackQuery({text:"نوع شرکت نامعتبر است.",show_alert:true});
   if(type.special){const p=await pool.query("SELECT player_level,last_season_rank,reputation FROM players WHERE telegram_id=$1",[String(ctx.from.id)]);const x=p.rows[0]||{};if(Number(x.player_level)<type.minLevel||Number(x.reputation)<20||!Number(x.last_season_rank)||Number(x.last_season_rank)>type.maxRank)return ctx.answerCallbackQuery({text:"این برند ممتاز با Level، اعتبار و رتبه فصل گذشته باز می‌شود.",show_alert:true});}
-  companyNameDraft.set(String(ctx.from.id),type.id);
-  await ctx.answerCallbackQuery();
-  await ctx.reply("📝 نام شرکتت را وارد کن (۲ تا ۴۰ حرف).\nمثال: «استارتاپ آفتاب»");
-});
-bot.on("message:text",async (ctx,next)=>{
-  const uid=String(ctx.from.id),typeId=companyNameDraft.get(uid);
-  // Do not swallow ordinary text, reply-keyboard buttons, or slash commands.
-  // This middleware should handle a message only while a company name is being requested.
-  if(!typeId)return next();
-  const raw=ctx.message.text.trim();
-  if(raw.startsWith("/"))return next();
-  if(raw.length<2||raw.length>40)return ctx.reply("نام شرکت باید بین ۲ تا ۴۰ حرف باشد.");
-  const type=COMPANY_TYPES.find(x=>x.id===typeId);
-  const p=await pool.query("SELECT balance,player_level,reputation,season_points,last_season_rank FROM players WHERE telegram_id=$1",[uid]);
-  if(!p.rows.length)return ctx.reply("پروفایل بازیکن پیدا نشد.");
-  if(Number(p.rows[0].balance)<type.price){companyNameDraft.delete(uid);return ctx.reply("سرمایه کافی نیست. هزینه شروع: "+money(type.price));}
-  const perf=p.rows[0],rank=perf.last_season_rank;
-  const q=await pool.query("INSERT INTO company_requests(telegram_id,company_type,company_name,brand_name,season_rank,player_level,reputation) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id",[uid,typeId,raw,raw,rank,perf.player_level,perf.reputation]);
-  companyNameDraft.delete(uid);
-  await ctx.reply("📨 درخواست تأسیس ارسال شد\n\n🏢 "+raw+"\n🏭 "+type.name+"\n💵 هزینه: "+money(type.price)+"\n👷 نیروی پایه: "+type.employees+" نفر\n📈 درآمد ناخالص پایه: "+money(type.income)+"/ساعت\n\nمدیر کل درخواست را بر اساس رتبه فصل گذشته، سطح و عملکرد بررسی می‌کند. تا تأیید نهایی هزینه‌ای کسر نمی‌شود.");
-  if(ownerTelegramId)await bot.api.sendMessage(ownerTelegramId,"📝 درخواست شرکت #"+q.rows[0].id+"\nبازیکن: "+uid+"\nشرکت: "+raw+" ("+type.name+")\nرتبه فصل قبل: "+(rank??"ثبت نشده")+" | Level "+perf.player_level+" | Reputation "+perf.reputation+" | امتیاز "+perf.season_points+"\nهزینه: "+money(type.price),{reply_markup:new InlineKeyboard().text("✅ تأیید و تأسیس","corp:approve:"+q.rows[0].id).text("❌ رد","corp:reject:"+q.rows[0].id)});
+    await ctx.answerCallbackQuery({text:"در حال ثبت درخواست تأسیس..."});
+    const uid=String(ctx.from.id);
+    const p=await pool.query("SELECT balance,player_level,reputation,season_points,last_season_rank FROM players WHERE telegram_id=$1",[uid]);
+    if(!p.rows.length)return ctx.reply("پروفایل بازیکن پیدا نشد.");
+    if(Number(p.rows[0].balance)<type.price)return ctx.reply("سرمایه کافی نیست. هزینه شروع: "+money(type.price));
+    const companyName=type.name;
+    const perf=p.rows[0],rank=perf.last_season_rank;
+    const q=await pool.query("INSERT INTO company_requests(telegram_id,company_type,company_name,brand_name,season_rank,player_level,reputation) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id",[uid,type.id,companyName,companyName,rank,perf.player_level,perf.reputation]);
+    await ctx.reply("📨 درخواست تأسیس با موفقیت ثبت شد\n\n🏢 "+companyName+"\n💵 هزینه: "+money(type.price)+"\n👷 نیروی پایه: "+type.employees+" نفر\n📈 درآمد پایه: "+money(type.income)+"/ساعت\n\nنام شرکت به‌صورت خودکار انتخاب شد؛ نیازی به تایپ نیست. پس از بررسی مدیر فعال می‌شود.",{reply_markup:quickKeyboard(ctx.from.id)});
+    if(ownerTelegramId)await bot.api.sendMessage(ownerTelegramId,"📝 درخواست شرکت #"+q.rows[0].id+"\nبازیکن: "+uid+"\nشرکت: "+companyName+" ("+type.name+")\nرتبه فصل قبل: "+(rank??"ثبت نشده")+" | Level "+perf.player_level+" | Reputation "+perf.reputation+" | امتیاز "+perf.season_points+"\nهزینه: "+money(type.price),{reply_markup:new InlineKeyboard().text("✅ تأیید و تأسیس","corp:approve:"+q.rows[0].id).text("❌ رد","corp:reject:"+q.rows[0].id)});
 });
 bot.callbackQuery(/^corp:(approve|reject):(\d+)$/,async ctx=>{
   if(String(ctx.from.id)!==ownerTelegramId)return ctx.answerCallbackQuery({text:"فقط مدیر کل دسترسی دارد.",show_alert:true});
