@@ -98,6 +98,17 @@ export async function netHourlyForPlayer(pool,id) {
 }
 
 export async function registerRealism(bot,pool) {
+  bot.hears("📒 دفتر مالی",async ctx=>{
+    const q=await pool.query("SELECT transaction_type,amount,description,created_at FROM finance_transactions WHERE telegram_id=$1 ORDER BY created_at DESC LIMIT 12",[String(ctx.from.id)]);
+    if(!q.rows.length)return ctx.reply("هنوز تراکنش مالی ثبت نشده.");
+    const lines=q.rows.map(x=>{
+      const sign=Number(x.amount)>=0?"+":"−";
+      const date=new Date(x.created_at).toLocaleDateString("fa-IR");
+      return `${date} | ${sign}${fmt(Math.abs(Number(x.amount)))}\n  ${x.description}`;
+    });
+    await ctx.reply("📒 *دفتر مالی — ۱۲ تراکنش اخیر*\n\n"+lines.join("\n\n"),{parse_mode:"Markdown"});
+  });
+
   bot.hears("👨‍💼 مدیریت شرکت‌ها",async ctx=>{
     const q=await pool.query("SELECT id,company_type,level,employee_count,morale,equipment_condition FROM player_companies WHERE telegram_id=$1 ORDER BY id",[String(ctx.from.id)]);
     if(!q.rows.length)return ctx.reply("ابتدا یک شرکت خریداری کن.");
