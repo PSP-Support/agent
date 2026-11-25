@@ -69,6 +69,14 @@ function costs(gross,m) {
   return {revenue,payroll,materials,utilities,maintenance,taxes,total:payroll+materials+utilities+maintenance+taxes,net:Math.max(0,revenue-payroll-materials-utilities-maintenance-taxes)};
 }
 
+export async function netHourlyForPlayer(pool,id) {
+  const q=await pool.query(`SELECT COALESCE(SUM(ct.income*pc.level),0)::bigint gross
+    FROM player_companies pc JOIN (VALUES ('cafe',900::bigint),('shop',3200::bigint),('factory',11500::bigint),('tech',31000::bigint)) ct(id,income)
+    ON ct.id=pc.company_type WHERE pc.telegram_id=$1`,[String(id)]);
+  const m=await market(pool);
+  return Math.floor(costs(Number(q.rows[0].gross)*Number(m.demand_index),m).net);
+}
+
 export async function registerRealism(bot,pool) {
   bot.hears("🌐 اقتصاد واقعی",async ctx=>{
     const m=await market(pool);
