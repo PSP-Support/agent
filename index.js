@@ -52,7 +52,7 @@ const bottomKeyboard = () => new Keyboard()
   .text("🧭 مأموریت روزانه").text("🏅 دستاوردها").row()
   .text("👤 پروفایل").text("🏆 رتبه‌بندی").row()
   .text("🎁 پاداش روزانه").text("ℹ️ راهنما").row()
-  .text("🧰 دسترسی آسان").resized();
+  .text("🧰 دسترسی آسان").resized().persistent(false);
 
 async function initDb() {
   await pool.query(`
