@@ -52,8 +52,7 @@ const bottomKeyboard = () => new Keyboard()
   .text("🧭 مأموریت روزانه").text("🏅 دستاوردها").row()
   .text("👤 پروفایل").text("🏆 رتبه‌بندی").row()
   .text("🎁 پاداش روزانه").text("ℹ️ راهنما").row()
-  .text("🧰 دسترسی آسان").row()
-  .text("🔽 بستن کیبورد").resized().persistent();
+  .text("🧰 دسترسی آسان").resized();
 
 async function initDb() {
   await pool.query(`
@@ -169,14 +168,6 @@ bot.command("start", async (ctx) => {
     return ctx.reply(msg, { reply_markup: new Keyboard().text("🔄 بررسی وضعیت").resized().persistent() });
   }
   await ctx.reply(await dashboardText(ctx.from.id), { parse_mode: "Markdown", reply_markup: bottomKeyboard() });
-});
-bot.hears("🔽 بستن کیبورد", async ctx => {
-  await ctx.reply("⌨️ کیبورد پایین بسته شد. برای باز کردن دوباره از /keyboard استفاده کن.", {
-    reply_markup: { remove_keyboard: true }
-  });
-});
-bot.command("keyboard", async ctx => {
-  await ctx.reply("⌨️ کیبورد بازی فعال شد.", { reply_markup: bottomKeyboard() });
 });
 
 bot.hears("🧰 دسترسی آسان", async ctx => {
