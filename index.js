@@ -47,7 +47,8 @@ const bottomKeyboard = () => new Keyboard()
   .text("🛒 خرید شرکت").text("💵 دریافت درآمد").row()
   .text("🧭 مأموریت روزانه").text("🏅 دستاوردها").row()
   .text("👤 پروفایل").text("🏆 رتبه‌بندی").row()
-  .text("🎁 پاداش روزانه").text("ℹ️ راهنما").resized().persistent();
+  .text("🎁 پاداش روزانه").text("ℹ️ راهنما").row()
+  .text("🧰 دسترسی آسان").resized().persistent();
 
 async function initDb() {
   await pool.query(`
@@ -163,6 +164,11 @@ bot.command("start", async (ctx) => {
     return ctx.reply(msg, { reply_markup: new Keyboard().text("🔄 بررسی وضعیت").resized().persistent() });
   }
   await ctx.reply(await dashboardText(ctx.from.id), { parse_mode: "Markdown", reply_markup: bottomKeyboard() });
+});
+bot.hears("🧰 دسترسی آسان", async ctx => {
+  const userCommands = "/start — ورود و داشبورد\n/menu — نمایش منوی بازی\n/myid — نمایش شناسه تلگرام\n\nدکمه‌های بازی از کیبورد پایین در دسترس هستند.";
+  const adminCommands = "\n\n🛡️ دستورات مدیر کل:\n/admin — پنل مدیریت\n/pending — درخواست‌های عضویت\n/approve ID — تأیید بازیکن\n/reject ID — رد درخواست\n/ban ID — مسدود کردن\n/unban ID — رفع مسدودی\n/players — فهرست بازیکنان\n/balance ID — مشاهده موجودی\n/setbalance ID AMOUNT — تنظیم موجودی\n/give ID AMOUNT — هدیه پول\n/broadcast متن — پیام همگانی";
+  await ctx.reply("🧰 دسترسی آسان\n\n"+userCommands+(String(ctx.from.id)===ownerTelegramId?adminCommands:""), {reply_markup:bottomKeyboard()});
 });
 bot.command("menu", async (ctx) => {
   await ensurePlayer(ctx);
@@ -518,5 +524,29 @@ const port = Number(process.env.PORT || 3000);
 server.listen(port, () => console.log(`Open Many health server listening on ${port}`));
 
 await initDb();
+// Telegram's command menu (the slash button beside the message field).
+const publicCommands = [
+  { command: "start", description: "شروع بازی و داشبورد" },
+  { command: "menu", description: "نمایش منوی بازی" },
+  { command: "myid", description: "نمایش شناسه تلگرام" }
+];
+await bot.api.setMyCommands(publicCommands, { scope: { type: "default" }, language_code: "fa" }).catch(err => console.error("Set public commands failed:", err));
+if (ownerTelegramId && /^\\d+$/.test(ownerTelegramId)) {
+  await bot.api.setMyCommands([
+    ...publicCommands,
+    { command: "admin", description: "پنل مدیر کل" },
+    { command: "pending", description: "درخواست‌های عضویت" },
+    { command: "approve", description: "تأیید بازیکن: /approve ID" },
+    { command: "reject", description: "رد درخواست: /reject ID" },
+    { command: "ban", description: "مسدود کردن: /ban ID" },
+    { command: "unban", description: "رفع مسدودی: /unban ID" },
+    { command: "players", description: "فهرست بازیکنان" },
+    { command: "balance", description: "مشاهده موجودی: /balance ID" },
+    { command: "setbalance", description: "تنظیم موجودی: /setbalance ID AMOUNT" },
+    { command: "give", description: "هدیه پول: /give ID AMOUNT" },
+    { command: "broadcast", description: "پیام همگانی: /broadcast TEXT" }
+  ], { scope: { type: "chat", chat_id: Number(ownerTelegramId) }, language_code: "fa" }).catch(err => console.error("Set owner commands failed:", err));
+}
+await bot.api.setChatMenuButton({ menu_button: { type: "commands" } }).catch(err => console.error("Set command menu button failed:", err));
 await bot.start();
 console.log("Open Many bot is running.");
