@@ -55,7 +55,15 @@ const COMPANY_TYPES = [
   { id: "hotel", name: "هتل بوتیک 🏨", price: 350000, income: 11500, employees: 22, sector: "گردشگری", description: "اقامت و میزبانی" },
   { id: "manufacturing", name: "کارخانه تولیدی 🏭", price: 500000, income: 17000, employees: 35, sector: "صنعت", description: "تولید صنعتی" },
   { id: "fintech", name: "فین‌تک 💳", price: 650000, income: 23000, employees: 18, sector: "فناوری مالی", description: "خدمات فناوری مالی" },
-  { id: "telecom", name: "شرکت مخابراتی 📡", price: 900000, income: 32000, employees: 30, sector: "ارتباطات", description: "خدمات ارتباطی" }
+  { id: "telecom", name: "شرکت مخابراتی 📡", price: 900000, income: 32000, employees: 30, sector: "ارتباطات", description: "خدمات ارتباطی" },
+  { id: "apple_brand", name: "Apple | برند ممتاز 🍎", price: 25000000, income: 450000, employees: 800, sector: "فناوری ممتاز", description: "مالکیت دارایی تجاری ممتاز", special: true, minLevel: 10, maxRank: 10 },
+  { id: "samsung_brand", name: "Samsung | برند ممتاز 📱", price: 22000000, income: 410000, employees: 950, sector: "فناوری و تولید", description: "مالکیت دارایی تجاری ممتاز", special: true, minLevel: 10, maxRank: 10 },
+  { id: "toyota_brand", name: "Toyota | برند ممتاز 🚘", price: 30000000, income: 520000, employees: 1200, sector: "خودروسازی", description: "مالکیت دارایی تجاری ممتاز", special: true, minLevel: 12, maxRank: 5 },
+  { id: "microsoft_brand", name: "Microsoft | برند ممتاز 🪟", price: 35000000, income: 600000, employees: 900, sector: "نرم‌افزار", description: "مالکیت دارایی تجاری ممتاز", special: true, minLevel: 12, maxRank: 5 },
+  { id: "amazon_brand", name: "Amazon | برند ممتاز 📦", price: 40000000, income: 720000, employees: 1600, sector: "تجارت و لجستیک", description: "مالکیت دارایی تجاری ممتاز", special: true, minLevel: 15, maxRank: 3 },
+  { id: "google_brand", name: "Google | برند ممتاز 🔎", price: 42000000, income: 750000, employees: 1000, sector: "فناوری و تبلیغات", description: "مالکیت دارایی تجاری ممتاز", special: true, minLevel: 15, maxRank: 3 },
+  { id: "tesla_brand", name: "Tesla | برند ممتاز ⚡", price: 28000000, income: 480000, employees: 850, sector: "خودروسازی و انرژی", description: "مالکیت دارایی تجاری ممتاز", special: true, minLevel: 12, maxRank: 5 },
+  { id: "sony_brand", name: "Sony | برند ممتاز 🎮", price: 24000000, income: 430000, employees: 700, sector: "الکترونیک و سرگرمی", description: "مالکیت دارایی تجاری ممتاز", special: true, minLevel: 10, maxRank: 10 }
 ];
 
 const money = (n) => "$" + Math.floor(Number(n)).toLocaleString("en-US");
@@ -260,7 +268,10 @@ bot.callbackQuery("my_companies", async (ctx) => {
 
 bot.callbackQuery("buy_menu", async ctx => {
   const kb=new InlineKeyboard();
-  for(const t of COMPANY_TYPES) kb.text(t.name+" | "+money(t.price),"buy:"+t.id).row();
+  const p=await pool.query("SELECT player_level,last_season_rank,reputation FROM players WHERE telegram_id=$1",[String(ctx.from.id)]);
+  const perf=p.rows[0]||{player_level:1,last_season_rank:null,reputation:0};
+  const unlocked=COMPANY_TYPES.filter(t=>!t.special||(Number(perf.player_level)>=t.minLevel&&Number(perf.reputation)>=20&&Number(perf.last_season_rank)>0&&Number(perf.last_season_rank)<=t.maxRank));
+  for(const t of unlocked) kb.text(t.name+" | "+money(t.price),"buy:"+t.id).row();
   kb.text("🔙 بازگشت","home");
   await ctx.editMessageText("🏗️ *فرصت‌های تأسیس شرکت*\n\n۲۰ نوع کسب‌وکار با هزینه، نیروی انسانی و درآمد متفاوت. هر تأسیس جدید برای بررسی مدیر ارسال می‌شود.",{parse_mode:"Markdown",reply_markup:kb});
   await ctx.answerCallbackQuery();
@@ -269,6 +280,7 @@ const companyNameDraft=new Map();
 bot.callbackQuery(/^buy:([a-z]+)$/,async ctx=>{
   const type=COMPANY_TYPES.find(x=>x.id===ctx.match[1]);
   if(!type)return ctx.answerCallbackQuery({text:"نوع شرکت نامعتبر است.",show_alert:true});
+  if(type.special){const p=await pool.query("SELECT player_level,last_season_rank,reputation FROM players WHERE telegram_id=$1",[String(ctx.from.id)]);const x=p.rows[0]||{};if(Number(x.player_level)<type.minLevel||Number(x.reputation)<20||!Number(x.last_season_rank)||Number(x.last_season_rank)>type.maxRank)return ctx.answerCallbackQuery({text:"این برند ممتاز با Level، اعتبار و رتبه فصل گذشته باز می‌شود.",show_alert:true});}
   companyNameDraft.set(String(ctx.from.id),type.id);
   await ctx.answerCallbackQuery();
   await ctx.reply("📝 نام شرکتت را وارد کن (۲ تا ۴۰ حرف).\nمثال: «استارتاپ آفتاب»");
