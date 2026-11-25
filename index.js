@@ -1,6 +1,7 @@
 import { Bot, InlineKeyboard, Keyboard } from "grammy";
 import pg from "pg";
 import http from "node:http";
+import { initRealism, registerRealism, netHourlyForPlayer } from "./realism.js";
 
 const { Pool } = pg;
 const token = process.env.BOT_TOKEN;
@@ -44,6 +45,7 @@ const COMPANY_TYPES = [
 const money = (n) => "$" + Math.floor(Number(n)).toLocaleString("en-US");
 const bottomKeyboard = () => new Keyboard()
   .text("📊 وضعیت بازی").text("🏢 شرکت‌های من").row()
+  .text("🌐 اقتصاد واقعی").text("🏦 بانک و وام").row()
   .text("🛒 خرید شرکت").text("💵 دریافت درآمد").row()
   .text("🧭 مأموریت روزانه").text("🏅 دستاوردها").row()
   .text("👤 پروفایل").text("🏆 رتبه‌بندی").row()
@@ -107,7 +109,7 @@ async function playerData(id) {
      WHERE pc.telegram_id=$${COMPANY_TYPES.length*3+1}`,
     [...COMPANY_TYPES.flatMap(x=>[x.id,x.price,x.income]), String(id)]
   );
-  return { player: p.rows[0], companies: c.rows, income: Number(totalIncome.rows[0].income) };
+  return { player: p.rows[0], companies: c.rows, income: await netHourlyForPlayer(pool,id), grossIncome: Number(totalIncome.rows[0].income) };
 }
 
 async function dashboardText(id) {
@@ -250,7 +252,8 @@ bot.callbackQuery("collect", async (ctx) => {
        AS ct(id,income) ON ct.id=pc.company_type WHERE pc.telegram_id=$${COMPANY_TYPES.length*2+1}`,
       [...COMPANY_TYPES.flatMap(x=>[x.id,x.income]), String(ctx.from.id)]
     );
-    const earned = Math.floor(Number(income.rows[0].income) * elapsed / 3600);
+    const netHourly = await netHourlyForPlayer(pool,ctx.from.id);
+    const earned = Math.floor(netHourly * elapsed / 3600);
     if (earned <= 0) {
       await client.query("ROLLBACK");
       return ctx.answerCallbackQuery({ text: "هنوز درآمدی برای دریافت نداری. شرکت بخر یا کمی صبر کن!", show_alert: true });
@@ -524,6 +527,8 @@ const port = Number(process.env.PORT || 3000);
 server.listen(port, () => console.log(`Open Many health server listening on ${port}`));
 
 await initDb();
+await initRealism(pool);
+await registerRealism(bot,pool);
 // Telegram's command menu (the slash button beside the message field).
 const publicCommands = [
   { command: "start", description: "شروع بازی و داشبورد" },
