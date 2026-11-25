@@ -244,7 +244,7 @@ async function dashboardText(id) {
       return `  ${type?.name ?? c.company_type} | سطح ${c.level} × ${c.count} | ${money(income)}/ساعت`;
     });
   const companySection = rows.length ? rows.join("\n") : "  هنوز کسب‌وکاری خریداری نکردی؛ از فروشگاه شروع کن!";
-  const identity = p.startup_name ? `\n🚀 *${p.startup_name}*\n_${p.startup_tagline || "استارتاپ در مسیر رشد"}_ | 📍 ${p.startup_city || "شهر ثبت نشده"}\n` : "\n🚀 استارتاپ جدید | برای ثبت نام و مشخصات: /startup\n";
+  const identity = p.startup_name ? `\n🚀 *${p.startup_name}*\n_${p.startup_tagline || "استارتاپ در مسیر رشد"}_ | 📍 ${p.startup_city || "شهر ثبت نشده"}\n` : "\n🚀 استارتاپ جدید | آماده شروع مسیر اقتصادی\n";
   return `🌆 *OPEN MANY | مرکز فرماندهی*${identity}
 ━━━━━━━━━━━━━━━━
 💰 سرمایه نقدی: ${money(p.balance)}
@@ -280,7 +280,7 @@ bot.command("start", async (ctx) => {
 });
 
 bot.hears("🧰 دسترسی آسان", async ctx => {
-  const userCommands = "/start — ورود و داشبورد\n/menu — نمایش منوی بازی\n/guide — راهنمای مرحله‌ای بازی\n/myid — نمایش شناسه تلگرام\n\n🌐 اقتصاد واقعی — بازار و سود و زیان\n🏦 بانک و وام — اعتبار و تسویه\n👨‍💼 مدیریت شرکت‌ها — استخدام و تعمیر\n📒 دفتر مالی — تاریخچه تراکنش‌هان\nدکمه‌های بازی از کیبورد پایین در دسترس هستند.";
+  const userCommands = "برای بازی نیازی به تایپ دستور نیست.\n\n۱. از منوی پایین بخش را انتخاب کن.\n۲. عملیات را با دکمه‌ها انجام بده.\n۳. راهنمای مرحله‌ای قدم‌به‌قدم راهنمایی می‌کند.\n\n🌐 بازار و اقتصاد — گزارش بازار\n🏦 امور مالی — درآمد، بانک و دفتر مالی\n🏢 کسب‌وکارها — خرید و مدیریت شرکت\n🏆 رقابت و پیشرفت — مأموریت، جایزه و رتبه‌بندی";
   const adminCommands = "\n\n🛡️ دستورات مدیر کل:\n/admin یا /panel — پنل مدیریت مرحله‌ای\n/pending — درخواست‌های عضویت\n/approve ID — تأیید بازیکن\n/reject ID — رد درخواست\n/ban ID — مسدود کردن\n/unban ID — رفع مسدودی\n/players — فهرست بازیکنان\n/balance ID — مشاهده موجودی\n/setbalance ID AMOUNT — تنظیم موجودی\n/give ID AMOUNT — هدیه پول\n/broadcast متن — پیام همگانی";
   await ctx.reply("🧰 دسترسی آسان\n\n"+userCommands+(String(ctx.from.id)===ownerTelegramId?adminCommands:""), {reply_markup:bottomKeyboard(ctx.from.id)});
 });
@@ -727,7 +727,7 @@ bot.callbackQuery(/^adminpanel:(requests|players|stats|finance|broadcast|guide)$
   if(section==="stats"){const q=await pool.query("SELECT COUNT(*)::int total,COUNT(*) FILTER(WHERE approval_status='approved')::int approved,COUNT(*) FILTER(WHERE approval_status='pending')::int pending,COUNT(*) FILTER(WHERE approval_status='banned')::int banned,COALESCE(SUM(balance),0)::bigint cash FROM players");const x=q.rows[0];return ctx.editMessageText("📊 آمار بازی\nکل: "+x.total+"\nتأیید: "+x.approved+"\nدر انتظار: "+x.pending+"\nمسدود: "+x.banned+"\nسرمایه کل: "+money(x.cash),{reply_markup:new InlineKeyboard().text("🔄 تازه‌سازی","adminpanel:stats").row().text("⬅️ پنل","adminpanel:back")});}
   if(section==="finance"){const q=await pool.query("SELECT telegram_id,display_name,balance FROM players WHERE approval_status='approved' ORDER BY created_at DESC LIMIT 10");const kb=new InlineKeyboard();for(const p of q.rows)kb.text(p.display_name.slice(0,18)+" | "+money(p.balance),"adminfin:player:"+p.telegram_id).row();kb.text("⬅️ پنل","adminpanel:back");return ctx.editMessageText("💸 عملیات مالی\n\nمرحله ۱: بازیکن را انتخاب کن.\nمرحله ۲: مبلغ و افزایش یا کاهش را با دکمه مشخص کن.",{reply_markup:kb});}
   if(section==="broadcast")return ctx.editMessageText("📣 پیام همگانی\n\nیکی از پیام‌های آماده را انتخاب کن؛ نیازی به تایپ نیست.",{reply_markup:new InlineKeyboard().text("🎮 شروع فصل و خوشامد","adminbroadcast:1").row().text("🏗️ رویداد توسعه کسب‌وکار","adminbroadcast:2").row().text("🎁 یادآوری پاداش روزانه","adminbroadcast:3").row().text("⬅️ پنل","adminpanel:back")});
-  return ctx.editMessageText("📖 راهنمای مدیر\n۱. درخواست‌ها: تأیید یا رد عضویت\n۲. بازیکنان: مشاهده شناسه و وضعیت\n۳. آمار: خلاصه بازی\n۴. مالی: give / take / setbalance\n۵. پیام همگانی: broadcast\nقبل از عملیات مالی شناسه را دوباره بررسی کن.",{reply_markup:new InlineKeyboard().text("⬅️ پنل","adminpanel:back")});
+  return ctx.editMessageText("📖 راهنمای مدیر — همه عملیات از همین پنل و با دکمه انجام می‌شود.\n\n۱. درخواست‌ها: تأیید یا رد عضویت\n۲. بازیکنان: مسدودسازی یا رفع مسدودی با تأیید دومرحله‌ای\n۳. آمار: مشاهده وضعیت بازی\n۴. عملیات مالی: انتخاب بازیکن، سپس مبلغ و افزایش یا کاهش\n۵. پیام همگانی: انتخاب یکی از پیام‌های آماده\n\nنیازی به تایپ شناسه یا دستور نیست.",{reply_markup:new InlineKeyboard().text("⬅️ پنل","adminpanel:back")});
 });
 bot.callbackQuery(/^adminplayer:(ban|unban):(\d+)$/,async ctx=>{
   if(!await adminOnly(ctx))return;const action=ctx.match[1],id=ctx.match[2];
