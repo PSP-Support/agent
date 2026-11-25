@@ -18,23 +18,6 @@ const pool = new Pool({
 
 const bot = new Bot(token);
 
-// Temporary reply trace: identifies whether the same Telegram update is
-// entering twice or one update is issuing multiple replies.
-bot.use(async (ctx, next) => {
-  const updateId = ctx.update?.update_id ?? "unknown";
-  const incoming = ctx.message?.text ?? ctx.callbackQuery?.data ?? "";
-  let replyCount = 0;
-  const originalReply = ctx.reply.bind(ctx);
-  ctx.reply = (...args) => {
-    replyCount += 1;
-    const outgoing = typeof args[0] === "string" ? args[0].replace(/\\s+/g, " ").slice(0, 180) : "[non-text reply]";
-    console.log("[REPLY_TRACE]", JSON.stringify({ updateId, incoming, replyCount, outgoing }));
-    return originalReply(...args);
-  };
-  console.log("[UPDATE_TRACE]", JSON.stringify({ updateId, incoming, userId: ctx.from?.id }));
-  return next();
-});
-
 // Idempotency guard: process each Telegram update only once.
 bot.use(async (ctx, next) => {
   const updateId = ctx.update?.update_id;
@@ -46,6 +29,32 @@ bot.use(async (ctx, next) => {
   if (!inserted.rowCount) {
     if (ctx.callbackQuery) await ctx.answerCallbackQuery().catch(() => {});
     return;
+  }
+  return next();
+});
+
+// Ignore rapid duplicate text taps from the same user/chat, even when
+// Telegram assigns them different update_id values.
+const recentTextUpdates = new Map();
+bot.use(async (ctx, next) => {
+  const text = ctx.message?.text;
+  if (!ctx.from || !ctx.chat || !text) return next();
+  const key = String(ctx.chat.id) + ":" + String(ctx.from.id) + ":" + text;
+  const now = Date.now();
+  const previous = recentTextUpdates.get(key) || 0;
+  if (now - previous < 1800) {
+    console.log("[DUPLICATE_TAP_IGNORED]", JSON.stringify({
+      userId: ctx.from.id,
+      text,
+      updateId: ctx.update?.update_id
+    }));
+    return;
+  }
+  recentTextUpdates.set(key, now);
+  if (recentTextUpdates.size > 500) {
+    for (const [k, timestamp] of recentTextUpdates) {
+      if (now - timestamp > 10000) recentTextUpdates.delete(k);
+    }
   }
   return next();
 });
