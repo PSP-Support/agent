@@ -59,9 +59,9 @@ async function market(pool) {
   return (await pool.query("UPDATE market_conditions SET demand_index=$1,inflation_index=$2,energy_price=$3,materials_price=$4,wage_index=$5,interest_rate=$6,updated_at=NOW() WHERE id=1 RETURNING *",values)).rows[0];
 }
 
-function costs(gross,m) {
+function costs(gross,m,payrollBase=0) {
   const revenue=Math.max(0,Number(gross));
-  const payroll=revenue*.16*Number(m.wage_index);
+  const payroll=(Number(payrollBase)>0?Number(payrollBase):revenue*.16)*Number(m.wage_index);
   const materials=revenue*.14*Number(m.materials_price);
   const utilities=revenue*.07*Number(m.energy_price);
   const maintenance=revenue*.09;
@@ -73,7 +73,8 @@ async function companyOperations(pool,id,m) {
   const q=await pool.query("SELECT company_type,level,employee_count,morale,equipment_condition,inventory_units FROM player_companies WHERE telegram_id=$1",[String(id)]);
   const base={cafe:900,shop:3200,factory:11500,tech:31000};
   const required={cafe:2,shop:4,factory:12,tech:8};
-  let gross=0,employees=0,morale=0,condition=0,stock=0;
+  const hourlyWage={cafe:120,shop:220,factory:350,tech:600};
+  let gross=0,employees=0,payrollBase=0,morale=0,condition=0,stock=0;
   for(const row of q.rows){
     const target=required[row.company_type]||2;
     const staffing=Math.max(.45,Math.min(1.2,Number(row.employee_count)/target));
@@ -81,18 +82,19 @@ async function companyOperations(pool,id,m) {
     const equipmentFactor=.55+Number(row.equipment_condition)/220;
     gross+=(base[row.company_type]||0)*Number(row.level)*staffing*moraleFactor*equipmentFactor;
     employees+=Number(row.employee_count);
+    payrollBase+=Number(row.employee_count)*(hourlyWage[row.company_type]||150);
     morale+=Number(row.morale);
     condition+=Number(row.equipment_condition);
     stock+=Number(row.inventory_units);
   }
   const count=q.rows.length||1;
-  return {gross:gross,employees,morale:morale/count,condition:condition/count,stock,companies:q.rows.length};
+  return {gross:gross,employees,payrollBase,morale:morale/count,condition:condition/count,stock,companies:q.rows.length};
 }
 
 export async function netHourlyForPlayer(pool,id) {
   const m=await market(pool);
   const ops=await companyOperations(pool,id,m);
-  return Math.floor(costs(ops.gross*Number(m.demand_index),m).net);
+  return Math.floor(costs(ops.gross*Number(m.demand_index),m,ops.payrollBase).net);
 }
 
 export async function registerRealism(bot,pool) {
@@ -156,7 +158,7 @@ export async function registerRealism(bot,pool) {
   bot.hears("🌐 اقتصاد واقعی",async ctx=>{
     const m=await market(pool);
     const ops=await companyOperations(pool,ctx.from.id,m);
-    const f=costs(ops.gross*Number(m.demand_index),m);
+    const f=costs(ops.gross*Number(m.demand_index),m,ops.payrollBase);
     const debt=await pool.query("SELECT COALESCE(SUM(remaining),0)::bigint debt FROM player_loans WHERE telegram_id=$1 AND status='active'",[String(ctx.from.id)]);
     await ctx.reply(`🌐 *گزارش اقتصاد واقعی*
 
