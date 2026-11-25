@@ -18,6 +18,23 @@ const pool = new Pool({
 
 const bot = new Bot(token);
 
+// Temporary reply trace: identifies whether the same Telegram update is
+// entering twice or one update is issuing multiple replies.
+bot.use(async (ctx, next) => {
+  const updateId = ctx.update?.update_id ?? "unknown";
+  const incoming = ctx.message?.text ?? ctx.callbackQuery?.data ?? "";
+  let replyCount = 0;
+  const originalReply = ctx.reply.bind(ctx);
+  ctx.reply = (...args) => {
+    replyCount += 1;
+    const outgoing = typeof args[0] === "string" ? args[0].replace(/\\s+/g, " ").slice(0, 180) : "[non-text reply]";
+    console.log("[REPLY_TRACE]", JSON.stringify({ updateId, incoming, replyCount, outgoing }));
+    return originalReply(...args);
+  };
+  console.log("[UPDATE_TRACE]", JSON.stringify({ updateId, incoming, userId: ctx.from?.id }));
+  return next();
+});
+
 // Idempotency guard: process each Telegram update only once.
 bot.use(async (ctx, next) => {
   const updateId = ctx.update?.update_id;
