@@ -33,9 +33,26 @@ bot.use(async (ctx, next) => {
   return next();
 });
 
-// Ignore rapid duplicate text taps from the same user/chat, even when
-// Telegram assigns them different update_id values.
-const recentTextUpdates = new Map();
+// Cross-replica duplicate-action guard: repeated taps can arrive with different update IDs.
+bot.use(async (ctx, next) => {
+  if (!ctx.from || !ctx.chat) return next();
+  const action = ctx.message?.text || (ctx.callbackQuery ? "callback:" + (ctx.callbackQuery.data || "") : "");
+  if (!action) return next();
+  const key = String(ctx.chat.id) + ":" + String(ctx.from.id) + ":" + action;
+  const accepted = await pool.query(
+    `INSERT INTO recent_bot_actions(action_key, seen_at) VALUES($1,NOW())
+     ON CONFLICT(action_key) DO UPDATE SET seen_at=NOW()
+     WHERE recent_bot_actions.seen_at < NOW() - INTERVAL '2 seconds'
+     RETURNING action_key`,
+    [key]
+  );
+  if (!accepted.rowCount) {
+    if (ctx.callbackQuery) await ctx.answerCallbackQuery({text:"در حال پردازش؛ کمی صبر کن."}).catch(()=>{});
+    console.log("[DUPLICATE_ACTION_IGNORED]", JSON.stringify({userId:ctx.from.id, action, updateId:ctx.update?.update_id}));
+    return;
+  }
+  return next();
+});
 bot.use(async (ctx, next) => {
   const text = ctx.message?.text;
   if (!ctx.from || !ctx.chat || !text) return next();
@@ -143,6 +160,8 @@ async function initDb() {
       processed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
     DELETE FROM processed_telegram_updates WHERE processed_at < NOW() - INTERVAL '3 days';
+    CREATE TABLE IF NOT EXISTS recent_bot_actions (action_key TEXT PRIMARY KEY, seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
+    DELETE FROM recent_bot_actions WHERE seen_at < NOW() - INTERVAL '1 day';
     CREATE TABLE IF NOT EXISTS players (
       telegram_id BIGINT PRIMARY KEY,
       username TEXT,
@@ -293,11 +312,12 @@ bot.command("guide",async ctx=>{
  await ctx.reply("📘 راهنمای مرحله‌ای Open Many\n\nمرحله موردنظر را انتخاب کن تا راهنمای کوتاه و دکمه اقدام را ببینی.",{reply_markup:kb});
 });
 bot.callbackQuery(/^guide:(1|2|3|4|menu)$/,async ctx=>{
- await ctx.answerCallbackQuery();const s=ctx.match[1];if(s==="menu")return ctx.reply("🏙️ منوی بازی",{reply_markup:quickKeyboard(ctx.from.id)});
- const pages={1:["🚀 مرحله ۱ — شروع","با /start داشبورد را باز کن. موجودی، شرکت‌ها، درآمد و هدف بعدی در داشبورد نمایش داده می‌شود.","📊 داشبورد","home"],2:["🏢 مرحله ۲ — ساخت شرکت","از منوی کسب‌وکارها خرید شرکت را باز کن، نوع را انتخاب کن، نام را وارد کن و درخواست را بفرست. پس از تأیید مدیر فعال می‌شود.","🛒 خرید شرکت","buy_menu"],3:["💰 مرحله ۳ — درآمد","از امور مالی درآمد را دریافت کن و برای بررسی گردش، دفتر مالی و بانک را باز کن.","💵 دریافت درآمد","collect"],4:["🏆 مرحله ۴ — پیشرفت","ماموریت روزانه و پاداش را تکمیل کن، شرکت‌ها را ارتقا بده و رتبه‌بندی را دنبال کن.","🎁 پاداش روزانه","daily"]};
- const p=pages[s];return ctx.reply(p[0]+"\n\n"+p[1],{reply_markup:new InlineKeyboard().text(p[2],p[3]).row().text("➡️ مرحله بعد","guide:"+Math.min(4,Number(s)+1)).row().text("📘 فهرست","guide:list").text("🏠 منو","guide:menu")});
+  await ctx.answerCallbackQuery();const s=ctx.match[1];
+  if(s==="menu")return ctx.editMessageText("🏙️ منوی بازی",{reply_markup:quickKeyboard(ctx.from.id)});
+  const pages={1:["🚀 مرحله ۱ — شروع","همین صفحه داشبورد سرمایه، شرکت‌ها، درآمد و هدف بعدی را نشان می‌دهد. از دکمه‌های پایین برای رفتن به هر بخش استفاده کن.","📊 داشبورد","quick:home"],2:["🏢 مرحله ۲ — ساخت شرکت","کسب‌وکارها را باز کن، یک شرکت را انتخاب کن و دکمه تأسیس را بزن. نام به‌صورت خودکار ثبت می‌شود؛ هیچ چیزی تایپ نمی‌کنی. پس از تأیید مدیر فعال می‌شود.","🛒 خرید شرکت","buy_menu"],3:["💰 مرحله ۳ — درآمد","در بخش امور مالی فقط «دریافت درآمد» را بزن. برای دریافت پاداش هم دکمه پاداش روزانه را انتخاب کن.","💵 دریافت درآمد","collect"],4:["🏆 مرحله ۴ — پیشرفت","از بخش رقابت و پیشرفت، مأموریت روزانه، دستاوردها و رتبه‌بندی را با دکمه‌ها دنبال کن.","🎁 پاداش روزانه","daily"]};
+  const p=pages[s];return ctx.editMessageText(p[0]+"\\n\\n"+p[1],{reply_markup:new InlineKeyboard().text(p[2],p[3]).row().text("➡️ مرحله بعد","guide:"+Math.min(4,Number(s)+1)).row().text("📘 فهرست","guide:list").text("🏠 منو","guide:menu")});
 });
-bot.callbackQuery("guide:list",async ctx=>{await ctx.answerCallbackQuery();return ctx.reply("📘 راهنمای مرحله‌ای",{reply_markup:new InlineKeyboard().text("۱. شروع","guide:1").text("۲. شرکت","guide:2").row().text("۳. مالی","guide:3").text("۴. پیشرفت","guide:4").row().text("🏠 منو","guide:menu")});});
+bot.callbackQuery("guide:list",async ctx=>{await ctx.answerCallbackQuery();return ctx.editMessageText("📘 راهنمای مرحله‌ای — یک مرحله را انتخاب کن:",{reply_markup:new InlineKeyboard().text("۱. شروع","guide:1").text("۲. شرکت","guide:2").row().text("۳. مالی","guide:3").text("۴. پیشرفت","guide:4").row().text("🏠 منو","guide:menu")});});
 
 bot.callbackQuery(/^quick:(home|business|finance|progress|mission|admin)$/,async ctx=>{
   const s=ctx.match[1];await ctx.answerCallbackQuery();
