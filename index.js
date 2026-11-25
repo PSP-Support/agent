@@ -295,7 +295,7 @@ bot.hears("🏢 شرکت‌های من", async (ctx) => {
       const t = COMPANY_TYPES.find(x=>x.id===c.company_type);
       return `${t?.name ?? c.company_type} — سطح ${c.level} × ${c.count}`;
     });
-    await ctx.reply(`🏢 شرکت‌های شما\n\n${lines.join("\\n")}\n\n📈 درآمد ساعتی: ${money(d.income)}`, {
+    await ctx.reply(`🏢 شرکت‌های شما\n\n${lines.join("\n")}\n\n📈 درآمد ساعتی: ${money(d.income)}`, {
       reply_markup: new InlineKeyboard().text("🔧 ارتقای شرکت", "upgrade_menu")
     });
   }
@@ -318,7 +318,7 @@ bot.hears("💵 دریافت درآمد", async (ctx) => {
 bot.hears("🏆 رتبه‌بندی", async (ctx) => {
   await ensurePlayer(ctx);
   const q = await pool.query("SELECT display_name,balance FROM players ORDER BY balance DESC LIMIT 10");
-  const leaderboardText = q.rows.length ? q.rows.map((p,i)=>`${i+1}. ${p.display_name} — ${money(p.balance)}`).join("\\n") : "هنوز بازیکنی ثبت نشده.";
+  const leaderboardText = q.rows.length ? q.rows.map((p,i)=>`${i+1}. ${p.display_name} — ${money(p.balance)}`).join("\n") : "هنوز بازیکنی ثبت نشده.";
   await ctx.reply(`🏆 رتبه‌بندی سرمایه‌داران\n\n${leaderboardText}`, { reply_markup: bottomKeyboard() });
 });
 
