@@ -69,25 +69,41 @@ function costs(gross,m) {
   return {revenue,payroll,materials,utilities,maintenance,taxes,total:payroll+materials+utilities+maintenance+taxes,net:Math.max(0,revenue-payroll-materials-utilities-maintenance-taxes)};
 }
 
+async function companyOperations(pool,id,m) {
+  const q=await pool.query("SELECT company_type,level,employee_count,morale,equipment_condition,inventory_units FROM player_companies WHERE telegram_id=$1",[String(id)]);
+  const base={cafe:900,shop:3200,factory:11500,tech:31000};
+  const required={cafe:2,shop:4,factory:12,tech:8};
+  let gross=0,employees=0,morale=0,condition=0,stock=0;
+  for(const row of q.rows){
+    const target=required[row.company_type]||2;
+    const staffing=Math.max(.45,Math.min(1.2,Number(row.employee_count)/target));
+    const moraleFactor=.65+Number(row.morale)/200;
+    const equipmentFactor=.55+Number(row.equipment_condition)/220;
+    gross+=(base[row.company_type]||0)*Number(row.level)*staffing*moraleFactor*equipmentFactor;
+    employees+=Number(row.employee_count);
+    morale+=Number(row.morale);
+    condition+=Number(row.equipment_condition);
+    stock+=Number(row.inventory_units);
+  }
+  const count=q.rows.length||1;
+  return {gross:gross,employees,morale:morale/count,condition:condition/count,stock,companies:q.rows.length};
+}
+
 export async function netHourlyForPlayer(pool,id) {
-  const q=await pool.query(`SELECT COALESCE(SUM(ct.income*pc.level),0)::bigint gross
-    FROM player_companies pc JOIN (VALUES ('cafe',900::bigint),('shop',3200::bigint),('factory',11500::bigint),('tech',31000::bigint)) ct(id,income)
-    ON ct.id=pc.company_type WHERE pc.telegram_id=$1`,[String(id)]);
   const m=await market(pool);
-  return Math.floor(costs(Number(q.rows[0].gross)*Number(m.demand_index),m).net);
+  const ops=await companyOperations(pool,id,m);
+  return Math.floor(costs(ops.gross*Number(m.demand_index),m).net);
 }
 
 export async function registerRealism(bot,pool) {
   bot.hears("🌐 اقتصاد واقعی",async ctx=>{
     const m=await market(pool);
-    const grossQ=await pool.query(`SELECT COALESCE(SUM(ct.income*pc.level),0)::bigint gross
-      FROM player_companies pc JOIN (VALUES ('cafe',900::bigint),('shop',3200::bigint),('factory',11500::bigint),('tech',31000::bigint)) ct(id,income)
-      ON ct.id=pc.company_type WHERE pc.telegram_id=$1`,[String(ctx.from.id)]);
-    const f=costs(Number(grossQ.rows[0].gross)*Number(m.demand_index),m);
+    const ops=await companyOperations(pool,ctx.from.id,m);
+    const f=costs(ops.gross*Number(m.demand_index),m);
     const debt=await pool.query("SELECT COALESCE(SUM(remaining),0)::bigint debt FROM player_loans WHERE telegram_id=$1 AND status='active'",[String(ctx.from.id)]);
     await ctx.reply(`🌐 *گزارش اقتصاد واقعی*
 
-📊 تقاضای بازار: ${(Number(m.demand_index)*100).toFixed(1)}٪
+🏢 شرکت‌های فعال: ${ops.companies}\n👷 کارکنان: ${ops.employees}\n🙂 میانگین روحیه: ${ops.morale.toFixed(0)}/100\n🔧 سلامت تجهیزات: ${ops.condition.toFixed(0)}٪\n📊 تقاضای بازار: ${(Number(m.demand_index)*100).toFixed(1)}٪
 📈 تورم: ${(Number(m.inflation_index)*100).toFixed(1)}٪
 ⚡ قیمت انرژی: ${(Number(m.energy_price)*100).toFixed(0)}٪ شاخص پایه
 🧱 مواد اولیه: ${(Number(m.materials_price)*100).toFixed(0)}٪ شاخص پایه
