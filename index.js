@@ -18,6 +18,21 @@ const pool = new Pool({
 
 const bot = new Bot(token);
 
+// Idempotency guard: process each Telegram update only once.
+bot.use(async (ctx, next) => {
+  const updateId = ctx.update?.update_id;
+  if (updateId == null) return next();
+  const inserted = await pool.query(
+    "INSERT INTO processed_telegram_updates(update_id) VALUES($1) ON CONFLICT DO NOTHING RETURNING update_id",
+    [String(updateId)]
+  );
+  if (!inserted.rowCount) {
+    if (ctx.callbackQuery) await ctx.answerCallbackQuery().catch(() => {});
+    return;
+  }
+  return next();
+});
+
 bot.use(async (ctx, next) => {
   if (!ctx.from) return next();
   const id=String(ctx.from.id), text=ctx.message?.text || "";
@@ -89,6 +104,11 @@ const bottomKeyboard = (userId) => {
 
 async function initDb() {
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS processed_telegram_updates (
+      update_id BIGINT PRIMARY KEY,
+      processed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    DELETE FROM processed_telegram_updates WHERE processed_at < NOW() - INTERVAL '3 days';
     CREATE TABLE IF NOT EXISTS players (
       telegram_id BIGINT PRIMARY KEY,
       username TEXT,
