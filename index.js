@@ -1,7 +1,7 @@
 import { Bot, InlineKeyboard, Keyboard } from "grammy";
 import pg from "pg";
 import http from "node:http";
-import { initRealism, registerRealism, netHourlyForPlayer } from "./realism.js";
+import { initRealism, registerRealism, netHourlyForPlayer, getEconomyReport } from "./realism.js";
 
 const { Pool } = pg;
 const token = process.env.BOT_TOKEN;
@@ -266,6 +266,54 @@ ${companySection}
 _برای مشاهده جزئیات یا انجام عملیات از منوی پایین استفاده کن._`;
 }
 
+async function detailedStatusText(id) {
+  const r=await getEconomyReport(pool,id),m=r.market,o=r.operations,f=r.finance;
+  const lines=[
+    "🧾 *گزارش کامل اقتصاد و عملیات*",
+    "━━━━━━━━━━━━━━━━",
+    "*درآمد و هزینه در هر ساعت*",
+    "💵 فروش/درآمد ناخالص: "+money(f.revenue),
+    "👷 حقوق کارکنان: −"+money(f.payroll),
+    "🧱 مواد اولیه: −"+money(f.materials),
+    "⚡ انرژی و خدمات: −"+money(f.utilities),
+    "🔧 تعمیر و استهلاک: −"+money(f.maintenance),
+    "🏛 مالیات: −"+money(f.taxes),
+    "💰 سود خالص: "+money(f.net)+"/ساعت",
+    "📆 سود خالص روزانه (برآورد): "+money(f.net*24),
+    "💳 بدهی فعال: "+money(r.debt),
+    "",
+    "*شاخص‌های بازار*",
+    "📊 تقاضا: "+(Number(m.demand_index)*100).toFixed(1)+"٪",
+    "📈 تورم: "+(Number(m.inflation_index)*100).toFixed(1)+"٪",
+    "⚡ شاخص انرژی: "+(Number(m.energy_price)*100).toFixed(1)+"٪",
+    "🧱 شاخص مواد: "+(Number(m.materials_price)*100).toFixed(1)+"٪",
+    "👷 شاخص دستمزد: "+(Number(m.wage_index)*100).toFixed(1)+"٪",
+    "🏦 نرخ بهره: "+(Number(m.interest_rate)*100).toFixed(1)+"٪",
+    "",
+    "*وضعیت نیروی کار و دارایی*",
+    "🏢 تعداد شرکت: "+o.companies,
+    "👥 کارکنان: "+o.employees,
+    "🙂 میانگین روحیه: "+o.morale.toFixed(1)+"/100",
+    "🔧 سلامت تجهیزات: "+o.condition.toFixed(1)+"٪",
+    "📦 موجودی کل انبار: "+o.stock+" واحد",
+    "",
+    "*ریز شرکت‌ها*"
+  ];
+  for(const c of r.companies){
+    const type=COMPANY_TYPES.find(x=>x.id===c.company_type);
+    lines.push("🏭 "+(c.company_name||type?.name||c.company_type)+" | سطح "+c.level);
+    lines.push("   👷 "+c.employee_count+" نفر | 🙂 "+Number(c.morale).toFixed(0)+"٪ | 🔧 "+Number(c.equipment_condition).toFixed(0)+"٪ | 📦 "+c.inventory_units);
+    lines.push("   💵 ناخالص "+money(c.gross)+"/ساعت | 👷 حقوق "+money(c.payroll));
+    lines.push("   🧱 مواد "+money(c.materials)+" | ⚡ انرژی "+money(c.utilities)+" | 🔧 نگهداری "+money(c.maintenance));
+    lines.push("   💰 سود تخمینی "+money(c.net)+"/ساعت | 🏷 قیمت فروش "+(c.sale_price?money(c.sale_price):"قیمت پایه/تعیین‌نشده"));
+  }
+  lines.push("", "_سود شرکت‌ها به‌صورت برآورد عملیاتی است؛ قیمت فروش و معاملات بازیکنان در حال توسعه‌اند._");
+  const chunks=[];let current="";
+  for(const line of lines){if((current+"\\n"+line).length>3800){chunks.push(current);current=line;}else current+=(current?"\\n":"")+line;}
+  if(current)chunks.push(current);
+  return chunks;
+}
+
 function homeText() {
   return `🏙️ *OPEN MANY*\n\nبه امپراتوری اقتصادی خودت خوش اومدی!\nشرکت بخر، درآمد جمع کن و در رتبه‌بندی بالا برو.`;
 }
@@ -527,6 +575,8 @@ bot.hears("📊 وضعیت بازی", async (ctx) => {
     parse_mode: "Markdown",
     reply_markup: bottomKeyboard(ctx.from.id)
   });
+  const reports=await detailedStatusText(ctx.from.id);
+  for(let i=0;i<reports.length;i++)await ctx.reply(reports[i],{parse_mode:"Markdown",reply_markup:i===reports.length-1?bottomKeyboard(ctx.from.id):undefined});
 });
 
 // Daily mission: own at least one business and claim a small bonus once per UTC day.
