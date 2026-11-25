@@ -731,7 +731,7 @@ bot.callbackQuery(/^adminplayer:confirm:(ban|unban):(\d+)$/,async ctx=>{
   await ctx.answerCallbackQuery({text:q.rowCount?"عملیات انجام شد":"وضعیت تغییری نکرد"});
   return ctx.editMessageText(q.rowCount?"✅ "+q.rows[0].display_name+" — "+(action==="ban"?"مسدود شد":"رفع مسدودی شد"):"بازیکن پیدا نشد یا وضعیت از قبل همین بود.",{reply_markup:new InlineKeyboard().text("👥 بازیکنان","adminpanel:players").row().text("⬅️ پنل","adminpanel:back")});
 });
-bot.callbackQuery(/^adminfin:player:(\d+)$/,async ctx=>{if(!await adminOnly(ctx))return;const id=ctx.match[1];await ctx.answerCallbackQuery();const kb=new InlineKeyboard();for(const amount of [5000,10000,25000,50000])kb.text(money(amount),"adminfin:give:"+id+":"+amount).text("−"+money(amount),"adminfin:take:"+id+":"+amount).row();kb.text("⬅️ انتخاب بازیکن","adminpanel:finance").row().text("⬅️ پنل","adminpanel:back");return ctx.editMessageText("👤 بازیکن: "+id+"\n\nمبلغ را انتخاب کن؛ دکمه مثبت هدیه و دکمه منفی کسر می‌کند.",{reply_markup:kb});});
+bot.callbackQuery(/^adminfin:player:(\d+)$/,async ctx=>{if(!await adminOnly(ctx))return;const id=ctx.match[1];await ctx.answerCallbackQuery();const kb=new InlineKeyboard();for(const amount of [5000,10000,25000,50000])kb.text(money(amount),"adminfin:give:"+id+":"+amount).text("−"+money(amount),"adminfin:take:"+id+":"+amount).row();kb.text("✍️ مبلغ دلخواه","adminfin:custom:"+id).row().text("⬅️ انتخاب بازیکن","adminpanel:finance").row().text("⬅️ پنل","adminpanel:back");return ctx.editMessageText("👤 بازیکن: "+id+"\n\nمبلغ را انتخاب کن؛ یا مبلغ دلخواه را وارد کن.",{reply_markup:kb});});
 const adminCustomAmount = new Map();
 bot.callbackQuery(/^adminfin:custom:(\\d+)$/,async ctx=>{
   if(!await adminOnly(ctx))return;
