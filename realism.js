@@ -71,9 +71,9 @@ function costs(gross,m,payrollBase=0) {
 
 async function companyOperations(pool,id,m) {
   const q=await pool.query("SELECT company_type,level,employee_count,morale,equipment_condition,inventory_units FROM player_companies WHERE telegram_id=$1",[String(id)]);
-  const base={cafe:900,shop:3200,factory:11500,tech:31000};
-  const required={cafe:2,shop:4,factory:12,tech:8};
-  const hourlyWage={cafe:120,shop:220,factory:350,tech:600};
+  const base={cafe:900,shop:1400,bakery:2100,restaurant:3500,salon:1250,gym:3000,farm:2400,logistics:5200,construction:6500,textile:4300,autoservice:2300,clinic:7800,education:3300,software:6800,marketing:4200,ecommerce:5600,hotel:11500,manufacturing:17000,fintech:23000,telecom:32000};
+  const required={cafe:2,shop:3,bakery:4,restaurant:7,salon:3,gym:5,farm:6,logistics:10,construction:12,textile:9,autoservice:5,clinic:14,education:6,software:8,marketing:7,ecommerce:6,hotel:22,manufacturing:35,fintech:18,telecom:30};
+  const hourlyWage={cafe:120,shop:140,bakery:150,restaurant:180,salon:130,gym:150,farm:110,logistics:200,construction:240,textile:170,autoservice:180,clinic:300,education:180,software:600,marketing:350,ecommerce:260,hotel:220,manufacturing:250,fintech:650,telecom:500};
   let gross=0,employees=0,payrollBase=0,morale=0,condition=0,stock=0;
   for(const row of q.rows){
     const target=required[row.company_type]||2;
