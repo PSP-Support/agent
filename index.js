@@ -46,6 +46,7 @@ const money = (n) => "$" + Math.floor(Number(n)).toLocaleString("en-US");
 const bottomKeyboard = () => new Keyboard()
   .text("📊 وضعیت بازی").text("🏢 شرکت‌های من").row()
   .text("🌐 اقتصاد واقعی").text("🏦 بانک و وام").row()
+  .text("👨‍💼 مدیریت شرکت‌ها").row()
   .text("🛒 خرید شرکت").text("💵 دریافت درآمد").row()
   .text("🧭 مأموریت روزانه").text("🏅 دستاوردها").row()
   .text("👤 پروفایل").text("🏆 رتبه‌بندی").row()
