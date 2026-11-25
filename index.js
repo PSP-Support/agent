@@ -287,9 +287,11 @@ bot.callbackQuery(/^buy:([a-z_]+)$/,async ctx=>{
 });
 bot.on("message:text",async (ctx,next)=>{
   const uid=String(ctx.from.id),typeId=companyNameDraft.get(uid);
-  if(!typeId)return;
+  // Do not swallow ordinary text, reply-keyboard buttons, or slash commands.
+  // This middleware should handle a message only while a company name is being requested.
+  if(!typeId)return next();
   const raw=ctx.message.text.trim();
-  if(raw.startsWith("/"))return;
+  if(raw.startsWith("/"))return next();
   if(raw.length<2||raw.length>40)return ctx.reply("نام شرکت باید بین ۲ تا ۴۰ حرف باشد.");
   const type=COMPANY_TYPES.find(x=>x.id===typeId);
   const p=await pool.query("SELECT balance,player_level,reputation,season_points,last_season_rank FROM players WHERE telegram_id=$1",[uid]);
