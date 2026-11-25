@@ -98,6 +98,32 @@ export async function netHourlyForPlayer(pool,id) {
 }
 
 export async function registerRealism(bot,pool) {
+  // Automatic operating-profit settlement: one 3-hour installment (1/8 of a full day) each period.
+  const settleDueIncome=async()=>{
+    const players=await pool.query("SELECT telegram_id FROM players WHERE approval_status='approved'");
+    for(const player of players.rows){
+      const client=await pool.connect();
+      try{
+        await client.query("BEGIN");
+        const row=await client.query("SELECT last_collect FROM players WHERE telegram_id=$1 FOR UPDATE",[String(player.telegram_id)]);
+        if(!row.rows.length){await client.query("ROLLBACK");continue;}
+        const anchor=new Date(row.rows[0].last_collect).getTime();
+        const intervals=Math.min(8,Math.floor(Math.max(0,Date.now()-anchor)/(3*3600000)));
+        if(intervals<1){await client.query("ROLLBACK");continue;}
+        const net=await netHourlyForPlayer(pool,player.telegram_id);
+        const amount=Math.floor(net*3*intervals);
+        const next=new Date(anchor+intervals*3*3600000);
+        await client.query("UPDATE players SET balance=balance+$2,last_collect=$3 WHERE telegram_id=$1",[String(player.telegram_id),amount,next]);
+        if(amount>0)await client.query("INSERT INTO finance_transactions(telegram_id,transaction_type,amount,description) VALUES($1,'operating_income',$2,$3)",[String(player.telegram_id),amount,"واریز خودکار سود خالص؛ "+intervals+" قسط سه‌ساعته"]);
+        await client.query("COMMIT");
+        if(amount>0)await bot.api.sendMessage(String(player.telegram_id),"💵 واریز خودکار سود کسب‌وکارها انجام شد.\\nمبلغ: "+fmt(amount)+"\\nدوره: "+intervals+" × ۳ ساعت").catch(()=>{});
+      }catch(e){await client.query("ROLLBACK").catch(()=>{});console.error("[auto-income]",player.telegram_id,e);}
+      finally{client.release();}
+    }
+  };
+  setInterval(()=>settleDueIncome().catch(e=>console.error("[auto-income loop]",e)),60000);
+  settleDueIncome().catch(e=>console.error("[auto-income startup]",e));
+
   bot.hears("📒 دفتر مالی",async ctx=>{
     const q=await pool.query("SELECT transaction_type,amount,description,created_at FROM finance_transactions WHERE telegram_id=$1 ORDER BY created_at DESC LIMIT 12",[String(ctx.from.id)]);
     if(!q.rows.length)return ctx.reply("هنوز تراکنش مالی ثبت نشده.");
