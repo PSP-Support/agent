@@ -293,7 +293,7 @@ bot.command("guide",async ctx=>{
  await ctx.reply("📘 راهنمای مرحله‌ای Open Many\n\nمرحله موردنظر را انتخاب کن تا راهنمای کوتاه و دکمه اقدام را ببینی.",{reply_markup:kb});
 });
 bot.callbackQuery(/^guide:(1|2|3|4|menu)$/,async ctx=>{
- await ctx.answerCallbackQuery();const s=ctx.match[1];if(s==="menu")return ctx.reply("🏙️ منوی بازی",{reply_markup:mainKeyboard()});
+ await ctx.answerCallbackQuery();const s=ctx.match[1];if(s==="menu")return ctx.reply("🏙️ منوی بازی",{reply_markup:quickKeyboard(ctx.from.id)});
  const pages={1:["🚀 مرحله ۱ — شروع","با /start داشبورد را باز کن. موجودی، شرکت‌ها، درآمد و هدف بعدی در داشبورد نمایش داده می‌شود.","📊 داشبورد","home"],2:["🏢 مرحله ۲ — ساخت شرکت","از منوی کسب‌وکارها خرید شرکت را باز کن، نوع را انتخاب کن، نام را وارد کن و درخواست را بفرست. پس از تأیید مدیر فعال می‌شود.","🛒 خرید شرکت","buy_menu"],3:["💰 مرحله ۳ — درآمد","از امور مالی درآمد را دریافت کن و برای بررسی گردش، دفتر مالی و بانک را باز کن.","💵 دریافت درآمد","collect"],4:["🏆 مرحله ۴ — پیشرفت","ماموریت روزانه و پاداش را تکمیل کن، شرکت‌ها را ارتقا بده و رتبه‌بندی را دنبال کن.","🎁 پاداش روزانه","daily"]};
  const p=pages[s];return ctx.reply(p[0]+"\n\n"+p[1],{reply_markup:new InlineKeyboard().text(p[2],p[3]).row().text("➡️ مرحله بعد","guide:"+Math.min(4,Number(s)+1)).row().text("📘 فهرست","guide:list").text("🏠 منو","guide:menu")});
 });
@@ -306,7 +306,7 @@ bot.callbackQuery(/^quick:(home|business|finance|progress|mission|admin)$/,async
   if(s==="business")return ctx.editMessageText("🏢 مدیریت کسب‌وکار\n\nمرحله ۱: شرکت‌های خودت را ببین یا شرکت جدید انتخاب کن.\nمرحله ۲: برای ارتقا، شرکت را انتخاب کن.",{reply_markup:new InlineKeyboard().text("🏢 شرکت‌های من","my_companies").text("🛒 تأسیس شرکت","buy_menu").row().text("🔧 ارتقای شرکت","upgrade_menu").row().text("⬅️ منوی بازی","quick:home")});
   if(s==="finance")return ctx.editMessageText("💰 امور مالی\n\nیک عملیات را انتخاب کن؛ نیازی به دستور یا تایپ نیست.",{reply_markup:new InlineKeyboard().text("💵 دریافت درآمد","collect").text("🎁 پاداش روزانه","daily").row().text("👤 مشاهده سرمایه","profile").row().text("⬅️ منوی بازی","quick:home")});
   if(s==="progress")return ctx.editMessageText("🏆 پیشرفت و رقابت\n\nپاداش بگیر، مأموریتت را پیگیری کن و رتبه‌ات را ببین.",{reply_markup:new InlineKeyboard().text("🎁 پاداش روزانه","daily").text("🧭 مأموریت","quick:mission").row().text("🏆 رتبه‌بندی","leaderboard").row().text("⬅️ منوی بازی","quick:home")});
-  return ctx.reply("🧭 مأموریت روزانه\n\nبرای تکمیل مأموریت، حداقل یک کسب‌وکار داشته باش. جایزه را پس از تکمیل دریافت کن.",{reply_markup:new InlineKeyboard().text("🏢 خرید شرکت","buy_menu").row().text("🎁 دریافت پاداش مأموریت","mission_claim").row().text("⬅️ منوی بازی","quick:home")});
+  const q=await pool.query("SELECT COUNT(*)::int count FROM player_companies WHERE telegram_id=$1 AND approval_status='approved'",[String(ctx.from.id)]);const count=Number(q.rows[0]?.count||0);const kb=new InlineKeyboard();if(count<1)kb.text("🏢 خرید اولین شرکت","buy_menu").row();else kb.text("🎁 دریافت جایزه مأموریت","mission_claim").row();kb.text("🎁 پاداش روزانه","daily").row().text("⬅️ منوی بازی","quick:home");return ctx.reply("🧭 مأموریت روزانه\n\nهدف: داشتن حداقل یک شرکت فعال.\nپیشرفت: "+Math.min(count,1)+"/1\n"+(count?"✅ مأموریت تکمیل شده؛ جایزه را دریافت کن.":"🔒 ابتدا یک شرکت تأسیس کن."),{reply_markup:kb});
 });
 bot.command("menu", async (ctx) => {
   await ensurePlayer(ctx);
