@@ -108,7 +108,7 @@ const menuSection = new Map();
 const mainKeyboard = () => new Keyboard()
   .text("📊 مرکز بازی").text("🏢 کسب‌وکارها").row()
   .text("💰 امور مالی").text("🌐 بازار و اقتصاد").row()
-  .text("🏆 رقابت و پیشرفت").text("⚙️ بیشتر").resized().persistent(false);
+  .text("🏆 رقابت و پیشرفت").text("⚙️ بیشتر").resized().persistent(true);
 const quickKeyboard = (userId) => {
   const kb=new InlineKeyboard()
     .text("🏢 کسب‌وکارها","quick:business").text("💰 امور مالی","quick:finance").row()
@@ -124,7 +124,7 @@ const sectionKeyboard = (section) => {
   else if (section === "market") k.text("🌐 اقتصاد واقعی").row();
   else if (section === "progress") k.text("🧭 مأموریت روزانه").text("🏅 دستاوردها").row().text("🏆 رتبه‌بندی").text("🎁 پاداش روزانه").row();
   else if (section === "more") k.text("👤 پروفایل").text("ℹ️ راهنما").row().text("📘 راهنمای مرحله‌ای").text("🧰 دسترسی آسان").row();
-  return k.text("🔙 منوی اصلی").resized().persistent(false);
+  return k.text("🔙 منوی اصلی").resized().persistent(true);
 };
 const bottomKeyboard = (userId) => {
   const section = menuSection.get(String(userId));
@@ -276,7 +276,7 @@ bot.command("start", async (ctx) => {
     const msg = status === "banned" ? "⛔ دسترسی حساب شما مسدود شده است." : status === "rejected" ? "❌ درخواست عضویت شما رد شده است." : "🕓 درخواست عضویت شما ثبت شد و منتظر تأیید مدیر کل است.";
     return ctx.reply(msg, { reply_markup: new Keyboard().text("🔄 بررسی وضعیت").resized().persistent() });
   }
-  await ctx.reply(await dashboardText(ctx.from.id), { parse_mode: "Markdown", reply_markup: quickKeyboard(ctx.from.id) });
+  await ctx.reply(await dashboardText(ctx.from.id), { parse_mode: "Markdown", reply_markup: bottomKeyboard(ctx.from.id) });
 });
 
 bot.hears("🧰 دسترسی آسان", async ctx => {
@@ -308,7 +308,7 @@ bot.callbackQuery(/^quick:(home|business|finance|progress|mission|admin)$/,async
 });
 bot.command("menu", async (ctx) => {
   await ensurePlayer(ctx);
-  await ctx.reply(homeText(), { parse_mode: "Markdown", reply_markup: quickKeyboard(ctx.from.id) });
+  await ctx.reply(homeText(), { parse_mode: "Markdown", reply_markup: bottomKeyboard(ctx.from.id) });
 });
 
 bot.callbackQuery("profile", async (ctx) => {
