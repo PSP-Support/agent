@@ -279,6 +279,17 @@ bot.hears("🧰 دسترسی آسان", async ctx => {
   const adminCommands = "\n\n🛡️ دستورات مدیر کل:\n/admin — پنل مدیریت\n/pending — درخواست‌های عضویت\n/approve ID — تأیید بازیکن\n/reject ID — رد درخواست\n/ban ID — مسدود کردن\n/unban ID — رفع مسدودی\n/players — فهرست بازیکنان\n/balance ID — مشاهده موجودی\n/setbalance ID AMOUNT — تنظیم موجودی\n/give ID AMOUNT — هدیه پول\n/broadcast متن — پیام همگانی";
   await ctx.reply("🧰 دسترسی آسان\n\n"+userCommands+(String(ctx.from.id)===ownerTelegramId?adminCommands:""), {reply_markup:bottomKeyboard(ctx.from.id)});
 });
+bot.command("guide",async ctx=>{
+ const kb=new InlineKeyboard().text("۱. شروع بازی","guide:1").row().text("۲. ساخت شرکت","guide:2").row().text("۳. درآمد و امور مالی","guide:3").row().text("۴. پیشرفت و پاداش","guide:4").row().text("🏠 منوی بازی","guide:menu");
+ await ctx.reply("📘 راهنمای مرحله‌ای Open Many\n\nمرحله موردنظر را انتخاب کن تا راهنمای کوتاه و دکمه اقدام را ببینی.",{reply_markup:kb});
+});
+bot.callbackQuery(/^guide:(1|2|3|4|menu)$/,async ctx=>{
+ await ctx.answerCallbackQuery();const s=ctx.match[1];if(s==="menu")return ctx.reply("🏙️ منوی بازی",{reply_markup:mainKeyboard()});
+ const pages={1:["🚀 مرحله ۱ — شروع","با /start داشبورد را باز کن. موجودی، شرکت‌ها، درآمد و هدف بعدی در داشبورد نمایش داده می‌شود.","📊 داشبورد","home"],2:["🏢 مرحله ۲ — ساخت شرکت","از منوی کسب‌وکارها خرید شرکت را باز کن، نوع را انتخاب کن، نام را وارد کن و درخواست را بفرست. پس از تأیید مدیر فعال می‌شود.","🛒 خرید شرکت","buy_menu"],3:["💰 مرحله ۳ — درآمد","از امور مالی درآمد را دریافت کن و برای بررسی گردش، دفتر مالی و بانک را باز کن.","💵 دریافت درآمد","collect"],4:["🏆 مرحله ۴ — پیشرفت","ماموریت روزانه و پاداش را تکمیل کن، شرکت‌ها را ارتقا بده و رتبه‌بندی را دنبال کن.","🎁 پاداش روزانه","daily"]};
+ const p=pages[s];return ctx.reply(p[0]+"\n\n"+p[1],{reply_markup:new InlineKeyboard().text(p[2],p[3]).row().text("➡️ مرحله بعد","guide:"+Math.min(4,Number(s)+1)).row().text("📘 فهرست","guide:list").text("🏠 منو","guide:menu")});
+});
+bot.callbackQuery("guide:list",async ctx=>{await ctx.answerCallbackQuery();return ctx.reply("📘 راهنمای مرحله‌ای",{reply_markup:new InlineKeyboard().text("۱. شروع","guide:1").text("۲. شرکت","guide:2").row().text("۳. مالی","guide:3").text("۴. پیشرفت","guide:4").row().text("🏠 منو","guide:menu")});});
+
 bot.command("menu", async (ctx) => {
   await ensurePlayer(ctx);
   await ctx.reply(homeText(), { parse_mode: "Markdown", reply_markup: mainKeyboard() });
@@ -688,8 +699,25 @@ bot.command("progress",ctx=>ctx.reply("🏆 مأموریت‌ها، دستاور
 
 function isOwner(ctx){return !!ownerTelegramId&&String(ctx.from?.id)===ownerTelegramId;}
 async function adminOnly(ctx){if(isOwner(ctx))return true;if(ctx.callbackQuery)await ctx.answerCallbackQuery({text:"فقط مدیر کل دسترسی دارد.",show_alert:true}).catch(()=>{});else await ctx.reply("⛔ فقط مدیر کل دسترسی دارد.");return false;}
-function adminKeyboard(){return new InlineKeyboard().text("🕓 درخواست‌ها","admin:pending").row().text("👥 بازیکنان","admin:players").row().text("📊 آمار","admin:stats");}
-bot.command("admin",async ctx=>{if(!await adminOnly(ctx))return;const q=await pool.query("SELECT COUNT(*)::int total,COUNT(*) FILTER(WHERE approval_status='pending')::int pending FROM players");await ctx.reply("🛡️ پنل مدیر کل\nکل بازیکنان: "+q.rows[0].total+"\nدر انتظار تأیید: "+q.rows[0].pending+"\n\n/pending درخواست‌ها\n/players بازیکنان\n/approve ID تأیید\n/reject ID رد\n/ban ID و /unban ID\n/balance ID\n/setbalance ID مبلغ\n/give ID مبلغ\n/broadcast پیام",{reply_markup:adminKeyboard()});});
+function adminKeyboard(){return new InlineKeyboard()
+  .text("🕓 درخواست‌ها","adminpanel:requests").row()
+  .text("👥 بازیکنان","adminpanel:players").row()
+  .text("📊 آمار بازی","adminpanel:stats").row()
+  .text("💸 عملیات مالی","adminpanel:finance").row()
+  .text("📣 پیام همگانی","adminpanel:broadcast").row()
+  .text("📖 راهنمای مدیر","adminpanel:guide");}
+bot.command("admin",async ctx=>{if(!await adminOnly(ctx))return;const q=await pool.query("SELECT COUNT(*)::int total,COUNT(*) FILTER(WHERE approval_status='pending')::int pending FROM players");await ctx.reply("🛡️ *پنل مدیریت Open Many*\n\nمرحله ۱: بخش موردنظر را انتخاب کن.\n👥 بازیکنان: "+q.rows[0].total+"\n🕓 در انتظار تأیید: "+q.rows[0].pending+"\n\nبرای عملیات حساس، راهنمای مرحله‌ای را دنبال کن.",{parse_mode:"Markdown",reply_markup:adminKeyboard()});});
+bot.command("panel",async ctx=>{if(!await adminOnly(ctx))return;return ctx.reply("🛡️ پنل مدیر کل — یک بخش انتخاب کن:",{reply_markup:adminKeyboard()});});
+bot.callbackQuery(/^adminpanel:(requests|players|stats|finance|broadcast|guide)$/,async ctx=>{
+  if(!await adminOnly(ctx))return;const section=ctx.match[1];await ctx.answerCallbackQuery();
+  if(section==="requests"){const q=await pool.query("SELECT telegram_id,display_name FROM players WHERE approval_status='pending' ORDER BY created_at LIMIT 8");if(!q.rows.length)return ctx.editMessageText("✅ درخواست در انتظار وجود ندارد.",{reply_markup:adminKeyboard()});const kb=new InlineKeyboard();for(const p of q.rows)kb.text("✅ "+p.display_name.slice(0,18),"admin:approve:"+p.telegram_id).text("❌ رد","admin:reject:"+p.telegram_id).row();kb.text("🔄 تازه‌سازی","adminpanel:requests").row().text("⬅️ پنل","adminpanel:back");return ctx.editMessageText("🕓 درخواست‌های عضویت\nبرای هر نفر تأیید یا رد را بزن:",{reply_markup:kb});}
+  if(section==="players"){const q=await pool.query("SELECT telegram_id,display_name,balance,approval_status FROM players ORDER BY created_at DESC LIMIT 10");const txt=q.rows.map((p,i)=>(i+1)+") "+p.display_name+"\n🆔 "+p.telegram_id+"\n💰 "+money(p.balance)+" | "+p.approval_status).join("\n\n")||"بازیکنی ثبت نشده.";return ctx.editMessageText("👥 بازیکنان اخیر\n\n"+txt+"\n\nبرای تغییرات از /give، /take، /ban یا /balance استفاده کن.",{reply_markup:new InlineKeyboard().text("🔄 تازه‌سازی","adminpanel:players").row().text("⬅️ پنل","adminpanel:back")});}
+  if(section==="stats"){const q=await pool.query("SELECT COUNT(*)::int total,COUNT(*) FILTER(WHERE approval_status='approved')::int approved,COUNT(*) FILTER(WHERE approval_status='pending')::int pending,COUNT(*) FILTER(WHERE approval_status='banned')::int banned,COALESCE(SUM(balance),0)::bigint cash FROM players");const x=q.rows[0];return ctx.editMessageText("📊 آمار بازی\nکل: "+x.total+"\nتأیید: "+x.approved+"\nدر انتظار: "+x.pending+"\nمسدود: "+x.banned+"\nسرمایه کل: "+money(x.cash),{reply_markup:new InlineKeyboard().text("🔄 تازه‌سازی","adminpanel:stats").row().text("⬅️ پنل","adminpanel:back")});}
+  if(section==="finance")return ctx.editMessageText("💸 عملیات مالی — مرحله ۱: شناسه بازیکن را از بخش بازیکنان بردار.\nمرحله ۲: دستور /give ID مبلغ برای افزودن پول، /take ID مبلغ برای کسر یا /setbalance ID مبلغ برای تنظیم موجودی.\nنمونه: /give 123456789 5000",{reply_markup:new InlineKeyboard().text("👥 بازیکنان","adminpanel:players").row().text("⬅️ پنل","adminpanel:back")});
+  if(section==="broadcast")return ctx.editMessageText("📣 پیام همگانی\nمرحله ۱: متن پیام را آماده کن.\nمرحله ۲: /broadcast متن پیام\nاین پیام برای بازیکنان تأییدشده ارسال می‌شود.",{reply_markup:new InlineKeyboard().text("⬅️ پنل","adminpanel:back")});
+  return ctx.editMessageText("📖 راهنمای مدیر\n۱. درخواست‌ها: تأیید یا رد عضویت\n۲. بازیکنان: مشاهده شناسه و وضعیت\n۳. آمار: خلاصه بازی\n۴. مالی: give / take / setbalance\n۵. پیام همگانی: broadcast\nقبل از عملیات مالی شناسه را دوباره بررسی کن.",{reply_markup:new InlineKeyboard().text("⬅️ پنل","adminpanel:back")});
+});
+bot.callbackQuery("adminpanel:back",async ctx=>{if(!await adminOnly(ctx))return;await ctx.answerCallbackQuery();return ctx.editMessageText("🛡️ پنل مدیر کل — یک بخش انتخاب کن:",{reply_markup:adminKeyboard()});});
 bot.command("pending",async ctx=>{if(!await adminOnly(ctx))return;const q=await pool.query("SELECT telegram_id,display_name,username FROM players WHERE approval_status='pending' ORDER BY created_at LIMIT 30");if(!q.rows.length)return ctx.reply("درخواست تأیید جدیدی وجود ندارد.");for(const p of q.rows)await ctx.reply(p.display_name+(p.username?" (@"+p.username+")":"")+"\nID: "+p.telegram_id,{reply_markup:new InlineKeyboard().text("✅ تأیید","admin:approve:"+p.telegram_id).text("❌ رد","admin:reject:"+p.telegram_id)});});
 bot.command("approve",async ctx=>{if(!await adminOnly(ctx))return;const id=(ctx.match||"").trim().split(/\s+/)[0];if(!/^\d+$/.test(id))return ctx.reply("استفاده: /approve TELEGRAM_ID");const q=await pool.query("UPDATE players SET approval_status='approved',approved_at=NOW(),approved_by=$2 WHERE telegram_id=$1 AND approval_status IN ('pending','rejected') RETURNING display_name",[id,ownerTelegramId]);if(q.rowCount)await bot.api.sendMessage(id,"✅ عضویت شما تأیید شد. برای ورود /start را بزن.").catch(()=>{});await ctx.reply(q.rowCount?"تأیید شد: "+q.rows[0].display_name:"بازیکن پیدا نشد یا قبلاً تأیید شده است.");});
 bot.command("reject",async ctx=>{if(!await adminOnly(ctx))return;const id=(ctx.match||"").trim().split(/\s+/)[0];if(!/^\d+$/.test(id))return ctx.reply("استفاده: /reject TELEGRAM_ID");const q=await pool.query("UPDATE players SET approval_status='rejected',admin_note='Rejected by owner' WHERE telegram_id=$1 AND approval_status='pending' RETURNING display_name",[id]);await ctx.reply(q.rowCount?"رد شد: "+q.rows[0].display_name:"درخواست pending پیدا نشد.");});
@@ -722,6 +750,7 @@ await registerRealism(bot,pool);
 // Telegram's command menu (the slash button beside the message field).
 const publicCommands = [
   { command: "start", description: "شروع بازی و داشبورد" },
+  { command: "guide", description: "راهنمای مرحله‌ای بازی" },
   { command: "menu", description: "نمایش منوی بازی" },
   { command: "startup", description: "ثبت نام و مشخصات استارتاپ" },
   { command: "buycompany", description: "درخواست تأسیس کسب‌وکار" },
