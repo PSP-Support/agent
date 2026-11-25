@@ -293,7 +293,7 @@ bot.callbackQuery(/^guide:(1|2|3|4|menu)$/,async ctx=>{
   await ctx.answerCallbackQuery();const s=ctx.match[1];
   if(s==="menu")return ctx.editMessageText("🏙️ منوی بازی",{reply_markup:quickKeyboard(ctx.from.id)});
   const pages={1:["🚀 مرحله ۱ — شروع","همین صفحه داشبورد سرمایه، شرکت‌ها، درآمد و هدف بعدی را نشان می‌دهد. از دکمه‌های پایین برای رفتن به هر بخش استفاده کن.","📊 داشبورد","quick:home"],2:["🏢 مرحله ۲ — ساخت شرکت","کسب‌وکارها را باز کن، یک شرکت را انتخاب کن و دکمه تأسیس را بزن. نام به‌صورت خودکار ثبت می‌شود؛ هیچ چیزی تایپ نمی‌کنی. پس از تأیید مدیر فعال می‌شود.","🛒 خرید شرکت","buy_menu"],3:["💰 مرحله ۳ — درآمد","در بخش امور مالی فقط «دریافت درآمد» را بزن. برای دریافت پاداش هم دکمه پاداش روزانه را انتخاب کن.","💵 دریافت درآمد","collect"],4:["🏆 مرحله ۴ — پیشرفت","از بخش رقابت و پیشرفت، مأموریت روزانه، دستاوردها و رتبه‌بندی را با دکمه‌ها دنبال کن.","🎁 پاداش روزانه","daily"]};
-  const p=pages[s];return ctx.editMessageText(p[0]+"\\n\\n"+p[1],{reply_markup:new InlineKeyboard().text(p[2],p[3]).row().text("➡️ مرحله بعد","guide:"+Math.min(4,Number(s)+1)).row().text("📘 فهرست","guide:list").text("🏠 منو","guide:menu")});
+  const p=pages[s];return ctx.editMessageText(p[0]+"\n\n"+p[1],{reply_markup:new InlineKeyboard().text(p[2],p[3]).row().text("➡️ مرحله بعد","guide:"+Math.min(4,Number(s)+1)).row().text("📘 فهرست","guide:list").text("🏠 منو","guide:menu")});
 });
 bot.callbackQuery("guide:list",async ctx=>{await ctx.answerCallbackQuery();return ctx.editMessageText("📘 راهنمای مرحله‌ای — یک مرحله را انتخاب کن:",{reply_markup:new InlineKeyboard().text("۱. شروع","guide:1").text("۲. شرکت","guide:2").row().text("۳. مالی","guide:3").text("۴. پیشرفت","guide:4").row().text("🏠 منو","guide:menu")});});
 
