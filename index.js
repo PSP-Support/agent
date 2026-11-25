@@ -36,10 +36,26 @@ bot.hears("🔄 بررسی وضعیت", async ctx => {
 });
 
 const COMPANY_TYPES = [
-  { id: "cafe", name: "کافه کوچک ☕", price: 25000, income: 900, description: "کسب‌وکار کوچک با درآمد پایدار" },
-  { id: "shop", name: "فروشگاه 🛍️", price: 80000, income: 3200, description: "فروشگاه شهری" },
-  { id: "factory", name: "کارخانه 🏭", price: 250000, income: 11500, description: "تولید صنعتی" },
-  { id: "tech", name: "شرکت فناوری 💻", price: 600000, income: 31000, description: "شرکت فناوری با درآمد بالا" }
+  { id: "cafe", name: "کافه مستقل ☕", price: 25000, income: 900, employees: 2, sector: "خدمات غذایی", description: "راه‌اندازی کافه کوچک" },
+  { id: "shop", name: "فروشگاه محلی 🛍️", price: 40000, income: 1400, employees: 3, sector: "خرده‌فروشی", description: "فروش محصولات روزمره" },
+  { id: "bakery", name: "نانوایی 🥖", price: 55000, income: 2100, employees: 4, sector: "غذایی", description: "تولید و فروش نان" },
+  { id: "restaurant", name: "رستوران 🍽️", price: 90000, income: 3500, employees: 7, sector: "غذایی", description: "رستوران شهری" },
+  { id: "salon", name: "سالن زیبایی 💇", price: 35000, income: 1250, employees: 3, sector: "خدمات", description: "خدمات زیبایی" },
+  { id: "gym", name: "باشگاه ورزشی 🏋️", price: 85000, income: 3000, employees: 5, sector: "سلامت و ورزش", description: "باشگاه محلی" },
+  { id: "farm", name: "مزرعه 🌾", price: 70000, income: 2400, employees: 6, sector: "کشاورزی", description: "تولید محصولات کشاورزی" },
+  { id: "logistics", name: "شرکت حمل‌ونقل 🚚", price: 140000, income: 5200, employees: 10, sector: "لجستیک", description: "حمل‌ونقل و توزیع" },
+  { id: "construction", name: "پیمانکاری ساختمان 🏗️", price: 180000, income: 6500, employees: 12, sector: "ساخت‌وساز", description: "پروژه‌های ساختمانی" },
+  { id: "textile", name: "کارگاه پوشاک 🧵", price: 120000, income: 4300, employees: 9, sector: "تولید", description: "تولید پوشاک" },
+  { id: "autoservice", name: "تعمیرگاه خودرو 🔧", price: 65000, income: 2300, employees: 5, sector: "خدمات خودرو", description: "تعمیر و سرویس خودرو" },
+  { id: "clinic", name: "کلینیک خصوصی 🩺", price: 220000, income: 7800, employees: 14, sector: "سلامت", description: "خدمات درمانی" },
+  { id: "education", name: "آموزشگاه 📚", price: 95000, income: 3300, employees: 6, sector: "آموزش", description: "آموزش مهارت" },
+  { id: "software", name: "استودیو نرم‌افزار 💻", price: 160000, income: 6800, employees: 8, sector: "فناوری", description: "توسعه نرم‌افزار" },
+  { id: "marketing", name: "آژانس تبلیغات 📣", price: 110000, income: 4200, employees: 7, sector: "خدمات حرفه‌ای", description: "بازاریابی و تبلیغات" },
+  { id: "ecommerce", name: "فروشگاه اینترنتی 🛒", price: 130000, income: 5600, employees: 6, sector: "تجارت الکترونیک", description: "فروش آنلاین" },
+  { id: "hotel", name: "هتل بوتیک 🏨", price: 350000, income: 11500, employees: 22, sector: "گردشگری", description: "اقامت و میزبانی" },
+  { id: "manufacturing", name: "کارخانه تولیدی 🏭", price: 500000, income: 17000, employees: 35, sector: "صنعت", description: "تولید صنعتی" },
+  { id: "fintech", name: "فین‌تک 💳", price: 650000, income: 23000, employees: 18, sector: "فناوری مالی", description: "خدمات فناوری مالی" },
+  { id: "telecom", name: "شرکت مخابراتی 📡", price: 900000, income: 32000, employees: 30, sector: "ارتباطات", description: "خدمات ارتباطی" }
 ];
 
 const money = (n) => "$" + Math.floor(Number(n)).toLocaleString("en-US");
@@ -87,6 +103,31 @@ async function initDb() {
     ALTER TABLE players ADD COLUMN IF NOT EXISTS approved_at TIMESTAMPTZ;
     ALTER TABLE players ADD COLUMN IF NOT EXISTS approved_by BIGINT;
     ALTER TABLE players ADD COLUMN IF NOT EXISTS admin_note TEXT;
+    ALTER TABLE players ADD COLUMN IF NOT EXISTS startup_name TEXT;
+    ALTER TABLE players ADD COLUMN IF NOT EXISTS startup_tagline TEXT;
+    ALTER TABLE players ADD COLUMN IF NOT EXISTS startup_city TEXT;
+    ALTER TABLE players ADD COLUMN IF NOT EXISTS player_level INTEGER NOT NULL DEFAULT 1;
+    ALTER TABLE players ADD COLUMN IF NOT EXISTS reputation INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE players ADD COLUMN IF NOT EXISTS season_points INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE players ADD COLUMN IF NOT EXISTS last_season_rank INTEGER;
+    ALTER TABLE player_companies ADD COLUMN IF NOT EXISTS company_name TEXT;
+    ALTER TABLE player_companies ADD COLUMN IF NOT EXISTS brand_name TEXT;
+    ALTER TABLE player_companies ADD COLUMN IF NOT EXISTS approved_by BIGINT;
+    ALTER TABLE player_companies ADD COLUMN IF NOT EXISTS approval_status TEXT NOT NULL DEFAULT 'approved';
+    CREATE TABLE IF NOT EXISTS company_requests (
+      id BIGSERIAL PRIMARY KEY,
+      telegram_id BIGINT NOT NULL REFERENCES players(telegram_id) ON DELETE CASCADE,
+      company_type TEXT NOT NULL,
+      company_name TEXT NOT NULL,
+      brand_name TEXT NOT NULL,
+      request_status TEXT NOT NULL DEFAULT 'pending',
+      season_rank INTEGER,
+      player_level INTEGER NOT NULL DEFAULT 1,
+      reputation INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      reviewed_at TIMESTAMPTZ,
+      reviewed_by BIGINT
+    );
   `);
 }
 
@@ -217,39 +258,60 @@ bot.callbackQuery("my_companies", async (ctx) => {
   await ctx.answerCallbackQuery();
 });
 
-bot.callbackQuery("buy_menu", async (ctx) => {
-  const kb = new InlineKeyboard();
-  for (const c of COMPANY_TYPES) kb.text(`${c.name} | ${money(c.price)}`, `buy:${c.id}`).row();
-  kb.text("🔙 بازگشت", "home");
-  await ctx.editMessageText("🛒 *فروشگاه شرکت‌ها*\n\nیک کسب‌وکار برای خرید انتخاب کن:", { parse_mode: "Markdown", reply_markup: kb });
+bot.callbackQuery("buy_menu", async ctx => {
+  const kb=new InlineKeyboard();
+  for(const t of COMPANY_TYPES) kb.text(t.name+" | "+money(t.price),"buy:"+t.id).row();
+  kb.text("🔙 بازگشت","home");
+  await ctx.editMessageText("🏗️ *فرصت‌های تأسیس شرکت*\n\n۲۰ نوع کسب‌وکار با هزینه، نیروی انسانی و درآمد متفاوت. هر تأسیس جدید برای بررسی مدیر ارسال می‌شود.",{parse_mode:"Markdown",reply_markup:kb});
   await ctx.answerCallbackQuery();
 });
-
-bot.callbackQuery(/^buy:(.+)$/, async (ctx) => {
-  const type = COMPANY_TYPES.find(x=>x.id===ctx.match[1]);
-  if (!type) return ctx.answerCallbackQuery({ text: "شرکت پیدا نشد", show_alert: true });
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
-    const p = await client.query("SELECT balance FROM players WHERE telegram_id=$1 FOR UPDATE", [String(ctx.from.id)]);
-    if (!p.rows.length || Number(p.rows[0].balance) < type.price) {
-      await client.query("ROLLBACK");
-      return ctx.answerCallbackQuery({ text: "سرمایه کافی نیست!", show_alert: true });
-    }
-    await client.query("UPDATE players SET balance=balance-$2 WHERE telegram_id=$1", [String(ctx.from.id), type.price]);
-    await client.query("INSERT INTO player_companies (telegram_id, company_type) VALUES ($1,$2)", [String(ctx.from.id), type.id]);
-    await client.query("COMMIT");
-    await ctx.answerCallbackQuery({ text: "شرکت با موفقیت خریداری شد! 🎉" });
-    await ctx.editMessageText(`✅ *${type.name} خریداری شد!*\n\n${type.description}\n📈 درآمد پایه: ${money(type.income)} در ساعت`, {
-      parse_mode: "Markdown", reply_markup: new InlineKeyboard().text("🏢 شرکت‌های من", "my_companies").row().text("🔙 منوی اصلی", "home")
-    });
-  } catch (e) {
-    await client.query("ROLLBACK");
-    console.error(e);
-    await ctx.answerCallbackQuery({ text: "خطا در خرید. دوباره تلاش کن.", show_alert: true });
-  } finally { client.release(); }
+const companyNameDraft=new Map();
+bot.callbackQuery(/^buy:([a-z]+)$/,async ctx=>{
+  const type=COMPANY_TYPES.find(x=>x.id===ctx.match[1]);
+  if(!type)return ctx.answerCallbackQuery({text:"نوع شرکت نامعتبر است.",show_alert:true});
+  companyNameDraft.set(String(ctx.from.id),type.id);
+  await ctx.answerCallbackQuery();
+  await ctx.reply("📝 نام شرکتت را وارد کن (۲ تا ۴۰ حرف).\nمثال: «استارتاپ آفتاب»");
 });
-
+bot.on("message:text",async ctx=>{
+  const uid=String(ctx.from.id),typeId=companyNameDraft.get(uid);
+  if(!typeId)return;
+  const raw=ctx.message.text.trim();
+  if(raw.startsWith("/"))return;
+  if(raw.length<2||raw.length>40)return ctx.reply("نام شرکت باید بین ۲ تا ۴۰ حرف باشد.");
+  const type=COMPANY_TYPES.find(x=>x.id===typeId);
+  const p=await pool.query("SELECT balance,player_level,reputation,season_points,last_season_rank FROM players WHERE telegram_id=$1",[uid]);
+  if(!p.rows.length)return ctx.reply("پروفایل بازیکن پیدا نشد.");
+  if(Number(p.rows[0].balance)<type.price){companyNameDraft.delete(uid);return ctx.reply("سرمایه کافی نیست. هزینه شروع: "+money(type.price));}
+  const perf=p.rows[0],rank=perf.last_season_rank;
+  const q=await pool.query("INSERT INTO company_requests(telegram_id,company_type,company_name,brand_name,season_rank,player_level,reputation) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id",[uid,typeId,raw,raw,rank,perf.player_level,perf.reputation]);
+  companyNameDraft.delete(uid);
+  await ctx.reply("📨 درخواست تأسیس ارسال شد\n\n🏢 "+raw+"\n🏭 "+type.name+"\n💵 هزینه: "+money(type.price)+"\n👷 نیروی پایه: "+type.employees+" نفر\n📈 درآمد ناخالص پایه: "+money(type.income)+"/ساعت\n\nمدیر کل درخواست را بر اساس رتبه فصل گذشته، سطح و عملکرد بررسی می‌کند. تا تأیید نهایی هزینه‌ای کسر نمی‌شود.");
+  if(ownerTelegramId)await bot.api.sendMessage(ownerTelegramId,"📝 درخواست شرکت #"+q.rows[0].id+"\nبازیکن: "+uid+"\nشرکت: "+raw+" ("+type.name+")\nرتبه فصل قبل: "+(rank??"ثبت نشده")+" | Level "+perf.player_level+" | Reputation "+perf.reputation+" | امتیاز "+perf.season_points+"\nهزینه: "+money(type.price),{reply_markup:new InlineKeyboard().text("✅ تأیید و تأسیس","corp:approve:"+q.rows[0].id).text("❌ رد","corp:reject:"+q.rows[0].id)});
+});
+bot.callbackQuery(/^corp:(approve|reject):(\\d+)$/,async ctx=>{
+  if(String(ctx.from.id)!==ownerTelegramId)return ctx.answerCallbackQuery({text:"فقط مدیر کل دسترسی دارد.",show_alert:true});
+  const action=ctx.match[1],id=Number(ctx.match[2]),client=await pool.connect();
+  try{
+    await client.query("BEGIN");
+    const q=await client.query("SELECT * FROM company_requests WHERE id=$1 AND request_status='pending' FOR UPDATE",[id]);
+    if(!q.rows.length){await client.query("ROLLBACK");return ctx.answerCallbackQuery({text:"درخواست قبلاً بررسی شده.",show_alert:true});}
+    const req=q.rows[0],type=COMPANY_TYPES.find(x=>x.id===req.company_type);
+    if(action==="approve"){
+      const p=await client.query("SELECT balance FROM players WHERE telegram_id=$1 FOR UPDATE",[String(req.telegram_id)]);
+      if(!p.rows.length||Number(p.rows[0].balance)<type.price){await client.query("ROLLBACK");return ctx.answerCallbackQuery({text:"سرمایه بازیکن برای تأسیس کافی نیست.",show_alert:true});}
+      await client.query("UPDATE players SET balance=balance-$2,player_level=GREATEST(player_level,1),reputation=LEAST(100,reputation+2) WHERE telegram_id=$1",[String(req.telegram_id),type.price]);
+      await client.query("INSERT INTO player_companies(telegram_id,company_type,company_name,brand_name,employee_count,approved_by,approval_status) VALUES($1,$2,$3,$4,$5,$6,'approved')",[String(req.telegram_id),req.company_type,req.company_name,req.brand_name,type.employees,ownerTelegramId]);
+      await client.query("INSERT INTO finance_transactions(telegram_id,transaction_type,amount,description) VALUES($1,'company_foundation',$2,$3)",[String(req.telegram_id),-type.price,"هزینه تأسیس "+req.company_name]);
+      await client.query("UPDATE company_requests SET request_status='approved',reviewed_at=NOW(),reviewed_by=$2 WHERE id=$1",[id,ownerTelegramId]);
+    }else await client.query("UPDATE company_requests SET request_status='rejected',reviewed_at=NOW(),reviewed_by=$2 WHERE id=$1",[id,ownerTelegramId]);
+    await client.query("COMMIT");
+    await ctx.answerCallbackQuery({text:action==="approve"?"شرکت تأیید و تأسیس شد.":"درخواست رد شد."});
+    await bot.api.sendMessage(String(req.telegram_id),action==="approve"?"🎉 درخواست شرکت «"+req.company_name+"» تأیید شد و کسب‌وکار شما فعال شد!":"❌ درخواست شرکت «"+req.company_name+"» رد شد.").catch(()=>{});
+    await ctx.editMessageText((action==="approve"?"✅ تأیید شد: ":"❌ رد شد: ")+req.company_name);
+  }catch(e){await client.query("ROLLBACK");console.error(e);await ctx.answerCallbackQuery({text:"خطا در بررسی درخواست.",show_alert:true});}
+  finally{client.release();}
+});
 bot.callbackQuery("collect", async (ctx) => {
   const client = await pool.connect();
   try {
