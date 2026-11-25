@@ -1,4 +1,4 @@
-import { Bot, InlineKeyboard } from "grammy";
+import { Bot, InlineKeyboard, Keyboard } from "grammy";
 import pg from "pg";
 import http from "node:http";
 
@@ -24,11 +24,11 @@ const COMPANY_TYPES = [
 ];
 
 const money = (n) => "$" + Math.floor(Number(n)).toLocaleString("en-US");
-const mainKeyboard = () => new InlineKeyboard()
-  .text("👤 پروفایل", "profile").text("🏢 شرکت‌های من", "my_companies").row()
-  .text("🛒 خرید شرکت", "buy_menu").text("💵 دریافت درآمد", "collect").row()
-  .text("🏆 رتبه‌بندی", "leaderboard").text("🎁 پاداش روزانه", "daily").row()
-  .text("ℹ️ راهنما", "help");
+const bottomKeyboard = () => new Keyboard()
+  .text("👤 پروفایل").text("🏢 شرکت‌های من").row()
+  .text("🛒 خرید شرکت").text("💵 دریافت درآمد").row()
+  .text("🏆 رتبه‌بندی").text("🎁 پاداش روزانه").row()
+  .text("ℹ️ راهنما").resized().persistent();
 
 async function initDb() {
   await pool.query(`
@@ -87,7 +87,7 @@ function homeText() {
 
 bot.command("start", async (ctx) => {
   await ensurePlayer(ctx);
-  await ctx.reply(homeText(), { parse_mode: "Markdown", reply_markup: mainKeyboard() });
+  await ctx.reply(homeText(), { parse_mode: "Markdown", reply_markup: bottomKeyboard() });
 });
 bot.command("menu", async (ctx) => {
   await ensurePlayer(ctx);
@@ -267,8 +267,73 @@ bot.callbackQuery("help", async (ctx) => {
 });
 
 bot.callbackQuery("home", async (ctx) => {
-  await ctx.editMessageText(homeText(), { parse_mode: "Markdown", reply_markup: mainKeyboard() });
+  await ctx.editMessageText(homeText(), { parse_mode: "Markdown" });
   await ctx.answerCallbackQuery();
+});
+
+
+// Persistent bottom-menu buttons (Telegram Reply Keyboard)
+bot.hears("👤 پروفایل", async (ctx) => {
+  await ensurePlayer(ctx);
+  const d = await playerData(ctx.from.id);
+  const count = d.companies.reduce((sum,x)=>sum+Number(x.count),0);
+  await ctx.reply(
+    `👤 پروفایل شما\n\n💰 سرمایه: ${money(d.player.balance)}\n🏢 تعداد شرکت‌ها: ${count}\n📈 درآمد هر ساعت: ${money(d.income)}\n🗓️ عضویت: ${new Date(d.player.created_at).toLocaleDateString("fa-IR")}`,
+    { reply_markup: bottomKeyboard() }
+  );
+});
+
+bot.hears("🏢 شرکت‌های من", async (ctx) => {
+  await ensurePlayer(ctx);
+  const d = await playerData(ctx.from.id);
+  if (!d.companies.length) {
+    await ctx.reply("هنوز شرکتی نداری. از بخش «خرید شرکت» اولین کسب‌وکارت رو بخر!", {
+      reply_markup: new InlineKeyboard().text("🛒 خرید شرکت", "buy_menu")
+    });
+  } else {
+    const lines = d.companies.map(c => {
+      const t = COMPANY_TYPES.find(x=>x.id===c.company_type);
+      return `${t?.name ?? c.company_type} — سطح ${c.level} × ${c.count}`;
+    });
+    await ctx.reply(`🏢 شرکت‌های شما\n\n${lines.join("\\n")}\n\n📈 درآمد ساعتی: ${money(d.income)}`, {
+      reply_markup: new InlineKeyboard().text("🔧 ارتقای شرکت", "upgrade_menu")
+    });
+  }
+});
+
+bot.hears("🛒 خرید شرکت", async (ctx) => {
+  await ensurePlayer(ctx);
+  const kb = new InlineKeyboard();
+  for (const c of COMPANY_TYPES) kb.text(`${c.name} | ${money(c.price)}`, `buy:${c.id}`).row();
+  await ctx.reply("🛒 فروشگاه شرکت‌ها\n\nیک کسب‌وکار برای خرید انتخاب کن:", { reply_markup: kb });
+});
+
+bot.hears("💵 دریافت درآمد", async (ctx) => {
+  await ensurePlayer(ctx);
+  await ctx.reply("برای دریافت درآمد، دکمه زیر رو بزن:", {
+    reply_markup: new InlineKeyboard().text("💵 دریافت درآمد", "collect")
+  });
+});
+
+bot.hears("🏆 رتبه‌بندی", async (ctx) => {
+  await ensurePlayer(ctx);
+  const q = await pool.query("SELECT display_name,balance FROM players ORDER BY balance DESC LIMIT 10");
+  const leaderboardText = q.rows.length ? q.rows.map((p,i)=>`${i+1}. ${p.display_name} — ${money(p.balance)}`).join("\\n") : "هنوز بازیکنی ثبت نشده.";
+  await ctx.reply(`🏆 رتبه‌بندی سرمایه‌داران\n\n${leaderboardText}`, { reply_markup: bottomKeyboard() });
+});
+
+bot.hears("🎁 پاداش روزانه", async (ctx) => {
+  await ensurePlayer(ctx);
+  await ctx.reply("برای دریافت پاداش روزانه، دکمه زیر رو بزن:", {
+    reply_markup: new InlineKeyboard().text("🎁 دریافت پاداش", "daily")
+  });
+});
+
+bot.hears("ℹ️ راهنما", async (ctx) => {
+  await ensurePlayer(ctx);
+  await ctx.reply("ℹ️ راهنمای Open Many\n\n1. از فروشگاه شرکت بخر.\n2. شرکت‌ها به مرور درآمد تولید می‌کنند.\n3. درآمدت را دریافت کن.\n4. شرکت‌ها را ارتقا بده.\n5. هر روز پاداش بگیر و در رتبه‌بندی پیشرفت کن.", {
+    reply_markup: bottomKeyboard()
+  });
 });
 
 bot.catch((err) => console.error("Bot error:", err));
