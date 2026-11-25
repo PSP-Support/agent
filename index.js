@@ -103,7 +103,7 @@ async function dashboardText(id) {
       const income = type ? type.income * Number(c.level) * Number(c.count) : 0;
       return `  ${type?.name ?? c.company_type} | سطح ${c.level} × ${c.count} | ${money(income)}/ساعت`;
     });
-  const companySection = rows.length ? rows.join("\\n") : "  هنوز کسب‌وکاری خریداری نکردی؛ از فروشگاه شروع کن!";
+  const companySection = rows.length ? rows.join("\n") : "  هنوز کسب‌وکاری خریداری نکردی؛ از فروشگاه شروع کن!";
   return `🌆 *OPEN MANY | مرکز فرماندهی*
 
 ━━━━━━━━━━━━━━━━
@@ -386,7 +386,7 @@ bot.hears("🏅 دستاوردها", async (ctx) => {
     [d.income >= 50000, "🚀 سرمایه‌دار بزرگ", "درآمد ۵۰,۰۰۰ دلار در ساعت"],
     [Number(d.player.balance) >= 1000000, "💎 میلیونر", "سرمایه نقدی ۱ میلیون دلار"]
   ];
-  const text = achievements.map(([done,title,goal]) => `${done ? "✅" : "🔒"} ${title}\n   ${goal}`).join("\\n\\n");
+  const text = achievements.map(([done,title,goal]) => `${done ? "✅" : "🔒"} ${title}\n   ${goal}`).join("\n\n");
   await ctx.reply(`🏅 *تالار دستاوردها*\n\n${text}\n\n${achievements.filter(x=>x[0]).length} از ${achievements.length} دستاورد باز شده`, {
     parse_mode: "Markdown", reply_markup: bottomKeyboard()
   });
