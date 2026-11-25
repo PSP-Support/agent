@@ -91,6 +91,24 @@ async function companyOperations(pool,id,m) {
   return {gross:gross,employees,payrollBase,morale:morale/count,condition:condition/count,stock,companies:q.rows.length};
 }
 
+export async function getEconomyReport(pool,id) {
+  const m=await market(pool),ops=await companyOperations(pool,id,m);
+  const f=costs(ops.gross*Number(m.demand_index),m,ops.payrollBase);
+  const debt=await pool.query("SELECT COALESCE(SUM(remaining),0)::bigint debt FROM player_loans WHERE telegram_id=$1 AND status='active'",[String(id)]);
+  const companies=await pool.query("SELECT id,company_name,company_type,level,employee_count,morale,equipment_condition,inventory_units,sale_price FROM player_companies WHERE telegram_id=$1 ORDER BY id",[String(id)]);
+  const hourlyWage={cafe:120,shop:140,bakery:150,restaurant:180,salon:130,gym:150,farm:110,logistics:200,construction:240,textile:170,autoservice:180,clinic:300,education:180,software:600,marketing:350,ecommerce:260,hotel:220,manufacturing:250,fintech:650,telecom:500,apple_brand:100,samsung_brand:100,toyota_brand:100,microsoft_brand:100,amazon_brand:100,google_brand:100,tesla_brand:100,sony_brand:100};
+  const companyDetails=companies.rows.map(c=>{
+    const target={cafe:2,shop:3,bakery:4,restaurant:7,salon:3,gym:5,farm:6,logistics:10,construction:12,textile:9,autoservice:5,clinic:14,education:6,software:8,marketing:7,ecommerce:6,hotel:22,manufacturing:35,fintech:18,telecom:30}[c.company_type]||2;
+    const base={cafe:900,shop:1400,bakery:2100,restaurant:3500,salon:1250,gym:3000,farm:2400,logistics:5200,construction:6500,textile:4300,autoservice:2300,clinic:7800,education:3300,software:6800,marketing:4200,ecommerce:5600,hotel:11500,manufacturing:17000,fintech:23000,telecom:32000}[c.company_type]||0;
+    const staffing=Math.max(.45,Math.min(1.2,Number(c.employee_count)/target));
+    const gross=base*Number(c.level)*staffing*(.65+Number(c.morale)/200)*(.55+Number(c.equipment_condition)/220)*Number(m.demand_index);
+    const payroll=Number(c.employee_count)*(hourlyWage[c.company_type]||150)*Number(m.wage_index);
+    const materials=gross*.14*Number(m.materials_price),utilities=gross*.07*Number(m.energy_price),maintenance=gross*.09;
+    return {...c,gross,payroll,materials,utilities,maintenance,net:Math.max(0,gross-payroll-materials-utilities-maintenance-Math.max(0,gross-payroll-materials-utilities-maintenance)*.12)};
+  });
+  return {market:m,operations:ops,finance:f,debt:Number(debt.rows[0].debt),companies:companyDetails};
+}
+
 export async function netHourlyForPlayer(pool,id) {
   const m=await market(pool);
   const ops=await companyOperations(pool,id,m);
