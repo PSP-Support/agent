@@ -25,10 +25,11 @@ const COMPANY_TYPES = [
 
 const money = (n) => "$" + Math.floor(Number(n)).toLocaleString("en-US");
 const bottomKeyboard = () => new Keyboard()
-  .text("👤 پروفایل").text("🏢 شرکت‌های من").row()
+  .text("📊 وضعیت بازی").text("🏢 شرکت‌های من").row()
   .text("🛒 خرید شرکت").text("💵 دریافت درآمد").row()
-  .text("🏆 رتبه‌بندی").text("🎁 پاداش روزانه").row()
-  .text("ℹ️ راهنما").resized().persistent();
+  .text("🧭 مأموریت روزانه").text("🏅 دستاوردها").row()
+  .text("👤 پروفایل").text("🏆 رتبه‌بندی").row()
+  .text("🎁 پاداش روزانه").text("ℹ️ راهنما").resized().persistent();
 
 async function initDb() {
   await pool.query(`
@@ -49,6 +50,7 @@ async function initDb() {
       bought_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
     CREATE INDEX IF NOT EXISTS player_companies_owner_idx ON player_companies(telegram_id);
+    ALTER TABLE players ADD COLUMN IF NOT EXISTS last_mission DATE;
   `);
 }
 
@@ -81,13 +83,56 @@ async function playerData(id) {
   return { player: p.rows[0], companies: c.rows, income: Number(totalIncome.rows[0].income) };
 }
 
+async function dashboardText(id) {
+  const d = await playerData(id);
+  const p = d.player;
+  const companyCount = d.companies.reduce((sum, c) => sum + Number(c.count), 0);
+  const assetValue = d.companies.reduce((sum, c) => {
+    const type = COMPANY_TYPES.find(x => x.id === c.company_type);
+    return sum + (type ? type.price * Number(c.level) * Number(c.count) : 0);
+  }, 0);
+  const rank = await pool.query(
+    "SELECT COUNT(*)::int + 1 AS rank FROM players WHERE balance > $1",
+    [p.balance]
+  );
+  const dailyReady = !p.last_daily || new Date(p.last_daily).toISOString().slice(0,10) !== new Date().toISOString().slice(0,10);
+  const rows = d.companies
+    .sort((a,b) => Number(b.count) - Number(a.count))
+    .map(c => {
+      const type = COMPANY_TYPES.find(x => x.id === c.company_type);
+      const income = type ? type.income * Number(c.level) * Number(c.count) : 0;
+      return `  ${type?.name ?? c.company_type} | سطح ${c.level} × ${c.count} | ${money(income)}/ساعت`;
+    });
+  const companySection = rows.length ? rows.join("\\n") : "  هنوز کسب‌وکاری خریداری نکردی؛ از فروشگاه شروع کن!";
+  return `🌆 *OPEN MANY | مرکز فرماندهی*
+
+━━━━━━━━━━━━━━━━
+💰 سرمایه نقدی: ${money(p.balance)}
+🏢 تعداد کسب‌وکارها: ${companyCount}
+📈 درآمد فعال: ${money(d.income)} / ساعت
+🏦 ارزش تقریبی دارایی‌ها: ${money(assetValue)}
+🏆 رتبه سرمایه: #${rank.rows[0].rank}
+
+━━━━━━━━━━━━━━━━
+🏭 *وضعیت شرکت‌ها*
+${companySection}
+
+━━━━━━━━━━━━━━━━
+📌 *وضعیت اقتصاد*
+• درآمد ۲۴ ساعت (حداکثر): ${money(d.income * 24)}
+• پاداش روزانه: ${dailyReady ? "آماده دریافت 🎁" : "دریافت شده ✓"}
+• مرحله بعد: ${companyCount < 3 ? "خرید ۳ کسب‌وکار" : d.income < 50000 ? "افزایش درآمد به ۵۰ هزار در ساعت" : "ساخت امپراتوری اقتصادی 🚀"}
+
+_برای مشاهده جزئیات یا انجام عملیات از منوی پایین استفاده کن._`;
+}
+
 function homeText() {
   return `🏙️ *OPEN MANY*\n\nبه امپراتوری اقتصادی خودت خوش اومدی!\nشرکت بخر، درآمد جمع کن و در رتبه‌بندی بالا برو.`;
 }
 
 bot.command("start", async (ctx) => {
   await ensurePlayer(ctx);
-  await ctx.reply(homeText(), { parse_mode: "Markdown", reply_markup: bottomKeyboard() });
+  await ctx.reply(await dashboardText(ctx.from.id), { parse_mode: "Markdown", reply_markup: bottomKeyboard() });
 });
 bot.command("menu", async (ctx) => {
   await ensurePlayer(ctx);
@@ -267,10 +312,85 @@ bot.callbackQuery("help", async (ctx) => {
 });
 
 bot.callbackQuery("home", async (ctx) => {
-  await ctx.editMessageText(homeText(), { parse_mode: "Markdown" });
+  await ctx.editMessageText(await dashboardText(ctx.from.id), { parse_mode: "Markdown" });
   await ctx.answerCallbackQuery();
 });
 
+
+
+// Dashboard: full game overview and company status
+bot.hears("📊 وضعیت بازی", async (ctx) => {
+  await ensurePlayer(ctx);
+  await ctx.reply(await dashboardText(ctx.from.id), {
+    parse_mode: "Markdown",
+    reply_markup: bottomKeyboard()
+  });
+});
+
+// Daily mission: own at least one business and claim a small bonus once per UTC day.
+bot.hears("🧭 مأموریت روزانه", async (ctx) => {
+  await ensurePlayer(ctx);
+  const d = await playerData(ctx.from.id);
+  const count = d.companies.reduce((sum,c)=>sum+Number(c.count),0);
+  const q = await pool.query("SELECT last_mission FROM players WHERE telegram_id=$1", [String(ctx.from.id)]);
+  const today = new Date().toISOString().slice(0,10);
+  const claimed = q.rows[0]?.last_mission && new Date(q.rows[0].last_mission).toISOString().slice(0,10) === today;
+  const completed = count >= 1;
+  const kb = new InlineKeyboard();
+  if (completed && !claimed) kb.text("🎁 دریافت جایزه ۵,۰۰۰", "mission_claim").row();
+  kb.text("📊 مشاهده وضعیت بازی", "home");
+  await ctx.reply(
+    `🧭 *مأموریت روزانه*\n\n🎯 هدف: داشتن حداقل یک کسب‌وکار\n📍 پیشرفت: ${Math.min(count,1)}/1\n${completed ? "✅ مأموریت تکمیل شده!" : "🔒 هنوز کسب‌وکاری نداری"}\n\n🎁 جایزه: ${money(5000)}\n${claimed ? "پاداش امروز دریافت شده ✓" : "هر روز یک بار قابل دریافت"}`,
+    { parse_mode: "Markdown", reply_markup: kb }
+  );
+});
+
+bot.callbackQuery("mission_claim", async (ctx) => {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const p = await client.query("SELECT balance,last_mission FROM players WHERE telegram_id=$1 FOR UPDATE", [String(ctx.from.id)]);
+    if (!p.rows.length) throw new Error("Player missing");
+    const today = new Date().toISOString().slice(0,10);
+    if (p.rows[0].last_mission && new Date(p.rows[0].last_mission).toISOString().slice(0,10) === today) {
+      await client.query("ROLLBACK");
+      return ctx.answerCallbackQuery({ text: "پاداش مأموریت امروز را قبلاً گرفتی.", show_alert: true });
+    }
+    const count = await client.query("SELECT COUNT(*)::int AS count FROM player_companies WHERE telegram_id=$1", [String(ctx.from.id)]);
+    if (Number(count.rows[0].count) < 1) {
+      await client.query("ROLLBACK");
+      return ctx.answerCallbackQuery({ text: "برای تکمیل مأموریت، اول یک شرکت بخر.", show_alert: true });
+    }
+    await client.query("UPDATE players SET balance=balance+5000,last_mission=$2 WHERE telegram_id=$1", [String(ctx.from.id), today]);
+    await client.query("COMMIT");
+    await ctx.answerCallbackQuery({ text: "۵,۰۰۰ دلار جایزه مأموریت دریافت شد! 🎉" });
+    await ctx.reply(await dashboardText(ctx.from.id), { parse_mode: "Markdown", reply_markup: bottomKeyboard() });
+  } catch (e) {
+    await client.query("ROLLBACK");
+    console.error(e);
+    await ctx.answerCallbackQuery({ text: "خطا در دریافت جایزه مأموریت.", show_alert: true });
+  } finally { client.release(); }
+});
+
+// Achievement board is calculated from the player's real game progress.
+bot.hears("🏅 دستاوردها", async (ctx) => {
+  await ensurePlayer(ctx);
+  const d = await playerData(ctx.from.id);
+  const count = d.companies.reduce((sum,c)=>sum+Number(c.count),0);
+  const typesOwned = new Set(d.companies.map(c=>c.company_type)).size;
+  const achievements = [
+    [count >= 1, "🏪 اولین کسب‌وکار", "خرید اولین شرکت"],
+    [count >= 3, "🏙️ کارآفرین", "مالک ۳ کسب‌وکار"],
+    [typesOwned >= 4, "🌐 امپراتوری متنوع", "مالک هر ۴ نوع کسب‌وکار"],
+    [d.income >= 10000, "💵 جریان نقدی", "درآمد ۱۰,۰۰۰ دلار در ساعت"],
+    [d.income >= 50000, "🚀 سرمایه‌دار بزرگ", "درآمد ۵۰,۰۰۰ دلار در ساعت"],
+    [Number(d.player.balance) >= 1000000, "💎 میلیونر", "سرمایه نقدی ۱ میلیون دلار"]
+  ];
+  const text = achievements.map(([done,title,goal]) => `${done ? "✅" : "🔒"} ${title}\n   ${goal}`).join("\\n\\n");
+  await ctx.reply(`🏅 *تالار دستاوردها*\n\n${text}\n\n${achievements.filter(x=>x[0]).length} از ${achievements.length} دستاورد باز شده`, {
+    parse_mode: "Markdown", reply_markup: bottomKeyboard()
+  });
+});
 
 // Persistent bottom-menu buttons (Telegram Reply Keyboard)
 bot.hears("👤 پروفایل", async (ctx) => {
