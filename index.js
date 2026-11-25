@@ -120,7 +120,7 @@ const sectionKeyboard = (section) => {
   else if (section === "finance") k.text("💵 دریافت درآمد").text("🏦 بانک و وام").row().text("📒 دفتر مالی").row();
   else if (section === "market") k.text("🌐 اقتصاد واقعی").row();
   else if (section === "progress") k.text("🧭 مأموریت روزانه").text("🏅 دستاوردها").row().text("🏆 رتبه‌بندی").text("🎁 پاداش روزانه").row();
-  else if (section === "more") k.text("👤 پروفایل").text("ℹ️ راهنما").row().text("🧰 دسترسی آسان").row();
+  else if (section === "more") k.text("👤 پروفایل").text("ℹ️ راهنما").row().text("📘 راهنمای مرحله‌ای").text("🧰 دسترسی آسان").row();
   return k.text("🔙 منوی اصلی").resized().persistent(false);
 };
 const bottomKeyboard = (userId) => {
@@ -275,10 +275,11 @@ bot.command("start", async (ctx) => {
 });
 
 bot.hears("🧰 دسترسی آسان", async ctx => {
-  const userCommands = "/start — ورود و داشبورد\n/menu — نمایش منوی بازی\n/myid — نمایش شناسه تلگرام\n\n🌐 اقتصاد واقعی — بازار و سود و زیان\n🏦 بانک و وام — اعتبار و تسویه\n👨‍💼 مدیریت شرکت‌ها — استخدام و تعمیر\n📒 دفتر مالی — تاریخچه تراکنش‌هان\nدکمه‌های بازی از کیبورد پایین در دسترس هستند.";
-  const adminCommands = "\n\n🛡️ دستورات مدیر کل:\n/admin — پنل مدیریت\n/pending — درخواست‌های عضویت\n/approve ID — تأیید بازیکن\n/reject ID — رد درخواست\n/ban ID — مسدود کردن\n/unban ID — رفع مسدودی\n/players — فهرست بازیکنان\n/balance ID — مشاهده موجودی\n/setbalance ID AMOUNT — تنظیم موجودی\n/give ID AMOUNT — هدیه پول\n/broadcast متن — پیام همگانی";
+  const userCommands = "/start — ورود و داشبورد\n/menu — نمایش منوی بازی\n/guide — راهنمای مرحله‌ای بازی\n/myid — نمایش شناسه تلگرام\n\n🌐 اقتصاد واقعی — بازار و سود و زیان\n🏦 بانک و وام — اعتبار و تسویه\n👨‍💼 مدیریت شرکت‌ها — استخدام و تعمیر\n📒 دفتر مالی — تاریخچه تراکنش‌هان\nدکمه‌های بازی از کیبورد پایین در دسترس هستند.";
+  const adminCommands = "\n\n🛡️ دستورات مدیر کل:\n/admin یا /panel — پنل مدیریت مرحله‌ای\n/pending — درخواست‌های عضویت\n/approve ID — تأیید بازیکن\n/reject ID — رد درخواست\n/ban ID — مسدود کردن\n/unban ID — رفع مسدودی\n/players — فهرست بازیکنان\n/balance ID — مشاهده موجودی\n/setbalance ID AMOUNT — تنظیم موجودی\n/give ID AMOUNT — هدیه پول\n/broadcast متن — پیام همگانی";
   await ctx.reply("🧰 دسترسی آسان\n\n"+userCommands+(String(ctx.from.id)===ownerTelegramId?adminCommands:""), {reply_markup:bottomKeyboard(ctx.from.id)});
 });
+bot.hears("📘 راهنمای مرحله‌ای",async ctx=>{const kb=new InlineKeyboard().text("۱. شروع بازی","guide:1").row().text("۲. ساخت شرکت","guide:2").row().text("۳. درآمد و امور مالی","guide:3").row().text("۴. پیشرفت و پاداش","guide:4");await ctx.reply("📘 راهنمای مرحله‌ای\n\nیک مرحله را انتخاب کن:",{reply_markup:kb});});
 bot.command("guide",async ctx=>{
  const kb=new InlineKeyboard().text("۱. شروع بازی","guide:1").row().text("۲. ساخت شرکت","guide:2").row().text("۳. درآمد و امور مالی","guide:3").row().text("۴. پیشرفت و پاداش","guide:4").row().text("🏠 منوی بازی","guide:menu");
  await ctx.reply("📘 راهنمای مرحله‌ای Open Many\n\nمرحله موردنظر را انتخاب کن تا راهنمای کوتاه و دکمه اقدام را ببینی.",{reply_markup:kb});
