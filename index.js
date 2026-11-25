@@ -638,7 +638,7 @@ bot.command("economy",ctx=>ctx.reply("🌐 گزارش اقتصاد و سود و 
 bot.command("bank",ctx=>ctx.reply("🏦 بانک، اعتبار و تسویه از بخش «امور مالی» در منوی پایین در دسترس است.",{reply_markup:new Keyboard().text("💰 امور مالی").resized().persistent(false)}));
 bot.command("progress",ctx=>ctx.reply("🏆 مأموریت‌ها، دستاوردها و رتبه‌بندی از بخش «رقابت و پیشرفت» در منوی پایین در دسترس است.",{reply_markup:new Keyboard().text("🏆 رقابت و پیشرفت").resized().persistent(false)}));
 
-\nfunction isOwner(ctx){return !!ownerTelegramId&&String(ctx.from?.id)===ownerTelegramId;}
+function isOwner(ctx){return !!ownerTelegramId&&String(ctx.from?.id)===ownerTelegramId;}
 async function adminOnly(ctx){if(isOwner(ctx))return true;if(ctx.callbackQuery)await ctx.answerCallbackQuery({text:"فقط مدیر کل دسترسی دارد.",show_alert:true}).catch(()=>{});else await ctx.reply("⛔ فقط مدیر کل دسترسی دارد.");return false;}
 function adminKeyboard(){return new InlineKeyboard().text("🕓 درخواست‌ها","admin:pending").row().text("👥 بازیکنان","admin:players").row().text("📊 آمار","admin:stats");}
 bot.command("admin",async ctx=>{if(!await adminOnly(ctx))return;const q=await pool.query("SELECT COUNT(*)::int total,COUNT(*) FILTER(WHERE approval_status='pending')::int pending FROM players");await ctx.reply("🛡️ پنل مدیر کل\nکل بازیکنان: "+q.rows[0].total+"\nدر انتظار تأیید: "+q.rows[0].pending+"\n\n/pending درخواست‌ها\n/players بازیکنان\n/approve ID تأیید\n/reject ID رد\n/ban ID و /unban ID\n/balance ID\n/setbalance ID مبلغ\n/give ID مبلغ\n/broadcast پیام",{reply_markup:adminKeyboard()});});
