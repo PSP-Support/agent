@@ -259,6 +259,7 @@ bot.callbackQuery("collect", async (ctx) => {
       return ctx.answerCallbackQuery({ text: "هنوز درآمدی برای دریافت نداری. شرکت بخر یا کمی صبر کن!", show_alert: true });
     }
     await client.query("UPDATE players SET balance=balance+$2,last_collect=NOW() WHERE telegram_id=$1", [String(ctx.from.id), earned]);
+    await client.query("INSERT INTO finance_transactions(telegram_id,transaction_type,amount,description) VALUES($1,$2,$3,$4)",[String(ctx.from.id),"operating_income",earned,"سود عملیاتی خالص پس از هزینه‌ها"]);
     await client.query("COMMIT");
     await ctx.answerCallbackQuery({ text: `درآمد ${money(earned)} دریافت شد!` });
     await ctx.editMessageText(`💵 *درآمد دریافت شد!*\n\nمبلغ: ${money(earned)}\n💰 درآمد به سرمایه‌ات اضافه شد.`, {
