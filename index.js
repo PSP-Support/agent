@@ -450,7 +450,7 @@ bot.on("callback_query:data",async ctx=>{try{await ctx.answerCallbackQuery({text
   const ids=(await pool.query("SELECT telegram_id FROM game_players WHERE approved=TRUE")).rows;
   for(const row of ids){
    const result=await settleOne(row.telegram_id);
-   if(result)try{await bot.api.sendMessage(row.telegram_id,`📜 تسویه‌ی خودکار شاه شاهان\nتعداد نوبت: ${result.ticks}\nدرآمد سازه‌ها: ${money(result.buildingIncome)}\nتغییر خزانه: ${money(result.net)}\nمانده‌ی خزانه: ${money(result.balance)}`);}catch{}
+   if(result)try{await bot.api.sendMessage(row.telegram_id,`📜 تسویه‌ی خودکار شاه شاهان\nتعداد نوبت: ${result.ticks}\n💵 درآمد به خزانه: ${money(result.net)}\n💰 مانده‌ی خزانه: ${money(result.balance)}\n\n🌾 مصرف غله: ${fmt(result.grainUsed)} / ${fmt(result.grainNeed)}\n🪨 مصرف زغال: ${fmt(result.coalUsed)} / ${fmt(result.coalNeed)}\n⛓ مصرف آهن: ${fmt(result.ironUsed)} / ${fmt(result.ironNeed)}\n🧵 مصرف پارچه: ${fmt(result.clothUsed)} / ${fmt(result.clothNeed)}\n⚡ مصرف برق: ${fmt(result.electricityUsed)} / ${fmt(result.electricityNeed)}\n🛢 مصرف نفت: ${fmt(result.oilConsumed)} / ${fmt(result.oilNeed)}\n\n${result.shortages?"⚠️ کمبود منابع باعث کاهش ثبات شد.":"✅ هزینه‌ی نقدی روزانه: $0"}`);}catch{}
   }
  }catch(e){console.error("Automatic settlement error:",e);}
 },60000).unref();
