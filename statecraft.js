@@ -27,7 +27,7 @@ async function report(pool,uid){const r=await calc(pool,uid);if(!r)return "کش�
 هزینه روزانه تخمینی: ${fmt(r.expense*24)}
 ${r.net>=0?"🟢 مازاد":"🔴 کسری"} روزانه: ${fmt(Math.abs(r.net*24))}
 _هر سه ساعت یک‌هشتم درآمد/هزینه روزانه به خزانه تسویه می‌شود._`;}
-const root=()=>new InlineKeyboard().text("🏛️ خزانه","nation:treasury").text("🧾 مالیات","nation:tax").row().text("🏭 صنعت و کشاورزی","nation:production").text("👥 مردم","nation:people").row().text("🪖 ارتش و ناوگان","nation:army").text("🌍 دیپلماسی","nation:diplomacy").row().text("🤝 تجارت کشورها","nation:trade").text("📜 رویدادهای دربار","nation:event").row().text("📒 دفتر مالی","nation:ledger").text("🔄 گزارش کامل","nation:home");
+export async function getNationalOverview(pool,uid){return report(pool,uid);}\nconst root=()=>new InlineKeyboard().text("🏛️ خزانه","nation:treasury").text("🧾 مالیات","nation:tax").row().text("🏭 صنعت و کشاورزی","nation:production").text("👥 مردم","nation:people").row().text("🪖 ارتش و ناوگان","nation:army").text("🌍 دیپلماسی","nation:diplomacy").row().text("🤝 تجارت کشورها","nation:trade").text("📜 رویدادهای دربار","nation:event").row().text("📒 دفتر مالی","nation:ledger").text("🔄 گزارش کامل","nation:home");
 export async function registerStatecraft(bot,pool){
 const home=async ctx=>{await ensure(pool,ctx.from.id);return ctx.reply(await report(pool,ctx.from.id),{reply_markup:root()});};
 bot.hears("📊 مرکز بازی",home);bot.hears("🏛️ دربار و کشور",home);bot.command("realm",home);
