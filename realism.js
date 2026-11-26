@@ -128,7 +128,8 @@ export async function getEconomyReport(pool,id) {
     const materials=gross*.14*Number(m.materials_price),utilities=gross*.07*Number(m.energy_price),maintenance=gross*.09;
     return {...c,gross,payroll,materials,utilities,maintenance,net:Math.max(0,gross-payroll-materials-utilities-maintenance-Math.max(0,gross-payroll-materials-utilities-maintenance)*.12)};
   });
-  return {market:m,operations:ops,finance:f,debt:Number(debt.rows[0].debt),companies:companyDetails};
+  const telecom=await pool.query("SELECT ts.service_key,ts.price_per_period,ts.status,pc.company_name provider_name,bc.company_name buyer_name,pc.telegram_id provider_owner,bc.telegram_id buyer_owner FROM telecom_subscriptions ts JOIN player_companies pc ON pc.id=ts.provider_company_id JOIN player_companies bc ON bc.id=ts.buyer_company_id WHERE pc.telegram_id=$1 OR bc.telegram_id=$1 ORDER BY ts.id",[String(id)]);
+  return {market:m,operations:ops,finance:f,debt:Number(debt.rows[0].debt),companies:companyDetails,telecom:telecom.rows};
 }
 
 export async function netHourlyForPlayer(pool,id) {
