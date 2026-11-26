@@ -285,14 +285,6 @@ async function detailedStatusText(id) {
     "📅 سود یک روز کامل (اگر همین شرایط ادامه یابد): "+money(f.net*24),
     "🏦 بدهی بانکی: "+money(r.debt),
     "",
-    "📡 *۵. خدمات مخابراتی بین بازیکنان*",
-    ...(r.telecom.length?r.telecom.map(x=>{
-      const serviceNames={mobile:"اینترنت موبایل",fiber:"اینترنت فیبر",cloud:"سرور و فضای ابری",enterprise:"ارتباطات سازمانی",security:"امنیت شبکه"};
-      const active=x.status==="active"?"فعال":"متوقف";
-      if(String(x.buyer_owner)===String(id))return "🔻 "+(serviceNames[x.service_key]||x.service_key)+" | خرید برای "+(x.buyer_name||"شرکت شما")+" | "+money(x.price_per_period)+" هر ۳ ساعت | "+active;
-      return "🟢 "+(serviceNames[x.service_key]||x.service_key)+" | فروش به "+(x.buyer_name||"شرکت خریدار")+" | "+money(x.price_per_period)+" هر ۳ ساعت | "+active;
-    }):["هنوز خرید یا فروش خدمات مخابراتی ندارید."]),
-    "",
     "👥 *۲. وضعیت کلی کسب‌وکارها*",
     "🏢 تعداد شرکت‌ها: "+o.companies,
     "👷 مجموع کارکنان: "+o.employees+" نفر",
@@ -323,7 +315,16 @@ async function detailedStatusText(id) {
     lines.push("💰 *سود تقریبی این شرکت: "+money(c.net)+" در ساعت*");
     if(c.sale_price) lines.push("🏷️ قیمت فروش تعیین‌شده: "+money(c.sale_price));
   }
-  lines.push("","ℹ️ *توضیح:* اعداد درآمد و سود، محاسبه‌ای بر اساس شرایط فعلی بازار هستند و ممکن است با تغییر تقاضا و هزینه‌ها تغییر کنند.");
+  lines.push("","📡 *خدمات مخابراتی بین بازیکنان*");
+  if(r.telecom.length){
+    const serviceNames={mobile:"اینترنت موبایل",fiber:"اینترنت فیبر",cloud:"سرور و فضای ابری",enterprise:"ارتباطات سازمانی",security:"امنیت شبکه"};
+    for(const x of r.telecom){
+      const active=x.status==="active"?"فعال":"متوقف";
+      if(String(x.buyer_owner)===String(id))lines.push("🔻 "+(serviceNames[x.service_key]||x.service_key)+" | خرید برای "+(x.buyer_name||"شرکت شما")+" | "+money(x.price_per_period)+" هر ۳ ساعت | "+active);
+      else lines.push("🟢 "+(serviceNames[x.service_key]||x.service_key)+" | فروش به "+(x.buyer_name||"شرکت خریدار")+" | "+money(x.price_per_period)+" هر ۳ ساعت | "+active);
+    }
+  }else lines.push("هنوز خرید یا فروش خدمات مخابراتی ندارید.");
+    lines.push("","ℹ️ *توضیح:* اعداد درآمد و سود، محاسبه‌ای بر اساس شرایط فعلی بازار هستند و ممکن است با تغییر تقاضا و هزینه‌ها تغییر کنند.");
   const chunks=[];let current="";
   for(const line of lines){
     const candidate=current?current+"\n"+line:line;
