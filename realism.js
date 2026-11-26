@@ -266,7 +266,7 @@ export async function registerRealism(bot,pool) {
     await ctx.answerCallbackQuery();
   });
 
-  bot.callbackQuery(/^tel:cancel:(\\d+)$/,async ctx=>{
+  bot.callbackQuery(/^tel:cancel:(\d+)$/,async ctx=>{
     const id=Number(ctx.match[1]);
     const q=await pool.query("UPDATE telecom_subscriptions ts SET status='cancelled' FROM player_companies bc WHERE ts.id=$1 AND bc.id=ts.buyer_company_id AND bc.telegram_id=$2 AND ts.status='active' RETURNING ts.id",[id,String(ctx.from.id)]);
     if(!q.rows.length)return ctx.answerCallbackQuery({text:"اشتراک فعال پیدا نشد.",show_alert:true});
