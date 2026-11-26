@@ -1,32 +1,30 @@
-# شاه شاهان | Shah Shahanshah
+# شاه شاهان
 
-A historical Telegram strategy and national-governance game set in 1914.
+بازی راهبرد تاریخی و اداره‌ی کشور در تلگرام؛ سناریوی آغازین سال ۱۹۱۴.
 
-## Run on Railway
+## راه‌اندازی در Railway
 
-Required environment variables:
+متغیرهای محیطی:
 
-- `BOT_TOKEN`: Telegram bot token from BotFather
-- `DATABASE_URL`: Railway PostgreSQL connection string
-- `PORT`: optional; Railway provides this automatically
+- `BOT_TOKEN`: توکن ربات تلگرام
+- `DATABASE_URL`: آدرس اتصال PostgreSQL در Railway
+- `PORT`: اختیاری؛ Railway آن را تعیین می‌کند
 
-The service starts with `npm start` and exposes a simple HTTP health response while the Telegram bot runs in long polling mode.
+سرویس با دستور `npm start` اجرا می‌شود و هم‌زمان یک مسیر سلامت HTTP برای بررسی وضعیت دارد. ربات از long polling استفاده می‌کند.
 
-## Gameplay
+## بازی
 
-- Choose a historical country and confirm its 1914 ruler.
-- Manage national treasury, taxes, tariffs, industry, agriculture, population services, wages, army and navy.
-- The national financial model calculates daily income and expenses.
-- Each three-hour settlement pays one eighth of the current daily net balance, up to eight settlements per day.
-- Review financial records in the ledger.
-- Trade resources between player countries and send diplomatic alliance proposals.
+- انتخاب کشور تاریخی و تأیید فرمانروای سال ۱۹۱۴
+- مدیریت خزانه، مالیات، تعرفه، صنعت، کشاورزی، خدمات عمومی، حقوق، ارتش و ناوگان
+- محاسبه‌ی درآمد و هزینه‌ی روزانه
+- تسویه‌ی خودکار هر سه ساعت؛ هر نوبت برابر یک‌هشتم خالص روزانه است
+- دفتر حساب برای ثبت تسویه‌ها و هزینه‌ها
+- تجارت منابع بین بازیکنان و پیشنهاد پیمان دیپلماتیک
 
-All player actions are performed through Telegram inline buttons.
+تمام کارهای بازیکن از دکمه‌های تلگرام انجام می‌شود.
 
-## Data
+## ذخیره‌سازی
 
-The game uses PostgreSQL tables created automatically at startup. Player state, ledger entries, relations and market offers are persisted in the database.
+PostgreSQL به‌صورت خودکار جدول‌های مورد نیاز را هنگام شروع ایجاد می‌کند. وضعیت کشور، دفتر حساب، روابط و پیشنهادهای بازار در پایگاه داده ذخیره می‌شوند.
 
-## Note
-
-This is a fresh core rewrite. Legacy company/tycoon modules have been removed from the active source.
+این نسخه هسته‌ی بازی را از نو بازنویسی کرده و ماژول‌های قدیمی شرکت‌داری را از مسیر اجرایی حذف کرده است.
