@@ -271,27 +271,28 @@ async function dashboardText(id) {
       const income = type ? type.income * Number(c.level) * Number(c.count) : 0;
       return `  ${type?.name ?? c.company_type} | سطح ${c.level} × ${c.count} | ${money(income)}/ساعت`;
     });
-  const companySection = rows.length ? rows.join("\n") : "  هنوز کسب‌وکاری خریداری نکردی؛ از فروشگاه شروع کن!";
-  const identity = p.startup_name ? `\n🚀 *${p.startup_name}*\n_${p.startup_tagline || "استارتاپ در مسیر رشد"}_ | 📍 ${p.startup_city || "شهر ثبت نشده"}\n` : "\n🚀 استارتاپ جدید | آماده شروع مسیر اقتصادی\n";
-  return `🌆 *OPEN MANY | مرکز فرماندهی*${identity}
+  const companySection = rows.length ? rows.join("\n") : "  هنوز دارایی یا نهاد اقتصادی ثبت نشده است.";
+  const historic=getHistoricalCountry(p.historical_country_id);
+  const identity = historic ? `\n👑 *${historic.name}*\n${historic.title}: ${historic.ruler} | ${HISTORICAL_SCENARIO.year}\n🏷️ نام حکومت: ${p.startup_name || "حکومت تازه‌تأسیس"}\n` : p.startup_name ? `\n🚀 *${p.startup_name}*\n_${p.startup_tagline || "استارتاپ در مسیر رشد"}_ | 📍 ${p.startup_city || "شهر ثبت نشده"}\n` : "\n👑 حکومت تازه‌تأسیس | آماده ورود به تاریخ\n";
+  return `👑 *شاه شاهان | دربار سلطنتی*${identity}
 ━━━━━━━━━━━━━━━━
 💰 سرمایه نقدی: ${money(p.balance)}
-🏢 تعداد کسب‌وکارها: ${companyCount}
+🏛️ دارایی‌های اداره‌شده: ${companyCount}
 📈 درآمد فعال: ${money(d.income)} / ساعت
 🏦 ارزش تقریبی دارایی‌ها: ${money(assetValue)}
 🏆 رتبه سرمایه: #${rank.rows[0].rank}
 
 ━━━━━━━━━━━━━━━━
-🏭 *وضعیت شرکت‌ها*
+🏰 *وضعیت قلمرو و دارایی‌ها*
 ${companySection}
 
 ━━━━━━━━━━━━━━━━
 📌 *وضعیت اقتصاد*
 • درآمد ۲۴ ساعت (حداکثر): ${money(d.income * 24)}
 • پاداش روزانه: ${dailyReady ? "آماده دریافت 🎁" : "دریافت شده ✓"}
-• مرحله بعد: ${companyCount < 3 ? "خرید ۳ کسب‌وکار" : d.income < 50000 ? "افزایش درآمد به ۵۰ هزار در ساعت" : "ساخت امپراتوری اقتصادی 🚀"}
+• گام بعد: ${companyCount < 3 ? "سامان‌دهی دارایی‌های نخستین" : d.income < 50000 ? "تقویت پایهٔ اقتصادی حکومت" : "گسترش اقتدار و آبادانی"}
 
-_برای مشاهده جزئیات یا انجام عملیات از منوی پایین استفاده کن._`;
+_برای ادارهٔ کشور، از منوی دربار گزینهٔ موردنظر را برگزین._`;
 }
 
 async function detailedStatusText(id) {
@@ -375,7 +376,7 @@ bot.command("start", async (ctx) => {
   if(status==="banned")return ctx.reply("⛔ دسترسی حساب شما مسدود شده است.");
   if(status==="rejected")return ctx.reply("❌ درخواست قبلی شما رد شده است. برای بررسی دوباره با مدیر کل تماس بگیر.");
   const pending=await pool.query("SELECT id,company_name FROM company_requests WHERE telegram_id=$1 AND request_status='pending' ORDER BY id DESC LIMIT 1",[uid]);
-  if(pending.rows.length)return ctx.reply("🕓 درخواست شما برای شرکت «"+pending.rows[0].company_name+"» ثبت شده و منتظر بررسی مدیر کل است. پس از تأیید، پیام دریافت می‌کنی.");
+  if(pending.rows.length)return ctx.reply("🕓 درخواست حکومت شما برای «"+pending.rows[0].company_name+"» ثبت شده و در انتظار بررسی ناظر است. پس از تأیید، پیام دریافت می‌کنی.");
   return ctx.reply("👑 به شاه شاهان خوش آمدی!\n\nسناریو: "+HISTORICAL_SCENARIO.title+"\n\nابتدا کشور تاریخی خود را برگزین. فرمانروای آن کشور برای سناریوی انتخابی تعیین شده است؛ سپس درخواست حکومت را می‌فرستی.",{reply_markup:registrationKeyboard()});
 });
 bot.hears("🧰 دسترسی آسان", async ctx => {
@@ -689,7 +690,7 @@ bot.callbackQuery(/^econ:reply:(\d+)$/,async ctx=>{
   await ctx.answerCallbackQuery();
   return ctx.reply("↩️ پاسخ به پیام درباره «"+m.company_name+"» را بنویس.\n\nبرای لغو /cancel را بفرست.");
 });
-bot.command("cancel",async ctx=>{const uid=String(ctx.from.id);if(companyNamePending.delete(uid)||companyConfirmPending.delete(uid))return ctx.reply("انتخاب نام و درخواست تأسیس لغو شد.");if(economicCompose.delete(uid))return ctx.reply("ارسال پیام لغو شد.");return ctx.reply("در حال حاضر عملیات در انتظار لغو نداری.");});
+bot.command("cancel",async ctx=>{const uid=String(ctx.from.id);if(companyNamePending.delete(uid)||companyConfirmPending.delete(uid)){historicalCountryPending.delete(uid);return ctx.reply("درخواست و انتخاب کشور لغو شد.");}if(economicCompose.delete(uid))return ctx.reply("ارسال پیام لغو شد.");return ctx.reply("در حال حاضر عملیات در انتظار لغو نداری.");});
 bot.on("message:text",async (ctx,next)=>{
   const uid=String(ctx.from.id);
   const naming=companyNamePending.get(uid);
