@@ -3,6 +3,7 @@ import pg from "pg";
 import http from "node:http";
 import { initRealism, registerRealism, netHourlyForPlayer, getEconomyReport } from "./realism.js";
 import { HISTORICAL_SCENARIO, HISTORICAL_COUNTRIES, getHistoricalCountry } from "./historical.js";
+import { initStatecraft, registerStatecraft, getNationalOverview } from "./statecraft.js";
 
 const { Pool } = pg;
 const token = process.env.BOT_TOKEN;
@@ -109,9 +110,8 @@ const money = (n) => "$" + Math.floor(Number(n)).toLocaleString("en-US");
 // Compact main menu with expandable Telegram reply-keyboard sections.
 const menuSection = new Map();
 const mainKeyboard = () => new Keyboard()
-  .text("📊 مرکز بازی").text("🏢 کسب‌وکارها").row()
-  .text("💰 امور مالی").text("🌐 بازار و اقتصاد").row()
-  .text("🏆 رقابت و پیشرفت").text("⚙️ بیشتر").resized().persistent(true);
+  .text("🏛️ دربار و کشور").row()
+  .text("📘 راهنمای شاه شاهان").resized().persistent(true);
 const quickKeyboard = (userId) => {
   const kb=new InlineKeyboard()
     .text("🏢 کسب‌وکارها","quick:business").text("💰 امور مالی","quick:finance").row()
@@ -252,47 +252,7 @@ async function playerData(id) {
 }
 
 async function dashboardText(id) {
-  const d = await playerData(id);
-  const p = d.player;
-  const companyCount = d.companies.reduce((sum, c) => sum + Number(c.count), 0);
-  const assetValue = d.companies.reduce((sum, c) => {
-    const type = COMPANY_TYPES.find(x => x.id === c.company_type);
-    return sum + (type ? type.price * Number(c.level) * Number(c.count) : 0);
-  }, 0);
-  const rank = await pool.query(
-    "SELECT COUNT(*)::int + 1 AS rank FROM players WHERE balance > $1",
-    [p.balance]
-  );
-  const dailyReady = !p.last_daily || new Date(p.last_daily).toISOString().slice(0,10) !== new Date().toISOString().slice(0,10);
-  const rows = d.companies
-    .sort((a,b) => Number(b.count) - Number(a.count))
-    .map(c => {
-      const type = COMPANY_TYPES.find(x => x.id === c.company_type);
-      const income = type ? type.income * Number(c.level) * Number(c.count) : 0;
-      return `  ${type?.name ?? c.company_type} | سطح ${c.level} × ${c.count} | ${money(income)}/ساعت`;
-    });
-  const companySection = rows.length ? rows.join("\n") : "  هنوز دارایی یا نهاد اقتصادی ثبت نشده است.";
-  const historic=getHistoricalCountry(p.historical_country_id);
-  const identity = historic ? `\n👑 *${historic.name}*\n${historic.title}: ${historic.ruler} | ${HISTORICAL_SCENARIO.year}\n🏷️ نام حکومت: ${p.startup_name || "حکومت تازه‌تأسیس"}\n` : p.startup_name ? `\n🚀 *${p.startup_name}*\n_${p.startup_tagline || "استارتاپ در مسیر رشد"}_ | 📍 ${p.startup_city || "شهر ثبت نشده"}\n` : "\n👑 حکومت تازه‌تأسیس | آماده ورود به تاریخ\n";
-  return `👑 *شاه شاهان | دربار سلطنتی*${identity}
-━━━━━━━━━━━━━━━━
-💰 سرمایه نقدی: ${money(p.balance)}
-🏛️ دارایی‌های اداره‌شده: ${companyCount}
-📈 درآمد فعال: ${money(d.income)} / ساعت
-🏦 ارزش تقریبی دارایی‌ها: ${money(assetValue)}
-🏆 رتبه سرمایه: #${rank.rows[0].rank}
-
-━━━━━━━━━━━━━━━━
-🏰 *وضعیت قلمرو و دارایی‌ها*
-${companySection}
-
-━━━━━━━━━━━━━━━━
-📌 *وضعیت اقتصاد*
-• درآمد ۲۴ ساعت (حداکثر): ${money(d.income * 24)}
-• پاداش روزانه: ${dailyReady ? "آماده دریافت 🎁" : "دریافت شده ✓"}
-• گام بعد: ${companyCount < 3 ? "سامان‌دهی دارایی‌های نخستین" : d.income < 50000 ? "تقویت پایهٔ اقتصادی حکومت" : "گسترش اقتدار و آبادانی"}
-
-_برای ادارهٔ کشور، از منوی دربار گزینهٔ موردنظر را برگزین._`;
+  return getNationalOverview(pool,id);
 }
 
 async function detailedStatusText(id) {
@@ -782,12 +742,7 @@ bot.hears("🔙 منوی اصلی", async ctx => {
 // Dashboard: full game overview and company status
 bot.hears("📊 وضعیت بازی", async (ctx) => {
   await ensurePlayer(ctx);
-  await ctx.reply(await dashboardText(ctx.from.id), {
-    parse_mode: "Markdown",
-    reply_markup: bottomKeyboard(ctx.from.id)
-  });
-  const reports=await detailedStatusText(ctx.from.id);
-  for(let i=0;i<reports.length;i++)await ctx.reply(reports[i],{parse_mode:"Markdown",reply_markup:i===reports.length-1?bottomKeyboard(ctx.from.id):undefined});
+  await ctx.reply(await dashboardText(ctx.from.id), { reply_markup: bottomKeyboard(ctx.from.id) });
 });
 
 // Daily mission: own at least one business and claim a small bonus once per UTC day.
@@ -1053,7 +1008,7 @@ bot.catch((err) => console.error("Bot error:", err));
 const server = http.createServer((req, res) => {
   if (req.url === "/healthz" || req.url === "/") {
     res.writeHead(200, { "content-type": "application/json" });
-    res.end(JSON.stringify({ status: "ok", game: "Open Many" }));
+    res.end(JSON.stringify({ status: "ok", game: "Shah Shahanshah", scenario: "world-1914" }));
   } else {
     res.writeHead(404); res.end("Not found");
   }
@@ -1101,4 +1056,4 @@ if (ownerTelegramId && /^\d+$/.test(ownerTelegramId)) {
 }
 await bot.api.setChatMenuButton({ menu_button: { type: "commands" } }).catch(err => console.error("Set command menu button failed:", err));
 await bot.start();
-console.log("Open Many bot is running.");
+console.log("Shah Shahanshah bot is running.");
