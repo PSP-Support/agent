@@ -441,18 +441,35 @@ bot.callbackQuery("buy_menu", async ctx => {
   await ctx.editMessageText("🏗️ *فرصت‌های تأسیس شرکت*\n\nنوع شرکت را انتخاب کن؛ نام اختصاصی می‌گذاری و پیش از ارسال، درخواست را تأیید می‌کنی.",{parse_mode:"Markdown",reply_markup:kb});
   await ctx.answerCallbackQuery();
 });
+bot.callbackQuery(/^reg:company:([a-z_]+)$/,async ctx=>{
+  const type=COMPANY_TYPES.find(x=>x.id===ctx.match[1]&&!x.special);
+  if(!type)return ctx.answerCallbackQuery({text:"نوع شرکت برای ثبت‌نام معتبر نیست.",show_alert:true});
+  const uid=String(ctx.from.id);
+  const status=await pool.query("SELECT approval_status,registration_source FROM players WHERE telegram_id=$1",[uid]);
+  if(!status.rows.length)return ctx.answerCallbackQuery({text:"ابتدا /start را بزن.",show_alert:true});
+  const existing=await pool.query("SELECT id FROM company_requests WHERE telegram_id=$1 AND request_status='pending' LIMIT 1",[uid]);
+  if(existing.rows.length)return ctx.answerCallbackQuery({text:"درخواست قبلی هنوز در انتظار بررسی است.",show_alert:true});
+  companyNamePending.set(uid,{typeId:type.id,registration:true,sourceTag:status.rows[0].registration_source||"direct"});
+  await ctx.answerCallbackQuery();
+  return ctx.reply("🏷️ نام دلخواه شرکت «"+type.name+"» را بنویس.\n\nنام ۲ تا ۴۰ حرف باشد. برای لغو /cancel را بزن.");
+});
+bot.callbackQuery("reg:cancel",async ctx=>{
+  const uid=String(ctx.from.id);companyNamePending.delete(uid);companyConfirmPending.delete(uid);
+  await ctx.answerCallbackQuery({text:"ثبت‌نام لغو شد."});
+  return ctx.reply("هر زمان آماده بودی، /start را بزن و ثبت‌نام را ادامه بده.");
+});
 bot.callbackQuery(/^buy:([a-z_]+)$/,async ctx=>{
   const type=COMPANY_TYPES.find(x=>x.id===ctx.match[1]);
   if(!type)return ctx.answerCallbackQuery({text:"نوع شرکت نامعتبر است.",show_alert:true});
   if(type.special){const p=await pool.query("SELECT player_level,last_season_rank,reputation FROM players WHERE telegram_id=$1",[String(ctx.from.id)]);const x=p.rows[0]||{};if(Number(x.player_level)<type.minLevel||Number(x.reputation)<20||!Number(x.last_season_rank)||Number(x.last_season_rank)>type.maxRank)return ctx.answerCallbackQuery({text:"این برند ممتاز با Level، اعتبار و رتبه فصل گذشته باز می‌شود.",show_alert:true});}
-    await ctx.answerCallbackQuery({text:"در حال ثبت درخواست تأسیس..."});
-    const uid=String(ctx.from.id);
-    const p=await pool.query("SELECT balance,player_level,reputation,season_points,last_season_rank FROM players WHERE telegram_id=$1",[uid]);
-    if(!p.rows.length)return ctx.reply("پروفایل بازیکن پیدا نشد.");
-    if(Number(p.rows[0].balance)<type.price)return ctx.reply("سرمایه کافی نیست. هزینه شروع: "+money(type.price));
-    const perf=p.rows[0],rank=perf.last_season_rank;
-    companyNamePending.set(uid,{typeId:type.id,rank,playerLevel:perf.player_level,reputation:perf.reputation,seasonPoints:perf.season_points});
-    await ctx.reply("🏷️ برای شرکت «"+type.name+"» یک نام اختصاصی انتخاب کن.\\n\\nنام باید 2 تا 40 حرف باشد. هر شرکت می‌تواند نام متفاوتی داشته باشد. برای لغو /cancel را بفرست.",{reply_markup:quickKeyboard(ctx.from.id)});
+  const uid=String(ctx.from.id);
+  const existing=await pool.query("SELECT id FROM company_requests WHERE telegram_id=$1 AND request_status='pending' LIMIT 1",[uid]);
+  if(existing.rows.length)return ctx.answerCallbackQuery({text:"درخواست قبلی هنوز در انتظار بررسی است.",show_alert:true});
+  const p=await pool.query("SELECT player_level,reputation,season_points,last_season_rank,registration_source FROM players WHERE telegram_id=$1",[uid]);
+  const perf=p.rows[0]||{};
+  companyNamePending.set(uid,{typeId:type.id,registration:false,rank:perf.last_season_rank,playerLevel:perf.player_level||1,reputation:perf.reputation||0,seasonPoints:perf.season_points||0,sourceTag:perf.registration_source||"in-game"});
+  await ctx.answerCallbackQuery();
+  return ctx.reply("🏷️ برای شرکت «"+type.name+"» یک نام اختصاصی انتخاب کن.\n\nنام ۲ تا ۴۰ حرف باشد. برای لغو /cancel را بزن.");
 });
 bot.callbackQuery(/^corp:(approve|reject):(\d+)$/,async ctx=>{
   if(String(ctx.from.id)!==ownerTelegramId)return ctx.answerCallbackQuery({text:"فقط مدیر کل دسترسی دارد.",show_alert:true});
@@ -645,7 +662,7 @@ bot.callbackQuery(/^econ:reply:(\d+)$/,async ctx=>{
   await ctx.answerCallbackQuery();
   return ctx.reply("↩️ پاسخ به پیام درباره «"+m.company_name+"» را بنویس.\n\nبرای لغو /cancel را بفرست.");
 });
-bot.command("cancel",async ctx=>{const uid=String(ctx.from.id);if(companyNamePending.delete(uid))return ctx.reply("انتخاب نام شرکت و درخواست تأسیس لغو شد.");if(economicCompose.delete(uid))return ctx.reply("ارسال پیام لغو شد.");return ctx.reply("در حال حاضر عملیات در انتظار لغو نداری.");});
+bot.command("cancel",async ctx=>{const uid=String(ctx.from.id);if(companyNamePending.delete(uid)||companyConfirmPending.delete(uid))return ctx.reply("انتخاب نام و درخواست تأسیس لغو شد.");if(economicCompose.delete(uid))return ctx.reply("ارسال پیام لغو شد.");return ctx.reply("در حال حاضر عملیات در انتظار لغو نداری.");});
 bot.on("message:text",async (ctx,next)=>{
   const uid=String(ctx.from.id);
   const naming=companyNamePending.get(uid);
@@ -653,16 +670,12 @@ bot.on("message:text",async (ctx,next)=>{
     const raw=(ctx.message.text||"").trim();
     if(raw.startsWith("/"))return next();
     const companyName=raw.replace(/[<>]/g,"").replace(/[\\*_]/g,"").trim();
-    if(companyName.length<2||companyName.length>40)return ctx.reply("نام شرکت باید 2 تا 40 حرف باشد. دوباره بنویس یا /cancel بزن.");
+    if(companyName.length<2||companyName.length>40)return ctx.reply("نام شرکت باید ۲ تا ۴۰ حرف باشد. دوباره بنویس یا /cancel بزن.");
     const type=COMPANY_TYPES.find(x=>x.id===naming.typeId);
-    if(!type){companyNamePending.delete(uid);return ctx.reply("نوع شرکت نامعتبر شد؛ دوباره از منوی تأسیس انتخاب کن.");}
-    const p=await pool.query("SELECT balance FROM players WHERE telegram_id=$1",[uid]);
-    if(!p.rows.length||Number(p.rows[0].balance)<type.price){companyNamePending.delete(uid);return ctx.reply("سرمایه کافی نیست؛ درخواست تأسیس لغو شد.");}
-    const q=await pool.query("INSERT INTO company_requests(telegram_id,company_type,company_name,brand_name,season_rank,player_level,reputation) VALUES($1,$2,$3,$3,$4,$5,$6) RETURNING id",[uid,type.id,companyName,naming.rank,naming.playerLevel,naming.reputation]);
+    if(!type){companyNamePending.delete(uid);return ctx.reply("نوع شرکت نامعتبر شد؛ دوباره انتخاب کن.");}
     companyNamePending.delete(uid);
-    await ctx.reply("📨 درخواست تأسیس ثبت شد\\n\\n🏢 "+companyName+"\\nنوع: "+type.name+"\\n💵 هزینه: "+money(type.price)+"\\n\\nپس از تأیید مدیر، شرکت با همین نام فعال می‌شود.",{reply_markup:quickKeyboard(ctx.from.id)});
-    if(ownerTelegramId)await bot.api.sendMessage(ownerTelegramId,"📝 درخواست شرکت #"+q.rows[0].id+"\\nبازیکن: "+uid+"\\nشرکت: "+companyName+" ("+type.name+")\\nرتبه فصل قبل: "+(naming.rank??"ثبت نشده")+" | Level "+naming.playerLevel+" | Reputation "+naming.reputation+" | امتیاز "+naming.seasonPoints+"\\nهزینه: "+money(type.price),{reply_markup:new InlineKeyboard().text("✅ تأیید و تأسیس","corp:approve:"+q.rows[0].id).text("❌ رد","corp:reject:"+q.rows[0].id)});
-    return;
+    companyConfirmPending.set(uid,{...naming,companyName});
+    return ctx.reply("📝 پیش‌نمایش درخواست شرکت\n\n🏢 نوع شرکت: "+type.name+"\n🏷️ نام انتخابی: "+companyName+"\n\nاطلاعات مالی و درآمدی در این مرحله نمایش داده نمی‌شود.\n\nآیا این شرکت را با همین نام درخواست می‌کنی؟",{reply_markup:new InlineKeyboard().text("✅ بله، ارسال درخواست","reg:confirm").text("✏️ تغییر نام","reg:rename").row().text("❌ انصراف","reg:cancel")});
   }
   const pending=economicCompose.get(uid);
   if(!pending)return next();
@@ -680,6 +693,34 @@ bot.on("message:text",async (ctx,next)=>{
     await ctx.reply("✅ پیام اقتصادی ارسال شد.",{reply_markup:bottomKeyboard(ctx.from.id)});
   }catch(e){await ctx.reply("پیام در صندوق بازی ذخیره شد، اما تلگرام نتوانست اعلان مستقیم را تحویل دهد. مقصد باید ربات را باز کند.",{reply_markup:bottomKeyboard(ctx.from.id)});}
 });
+bot.callbackQuery("reg:rename",async ctx=>{
+  const uid=String(ctx.from.id),pending=companyConfirmPending.get(uid);
+  if(!pending)return ctx.answerCallbackQuery({text:"درخواستی برای ویرایش نام پیدا نشد.",show_alert:true});
+  companyConfirmPending.delete(uid);companyNamePending.set(uid,pending);
+  await ctx.answerCallbackQuery();
+  return ctx.reply("نام جدید شرکت را بنویس. برای لغو /cancel را بزن.");
+});
+bot.callbackQuery("reg:confirm",async ctx=>{
+  const uid=String(ctx.from.id),pending=companyConfirmPending.get(uid);
+  if(!pending)return ctx.answerCallbackQuery({text:"درخواست تأیید برای ارسال پیدا نشد.",show_alert:true});
+  const type=COMPANY_TYPES.find(x=>x.id===pending.typeId);
+  if(!type)return ctx.answerCallbackQuery({text:"نوع شرکت نامعتبر است.",show_alert:true});
+  const status=await pool.query("SELECT approval_status,display_name,username,balance,registration_source,created_at FROM players WHERE telegram_id=$1",[uid]);
+  if(!status.rows.length)return ctx.answerCallbackQuery({text:"پروفایل پیدا نشد.",show_alert:true});
+  const duplicate=await pool.query("SELECT id FROM company_requests WHERE telegram_id=$1 AND request_status='pending' LIMIT 1",[uid]);
+  if(duplicate.rows.length){companyConfirmPending.delete(uid);return ctx.answerCallbackQuery({text:"درخواست قبلی هنوز در انتظار بررسی است.",show_alert:true});}
+  const p=status.rows[0],isRegistration=p.approval_status!=="approved"||!!pending.registration;
+  const q=await pool.query("INSERT INTO company_requests(telegram_id,company_type,company_name,brand_name,season_rank,player_level,reputation,is_registration,source_tag) VALUES($1,$2,$3,$3,$4,$5,$6,$7,$8) RETURNING id,created_at",
+    [uid,type.id,pending.companyName,pending.rank??null,pending.playerLevel||1,pending.reputation||0,isRegistration,pending.sourceTag||p.registration_source||"direct"]);
+  companyConfirmPending.delete(uid);
+  await ctx.answerCallbackQuery({text:"درخواست ارسال شد."});
+  await ctx.reply("📨 درخواست شما برای شرکت «"+pending.companyName+"» ارسال شد.\n\nدر انتظار بررسی مدیر کل هستی. پس از تأیید، پیام دریافت می‌کنی و دسترسی بازی فعال می‌شود.",{reply_markup:new Keyboard().text("🔄 بررسی وضعیت").resized().persistent()});
+  if(ownerTelegramId){
+    const details="🆕 درخواست تأسیس شرکت #"+q.rows[0].id+"\n\n👤 نام بازیکن: "+p.display_name+"\n🔖 نام کاربری: "+(p.username?"@"+p.username:"ندارد")+"\n🆔 شناسه تلگرام: "+uid+"\n🏢 شرکت: "+pending.companyName+"\n🏭 نوع: "+type.name+"\n🧾 نوع درخواست: "+(isRegistration?"ثبت‌نام اولیه + شرکت شروع":"شرکت جدید بازیکن فعال")+"\n🔗 منبع ورود / دعوت: "+(p.registration_source||pending.sourceTag||"direct")+"\n📅 زمان ثبت‌نام: "+new Date(p.created_at).toLocaleString("fa-IR")+"\n💰 موجودی فعلی (فقط مدیر): "+money(p.balance)+"\n📌 وضعیت حساب: "+p.approval_status;
+    await bot.api.sendMessage(ownerTelegramId,details,{reply_markup:new InlineKeyboard().text("✅ تأیید و فعال‌سازی","corp:approve:"+q.rows[0].id).text("❌ رد درخواست","corp:reject:"+q.rows[0].id)});
+  }
+});
+
 bot.callbackQuery("econ:inbox",async ctx=>{
   const q=await pool.query(`SELECT em.id,em.sender_id,em.company_name,em.body,em.created_at,p.display_name
     FROM economic_messages em JOIN players p ON p.telegram_id=em.sender_id
