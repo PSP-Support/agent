@@ -489,7 +489,11 @@ bot.callbackQuery(/^corp:(approve|reject):(\d+)$/,async ctx=>{
     }else { await client.query("UPDATE company_requests SET request_status='rejected',reviewed_at=NOW(),reviewed_by=$2 WHERE id=$1",[id,ownerTelegramId]); if(req.is_registration)await client.query("UPDATE players SET approval_status='rejected' WHERE telegram_id=$1",[String(req.telegram_id)]); }
     await client.query("COMMIT");
     await ctx.answerCallbackQuery({text:action==="approve"?"شرکت تأیید و تأسیس شد.":"درخواست رد شد."});
-    await bot.api.sendMessage(String(req.telegram_id),action==="approve"?"🎉 درخواست شرکت «"+req.company_name+"» تأیید شد و کسب‌وکار شما فعال شد!":"❌ درخواست شرکت «"+req.company_name+"» رد شد.").catch(()=>{});
+    if(action==="approve"){
+      await bot.api.sendMessage(String(req.telegram_id),"🎉 درخواست شرکت «"+req.company_name+"» تأیید شد و کسب‌وکار شما فعال شد!\n\nاکنون دسترسی بازی فعال است. برای ورود /start را بزن.",{reply_markup:mainKeyboard()}).catch(()=>{});
+    }else{
+      await bot.api.sendMessage(String(req.telegram_id),"❌ درخواست شرکت «"+req.company_name+"» رد شد.").catch(()=>{});
+    }
     await ctx.editMessageText((action==="approve"?"✅ تأیید شد: ":"❌ رد شد: ")+req.company_name);
   }catch(e){await client.query("ROLLBACK");console.error(e);await ctx.answerCallbackQuery({text:"خطا در بررسی درخواست.",show_alert:true});}
   finally{client.release();}
