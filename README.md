@@ -1,20 +1,32 @@
 # شاه شاهان | Shah Shahanshah
 
-بازی تلگرامی چندنفرهٔ حکومت‌داری تاریخی، سیاست، اقتصاد و دیپلماسی.
+A historical Telegram strategy and national-governance game set in 1914.
 
-## مرجع طراحی
-قواعد لازم‌الاجرا و مسیر توسعه در [GAME_DESIGN.md](./GAME_DESIGN.md) ثبت شده‌اند.
-سناریوی نخست: **جهان در آستانهٔ جنگ بزرگ — ۱۹۱۴**.
-کشورها و فرمانروایان تاریخی در [historical.js](./historical.js) قرار دارند.
+## Run on Railway
 
-## اجرای Railway
-متغیرهای محیطی موردنیاز:
-- `BOT_TOKEN`
-- `DATABASE_URL`
-- `OWNER_TELEGRAM_ID`
+Required environment variables:
 
-فرمان اجرا همچنان `npm start` است؛ تغییر نام بسته نیازمند تغییر متغیرهای Railway نیست.
+- `BOT_TOKEN`: Telegram bot token from BotFather
+- `DATABASE_URL`: Railway PostgreSQL connection string
+- `PORT`: optional; Railway provides this automatically
 
-## وضعیت انتقال
-ثبت‌نام اولیه اکنون با انتخاب کشور تاریخی و نمایش فرمانروای آن آغاز می‌شود؛ درخواست تأیید مدیر، کشور، فرمانروا و سناریو را نگه می‌دارد. داشبورد هویت تاریخی را نشان می‌دهد.
-**توجه:** در این مرحله، برخی زیرسامانه‌های قدیمی اقتصاد/شرکت هنوز به‌عنوان لایهٔ فنی باقی مانده‌اند و تبدیل کامل آن‌ها به خزانه، استان‌ها، ارتش، دیپلماسی و اقتصاد ملی در مراحل بعدی انجام می‌شود. این README و GAME_DESIGN مرجع جلوگیری از بازگشت به هویت مدرن شرکت‌محور هستند.
+The service starts with `npm start` and exposes a simple HTTP health response while the Telegram bot runs in long polling mode.
+
+## Gameplay
+
+- Choose a historical country and confirm its 1914 ruler.
+- Manage national treasury, taxes, tariffs, industry, agriculture, population services, wages, army and navy.
+- The national financial model calculates daily income and expenses.
+- Each three-hour settlement pays one eighth of the current daily net balance, up to eight settlements per day.
+- Review financial records in the ledger.
+- Trade resources between player countries and send diplomatic alliance proposals.
+
+All player actions are performed through Telegram inline buttons.
+
+## Data
+
+The game uses PostgreSQL tables created automatically at startup. Player state, ledger entries, relations and market offers are persisted in the database.
+
+## Note
+
+This is a fresh core rewrite. Legacy company/tycoon modules have been removed from the active source.
