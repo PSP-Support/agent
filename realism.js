@@ -258,10 +258,20 @@ export async function registerRealism(bot,pool) {
   });
 
   bot.callbackQuery("tel:mine",async ctx=>{
-    const q=await pool.query("SELECT ts.service_key,ts.price_per_period,ts.status,bc.company_name buyer_name,pc.company_name provider_name FROM telecom_subscriptions ts JOIN player_companies bc ON bc.id=ts.buyer_company_id JOIN player_companies pc ON pc.id=ts.provider_company_id WHERE bc.telegram_id=$1 ORDER BY ts.id",[String(ctx.from.id)]);
+    const q=await pool.query("SELECT ts.id,ts.service_key,ts.price_per_period,ts.status,bc.company_name buyer_name,pc.company_name provider_name FROM telecom_subscriptions ts JOIN player_companies bc ON bc.id=ts.buyer_company_id JOIN player_companies pc ON pc.id=ts.provider_company_id WHERE bc.telegram_id=$1 ORDER BY ts.id",[String(ctx.from.id)]);
     const lines=q.rows.map(x=>(TELECOM_SERVICES[x.service_key]?.name||x.service_key)+"\n🏢 شرکت: "+(x.buyer_name||"شرکت شما")+"\n📡 ارائه‌دهنده: "+(x.provider_name||"مخابرات")+"\n💵 "+fmt(x.price_per_period)+" هر ۳ ساعت | "+(x.status==="active"?"فعال":"متوقف"));
-    await ctx.editMessageText("📋 *اشتراک‌های مخابراتی شما*\n\n"+(lines.join("\n\n")||"اشتراکی ثبت نشده است."),{parse_mode:"Markdown",reply_markup:new InlineKeyboard().text("🔙 بازار خدمات","tel:back")});
+    const kb=new InlineKeyboard();for(const x of q.rows)if(x.status==="active")kb.text("⏹ لغو "+(TELECOM_SERVICES[x.service_key]?.name||x.service_key),"tel:cancel:"+x.id).row();
+    kb.text("🔙 بازار خدمات","tel:back");
+    await ctx.editMessageText("📋 *اشتراک‌های مخابراتی شما*\n\n"+(lines.join("\n\n")||"اشتراکی ثبت نشده است."),{parse_mode:"Markdown",reply_markup:kb});
     await ctx.answerCallbackQuery();
+  });
+
+  bot.callbackQuery(/^tel:cancel:(\\d+)$/,async ctx=>{
+    const id=Number(ctx.match[1]);
+    const q=await pool.query("UPDATE telecom_subscriptions ts SET status='cancelled' FROM player_companies bc WHERE ts.id=$1 AND bc.id=ts.buyer_company_id AND bc.telegram_id=$2 AND ts.status='active' RETURNING ts.id",[id,String(ctx.from.id)]);
+    if(!q.rows.length)return ctx.answerCallbackQuery({text:"اشتراک فعال پیدا نشد.",show_alert:true});
+    await ctx.answerCallbackQuery({text:"تمدید خودکار این اشتراک لغو شد."});
+    await ctx.reply("⏹ اشتراک لغو شد؛ دیگر هزینه دوره‌ای از شما کم نمی‌شود.");
   });
 
   bot.hears("📒 دفتر مالی",async ctx=>{
