@@ -159,7 +159,58 @@ async function say(ctx,text,markup=main()){await ctx.reply(text,{reply_markup:ma
 async function edit(ctx,text,markup=main()){try{await ctx.editMessageText(text,{reply_markup:markup,parse_mode:"HTML"});}catch(e){if(!String(e).includes("message is not modified"))await say(ctx,text,markup);}}
 async function ready(ctx){const p=await get(ctx.from.id);if(!p?.approved){await say(ctx,"برای آغاز بازی از /start استفاده کنید.");return null;}return p;}
 function calc(p){const taxable=Math.max(10000,Number(p.population)/100),tax=taxable*p.tax_rate/100,production=p.industry*1200+p.agriculture*800,tariff=p.tariff*500,wages=p.population/1000*p.wage,army=p.army*900+p.navy*1400,services=Number(p.service_budget),roads=p.infrastructure*250,upkeep=p.industry*300+p.agriculture*150,oilProduction=Math.min(Number(p.oil_reserves||0),Math.round(Number(p.oil_field_level||0)*(1+Number(p.technology||0)/250))),oilConsumption=Math.max(10,Number(p.industry||0)*4+Number(p.army||0)*2+Number(p.navy||0)*10);return {income:tax+production+tariff,expense:wages+army+services+roads+upkeep,tax,production,tariff,wages,army,services,roads,upkeep,oilProduction,oilConsumption,oilNet:oilProduction-oilConsumption};}
-async function status(p){const c=country(p.country_id),d=calc(p);return `<b>📊 وضعیت کشور — ${c?.[1]}</b>\n👑 ${p.ruler}\n\n<b>مالی</b>\n💰 خزانه: ${money(p.treasury)}\n📈 درآمد روزانه: ${money(d.income)}\n📉 هزینه‌ی روزانه: ${money(d.expense)}\n🧮 خالص روزانه: ${money(d.income-d.expense)}\n\n<b>کشور</b>\n👥 جمعیت: ${fmt(p.population)}\n🏛 ثبات: ${p.stability}٪ | مشروعیت: ${p.legitimacy}٪\n🏭 صنعت: ${p.industry} | 🌾 کشاورزی: ${p.agriculture}\n🌾 غله: ${fmt(p.grain)} | 🪨 زغال: ${fmt(p.coal)}\n⛓ آهن: ${fmt(p.iron)} | 🧵 پارچه: ${fmt(p.cloth)}\n🧠 فناوری: ${p.technology} | 🛤 زیرساخت: ${p.infrastructure}\n🛢 نفت: ${fmt(p.oil_stock||0)} واحد | تولید روزانه: ${fmt(d.oilProduction)} | مصرف روزانه: ${fmt(d.oilConsumption)}\n\n<b>نیروهای مسلح</b>\n🪖 ارتش: ${p.army} | ⚓ ناوگان: ${p.navy} | روحیه: ${p.morale}٪`;}
+async function status(p){
+ const c=country(p.country_id),d=calc(p),net=d.income-d.expense;
+ const percent=(n,max)=>Math.max(0,Math.min(100,Math.round(Number(n||0)/Math.max(1,Number(max||1))*100)));
+ const mood=p.stability>=75?"آرام و باثبات":p.stability>=50?"قابل کنترل":p.stability>=30?"پر تنش":"در آستانه‌ی بحران";
+ const budget=net>=0?"مازاد بودجه": "کسری بودجه";
+ const oilStock=Number(p.oil_stock||0),oilNeed=Math.max(1,d.oilConsumption);
+ const oilDays=Math.floor(oilStock/oilNeed);
+ const foodDays=Math.floor(Number(p.grain||0)/Math.max(1,Number(p.population||0)/1000));
+ return `<b>📊 گزارش جامع کشور — ${c?.[1]}</b>
+👑 فرمانروا: ${p.ruler}
+🏛 حکومت: ${p.government||"نامشخص"}
+
+<b>💰 خزانه و بودجه</b>
+خزانه: ${money(p.treasury)}
+📈 درآمد روزانه: ${money(d.income)}
+  ├ مالیات: ${money(d.tax)}
+  ├ تولید صنعتی و کشاورزی: ${money(d.production)}
+  └ تعرفه‌ی تجارت: ${money(d.tariff)}
+📉 هزینه‌ی روزانه: ${money(d.expense)}
+  ├ حقوق مردم و کارکنان: ${money(d.wages)}
+  ├ ارتش و نیروی دریایی: ${money(d.army)}
+  ├ خدمات عمومی: ${money(d.services)}
+  ├ زیرساخت: ${money(d.roads)}
+  └ نگهداری صنایع: ${money(d.upkeep)}
+🧮 ${budget} روزانه: ${money(Math.abs(net))}
+
+<b>👥 مردم و ثبات</b>
+جمعیت: ${fmt(p.population)}
+🏛 ثبات: ${p.stability}٪ — ${mood}
+👑 مشروعیت حکومت: ${p.legitimacy}٪
+📚 آموزش: ${p.education} | 🏥 بهداشت: ${p.health}
+💵 حقوق پایه: ${money(p.wage)}
+
+<b>🏭 تولید و منابع</b>
+صنعت: ${p.industry} | کشاورزی: ${p.agriculture}
+🌾 غله: ${fmt(p.grain)} (تقریباً ${fmt(foodDays)} روز ذخیره بر مبنای شاخص جمعیت)
+🪨 زغال‌سنگ: ${fmt(p.coal)} | ⛓ آهن: ${fmt(p.iron)} | 🧵 پارچه: ${fmt(p.cloth)}
+🛢 نفت: ${fmt(oilStock)} واحد
+  ├ تولید روزانه: ${fmt(d.oilProduction)}
+  ├ مصرف روزانه: ${fmt(d.oilConsumption)}
+  └ ذخیره برای حدود ${fmt(oilDays)} روز مصرف
+🧠 فناوری: ${p.technology} | 🛤 زیرساخت: ${p.infrastructure}
+
+<b>🛡️ نیروهای مسلح</b>
+🪖 ارتش: ${p.army} | ⚓ ناوگان: ${p.navy}
+روحیه: ${p.morale}٪
+
+<b>📌 هشدارهای مدیریتی</b>
+${net<0?"⚠️ بودجه منفی است؛ مالیات، هزینه‌ها یا تولید را بازبینی کنید.":"✅ بودجه‌ی روزانه مثبت است."}
+${oilStock<oilNeed*3?"⚠️ ذخیره‌ی نفت کمتر از سه روز است؛ واردات یا افزایش تولید را بررسی کنید.":"✅ ذخیره‌ی نفت فعلاً مناسب است."}
+${p.stability<40?"⚠️ ثبات پایین است؛ کشور در معرض ناآرامی قرار دارد.":""}`;
+}
 const continentNames={europe:"🌍 اروپا",asia:"🌏 آسیا",africa:"🌍 آفریقا",north_america:"🌎 آمریکای شمالی",south_america:"🌎 آمریکای جنوبی",oceania:"🌏 اقیانوسیه"};
 const continentSets={
 europe:"ottoman germany russia austria britain france italy serbia bulgaria romania belgium netherlands portugal greece montenegro albania denmark sweden norway switzerland luxembourg ireland finland poland ukraine croatia czech slovakia hungary ireland_home iceland malta cyprus monaco liechtenstein san_marino vatican",
