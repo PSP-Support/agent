@@ -1,31 +1,32 @@
-# Open Many — بازی اقتصادی تلگرام
+# شاه شاهان | Shah Shahanshah
 
-این نسخه شامل داشبورد جامع بازی و سیستم توسعه کسب‌وکارهاست:
-- پروفایل بازیکن با سرمایه اولیه
-- داشبورد وضعیت بازی: سرمایه، رتبه، تعداد شرکت‌ها، درآمد ساعتی و ارزش دارایی‌ها
-- نمایش وضعیت شرکت‌ها، سطح، تعداد و درآمد هر گروه
-- خرید کافه، فروشگاه، کارخانه و شرکت فناوری
-- درآمد زمانی با سقف ذخیره ۲۴ ساعت
-- ارتقای شرکت‌ها
-- پاداش روزانه و مأموریت روزانه با جایزه ۵,۰۰۰ دلار
-- تالار دستاوردها با پیشرفت واقعی بازیکن
-- رتبه‌بندی سرمایه‌داران
-- ذخیره اطلاعات در PostgreSQL
-- Health endpoint برای Railway
+A historical Telegram strategy and national-governance game set in 1914.
 
-## راه‌اندازی Railway
-1. به ریپازیتوری PSP-Support/agent متصل شو.
-2. یک سرویس PostgreSQL به پروژه Railway اضافه کن.
-3. در Variables سرویس ربات، BOT_TOKEN و DATABASE_URL را تنظیم کن.
-4. دستور اجرا npm start است و فایل شروع index.js در ریشه ریپو قرار دارد.
-5. بعد از Deploy، در تلگرام /start بزن.
+## Run on Railway
 
-## متغیرهای لازم
-- BOT_TOKEN: توکن ربات از @BotFather
-- DATABASE_URL: آدرس اتصال PostgreSQL از Railway
+Required environment variables:
 
-## نکته‌ها
-- ستون جدید مأموریت روزانه به‌صورت خودکار هنگام شروع ربات به دیتابیس اضافه می‌شود؛ نیازی به حذف یا ساخت مجدد دیتابیس نیست.
-- درآمد هنگام فشردن دکمه دریافت درآمد محاسبه می‌شود و حداکثر ۲۴ ساعت ذخیره می‌شود.
-- پاداش روزانه و مأموریت بر اساس تاریخ UTC محاسبه می‌شوند.
-- توکن ربات را در GitHub قرار نده؛ فقط در Railway Variables نگه دار.
+- `BOT_TOKEN`: Telegram bot token from BotFather
+- `DATABASE_URL`: Railway PostgreSQL connection string
+- `PORT`: optional; Railway provides this automatically
+
+The service starts with `npm start` and exposes a simple HTTP health response while the Telegram bot runs in long polling mode.
+
+## Gameplay
+
+- Choose a historical country and confirm its 1914 ruler.
+- Manage national treasury, taxes, tariffs, industry, agriculture, population services, wages, army and navy.
+- The national financial model calculates daily income and expenses.
+- Each three-hour settlement pays one eighth of the current daily net balance, up to eight settlements per day.
+- Review financial records in the ledger.
+- Trade resources between player countries and send diplomatic alliance proposals.
+
+All player actions are performed through Telegram inline buttons.
+
+## Data
+
+The game uses PostgreSQL tables created automatically at startup. Player state, ledger entries, relations and market offers are persisted in the database.
+
+## Note
+
+This is a fresh core rewrite. Legacy company/tycoon modules have been removed from the active source.
