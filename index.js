@@ -268,48 +268,59 @@ _برای مشاهده جزئیات یا انجام عملیات از منوی �
 
 async function detailedStatusText(id) {
   const r=await getEconomyReport(pool,id),m=r.market,o=r.operations,f=r.finance;
+  const pct=(v)=>((Number(v)-1)*100);
+  const marketWord=(v,up,down)=>Number(v)>1.03?up:Number(v)<0.97?down:"در حد معمول";
   const lines=[
-    "🧾 *گزارش کامل اقتصاد و عملیات*",
+    "📊 *گزارش کسب‌وکارهای شما*",
     "━━━━━━━━━━━━━━━━",
-    "*درآمد و هزینه در هر ساعت*",
-    "💵 فروش/درآمد ناخالص: "+money(f.revenue),
-    "👷 حقوق کارکنان: −"+money(f.payroll),
-    "🧱 مواد اولیه: −"+money(f.materials),
-    "⚡ انرژی و خدمات: −"+money(f.utilities),
-    "🔧 تعمیر و استهلاک: −"+money(f.maintenance),
-    "🏛 مالیات: −"+money(f.taxes),
-    "💰 سود خالص: "+money(f.net)+"/ساعت",
-    "📆 سود خالص روزانه (برآورد): "+money(f.net*24),
-    "💳 بدهی فعال: "+money(r.debt),
+    "💰 *۱. دخل‌وخرج هر ساعت*",
+    "🟢 درآمد از فروش و خدمات: "+money(f.revenue),
+    "🔻 حقوق کارکنان: "+money(f.payroll),
+    "🔻 خرید مواد اولیه: "+money(f.materials),
+    "🔻 برق، انرژی و خدمات: "+money(f.utilities),
+    "🔻 تعمیر و نگهداری: "+money(f.maintenance),
+    "🔻 مالیات: "+money(f.taxes),
+    "━━━━━━━━━━━━━━━━",
+    "💵 *سود باقی‌مانده: "+money(f.net)+" در هر ساعت*",
+    "📅 سود یک روز کامل (اگر همین شرایط ادامه یابد): "+money(f.net*24),
+    "🏦 بدهی بانکی: "+money(r.debt),
     "",
-    "*شاخص‌های بازار*",
-    "📊 تقاضا: "+(Number(m.demand_index)*100).toFixed(1)+"٪",
-    "📈 تورم: "+(Number(m.inflation_index)*100).toFixed(1)+"٪",
-    "⚡ شاخص انرژی: "+(Number(m.energy_price)*100).toFixed(1)+"٪",
-    "🧱 شاخص مواد: "+(Number(m.materials_price)*100).toFixed(1)+"٪",
-    "👷 شاخص دستمزد: "+(Number(m.wage_index)*100).toFixed(1)+"٪",
-    "🏦 نرخ بهره: "+(Number(m.interest_rate)*100).toFixed(1)+"٪",
+    "👥 *۲. وضعیت کلی کسب‌وکارها*",
+    "🏢 تعداد شرکت‌ها: "+o.companies,
+    "👷 مجموع کارکنان: "+o.employees+" نفر",
+    "🙂 رضایت کارکنان: "+o.morale.toFixed(0)+" از 100",
+    "🔧 سلامت تجهیزات: "+o.condition.toFixed(0)+" از 100",
+    "📦 کالاهای موجود در انبار: "+o.stock+" واحد",
     "",
-    "*وضعیت نیروی کار و دارایی*",
-    "🏢 تعداد شرکت: "+o.companies,
-    "👥 کارکنان: "+o.employees,
-    "🙂 میانگین روحیه: "+o.morale.toFixed(1)+"/100",
-    "🔧 سلامت تجهیزات: "+o.condition.toFixed(1)+"٪",
-    "📦 موجودی کل انبار: "+o.stock+" واحد",
+    "🌍 *۳. وضعیت بازار*",
+    "🛍️ میزان خرید مردم: "+marketWord(m.demand_index,"بیشتر از معمول","کمتر از معمول")+" ("+(pct(m.demand_index)>=0?"+":"")+pct(m.demand_index).toFixed(1)+"٪)",
+    "🧾 هزینه‌های عمومی: "+marketWord(m.inflation_index,"در حال افزایش","در حال کاهش")+" ("+(pct(m.inflation_index)>=0?"+":"")+pct(m.inflation_index).toFixed(1)+"٪ نسبت به حالت عادی)",
+    "⚡ قیمت انرژی: "+(Number(m.energy_price)>1?"گران‌تر از معمول":Number(m.energy_price)<1?"ارزان‌تر از معمول":"معمول")+" ("+(pct(m.energy_price)>=0?"+":"")+pct(m.energy_price).toFixed(1)+"٪)",
+    "🧱 قیمت مواد اولیه: "+(Number(m.materials_price)>1?"گران‌تر از معمول":Number(m.materials_price)<1?"ارزان‌تر از معمول":"معمول")+" ("+(pct(m.materials_price)>=0?"+":"")+pct(m.materials_price).toFixed(1)+"٪)",
+    "👷 هزینه حقوق: "+(Number(m.wage_index)>1?"بالاتر از معمول":Number(m.wage_index)<1?"پایین‌تر از معمول":"معمول")+" ("+(pct(m.wage_index)>=0?"+":"")+pct(m.wage_index).toFixed(1)+"٪)",
+    "🏦 نرخ سود وام: "+(Number(m.interest_rate)*100).toFixed(1)+"٪ در سال",
     "",
-    "*ریز شرکت‌ها*"
+    "🏭 *۴. جزئیات هر شرکت*"
   ];
   for(const c of r.companies){
     const type=COMPANY_TYPES.find(x=>x.id===c.company_type);
-    lines.push("🏭 "+(c.company_name||type?.name||c.company_type)+" | سطح "+c.level);
-    lines.push("   👷 "+c.employee_count+" نفر | 🙂 "+Number(c.morale).toFixed(0)+"٪ | 🔧 "+Number(c.equipment_condition).toFixed(0)+"٪ | 📦 "+c.inventory_units);
-    lines.push("   💵 ناخالص "+money(c.gross)+"/ساعت | 👷 حقوق "+money(c.payroll));
-    lines.push("   🧱 مواد "+money(c.materials)+" | ⚡ انرژی "+money(c.utilities)+" | 🔧 نگهداری "+money(c.maintenance));
-    lines.push("   💰 سود تخمینی "+money(c.net)+"/ساعت | 🏷 قیمت فروش "+(c.sale_price?money(c.sale_price):"قیمت پایه/تعیین‌نشده"));
+    lines.push("");
+    lines.push("🔹 *"+(c.company_name||type?.name||"شرکت")+"*");
+    lines.push("سطح "+c.level+"  |  کارکنان: "+c.employee_count+" نفر");
+    lines.push("رضایت کارکنان: "+Number(c.morale).toFixed(0)+"/100  |  سلامت تجهیزات: "+Number(c.equipment_condition).toFixed(0)+"/100");
+    lines.push("📦 موجودی: "+c.inventory_units+" واحد");
+    lines.push("💵 درآمد در ساعت: "+money(c.gross));
+    lines.push("👷 حقوق: "+money(c.payroll)+"  |  🧱 مواد اولیه: "+money(c.materials));
+    lines.push("⚡ انرژی: "+money(c.utilities)+"  |  🔧 تعمیرات: "+money(c.maintenance));
+    lines.push("💰 *سود تقریبی این شرکت: "+money(c.net)+" در ساعت*");
+    if(c.sale_price) lines.push("🏷️ قیمت فروش تعیین‌شده: "+money(c.sale_price));
   }
-  lines.push("", "_سود شرکت‌ها به‌صورت برآورد عملیاتی است؛ قیمت فروش و معاملات بازیکنان در حال توسعه‌اند._");
+  lines.push("","ℹ️ *توضیح:* اعداد درآمد و سود، محاسبه‌ای بر اساس شرایط فعلی بازار هستند و ممکن است با تغییر تقاضا و هزینه‌ها تغییر کنند.");
   const chunks=[];let current="";
-  for(const line of lines){if((current+"\\n"+line).length>3800){chunks.push(current);current=line;}else current+=(current?"\\n":"")+line;}
+  for(const line of lines){
+    const candidate=current?current+"\n"+line:line;
+    if(candidate.length>3800){if(current)chunks.push(current);current=line;}else current=candidate;
+  }
   if(current)chunks.push(current);
   return chunks;
 }
