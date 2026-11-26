@@ -121,7 +121,7 @@ const sectionKeyboard = (section) => {
   const k = new Keyboard();
   if (section === "business") k.text("🏢 شرکت‌های من").text("🛒 خرید شرکت").row().text("👨‍💼 مدیریت شرکت‌ها").row();
   else if (section === "finance") k.text("💵 دریافت درآمد").text("🏦 بانک و وام").row().text("📒 دفتر مالی").row();
-  else if (section === "market") k.text("🌐 اقتصاد واقعی").row().text("📡 خدمات مخابرات").row();
+  else if (section === "market") k.text("🌐 اقتصاد واقعی").row().text("📡 خدمات مخابرات").row().text("📨 پیام اقتصادی").row();
   else if (section === "progress") k.text("🧭 مأموریت روزانه").text("🏅 دستاوردها").row().text("🏆 رتبه‌بندی").text("🎁 پاداش روزانه").row();
   else if (section === "more") k.text("👤 پروفایل").text("ℹ️ راهنما").row().text("📘 راهنمای مرحله‌ای").text("🧰 دسترسی آسان").row();
   return k.text("🔙 منوی اصلی").resized().persistent(true);
@@ -149,6 +149,20 @@ async function initDb() {
       last_daily DATE,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+    CREATE TABLE IF NOT EXISTS economic_messages (
+      id BIGSERIAL PRIMARY KEY,
+      sender_id BIGINT NOT NULL REFERENCES players(telegram_id) ON DELETE CASCADE,
+      recipient_id BIGINT NOT NULL REFERENCES players(telegram_id) ON DELETE CASCADE,
+      company_id BIGINT REFERENCES player_companies(id) ON DELETE SET NULL,
+      company_name TEXT NOT NULL,
+      subject TEXT NOT NULL DEFAULT 'پیام اقتصادی',
+      body TEXT NOT NULL,
+      reply_to BIGINT REFERENCES economic_messages(id) ON DELETE SET NULL,
+      read_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS economic_messages_recipient_idx ON economic_messages(recipient_id,created_at DESC);
+    CREATE INDEX IF NOT EXISTS economic_messages_sender_idx ON economic_messages(sender_id,created_at DESC);
     CREATE TABLE IF NOT EXISTS player_companies (
       id BIGSERIAL PRIMARY KEY,
       telegram_id BIGINT NOT NULL REFERENCES players(telegram_id) ON DELETE CASCADE,
@@ -583,6 +597,79 @@ for (const [label, section, title] of menuSections) {
     await ctx.reply(title + "\n\nاز گزینه‌های این بخش انتخاب کن:", { reply_markup: sectionKeyboard(section) });
   });
 }
+// Economic message composer: choose another player's company, then send a private in-game business message.
+const economicCompose = new Map();
+bot.hears("📨 پیام اقتصادی", async ctx => {
+  const q = await pool.query(
+    `SELECT pc.id,pc.company_name,pc.company_type,p.telegram_id,p.display_name
+     FROM player_companies pc JOIN players p ON p.telegram_id=pc.telegram_id
+     WHERE pc.telegram_id<>$1 AND p.approval_status='approved' AND pc.approval_status='approved'
+     ORDER BY pc.company_name LIMIT 30`,
+    [String(ctx.from.id)]
+  );
+  if (!q.rows.length) return ctx.reply("فعلاً شرکت فعالِ بازیکن دیگری برای ارسال پیام وجود ندارد.", {reply_markup:bottomKeyboard(ctx.from.id)});
+  const kb=new InlineKeyboard();
+  for(const c of q.rows) kb.text((c.company_name||c.company_type)+" | "+c.display_name.slice(0,16),"econ:to:"+c.id).row();
+  kb.text("📥 صندوق پیام‌ها","econ:inbox").row().text("🔙 منوی اصلی","home");
+  return ctx.reply("📨 پیام اقتصادی به شرکت
+
+شرکت مقصد را انتخاب کن. پیام خصوصی برای مالک شرکت ارسال می‌شود و می‌توانی درباره خرید، فروش، تأمین کالا، قرارداد یا همکاری مذاکره کنی.",{reply_markup:kb});
+});
+bot.callbackQuery(/^econ:to:(\d+)$/,async ctx=>{
+  const q=await pool.query(`SELECT pc.id,pc.company_name,pc.company_type,pc.telegram_id,p.display_name
+    FROM player_companies pc JOIN players p ON p.telegram_id=pc.telegram_id
+    WHERE pc.id=$1 AND pc.telegram_id<>$2 AND pc.approval_status='approved' AND p.approval_status='approved'`,[ctx.match[1],String(ctx.from.id)]);
+  if(!q.rows.length)return ctx.answerCallbackQuery({text:"شرکت پیدا نشد.",show_alert:true});
+  const c=q.rows[0];economicCompose.set(String(ctx.from.id),{recipientId:String(c.telegram_id),companyId:Number(c.id),companyName:c.company_name||c.company_type,replyTo:null});
+  await ctx.answerCallbackQuery();
+  return ctx.reply("✍️ پیام خود را برای «"+(c.company_name||c.company_type)+"» بنویس.\n\nحداکثر ۱۰۰۰ حرف. برای لغو /cancel را بفرست.");
+});
+bot.callbackQuery(/^econ:reply:(\d+)$/,async ctx=>{
+  const q=await pool.query("SELECT id,sender_id,recipient_id,company_id,company_name,body FROM economic_messages WHERE id=$1 AND recipient_id=$2",[ctx.match[1],String(ctx.from.id)]);
+  if(!q.rows.length)return ctx.answerCallbackQuery({text:"پیام پیدا نشد.",show_alert:true});
+  const m=q.rows[0];economicCompose.set(String(ctx.from.id),{recipientId:String(m.sender_id),companyId:m.company_id,companyName:m.company_name,replyTo:Number(m.id)});
+  await ctx.answerCallbackQuery();
+  return ctx.reply("↩️ پاسخ به پیام درباره «"+m.company_name+"» را بنویس.\n\nبرای لغو /cancel را بفرست.");
+});
+bot.command("cancel",async ctx=>{if(economicCompose.delete(String(ctx.from.id)))return ctx.reply("ارسال پیام لغو شد.");return ctx.reply("در حال حاضر پیام اقتصادی در انتظار ارسال نداری.");});
+bot.on("message:text",async ctx=>{
+  const pending=economicCompose.get(String(ctx.from.id));
+  if(!pending)return;
+  const body=(ctx.message.text||"").trim();
+  if(body.startsWith("/"))return;
+  if(!body||body.length>1000)return ctx.reply("متن باید بین ۱ تا ۱۰۰۰ حرف باشد. دوباره بنویس یا /cancel بزن.");
+  const recipient=await pool.query("SELECT approval_status FROM players WHERE telegram_id=$1",[pending.recipientId]);
+  if(!recipient.rows.length||recipient.rows[0].approval_status!=="approved"){economicCompose.delete(String(ctx.from.id));return ctx.reply("بازیکن مقصد دیگر فعال نیست؛ ارسال لغو شد.");}
+  const ins=await pool.query("INSERT INTO economic_messages(sender_id,recipient_id,company_id,company_name,body,reply_to) VALUES($1,$2,$3,$4,$5,$6) RETURNING id,created_at",[String(ctx.from.id),pending.recipientId,pending.companyId,pending.companyName,body,pending.replyTo]);
+  economicCompose.delete(String(ctx.from.id));
+  const sender=await pool.query("SELECT display_name FROM players WHERE telegram_id=$1",[String(ctx.from.id)]);
+  const msgId=ins.rows[0].id;
+  try{
+    await bot.api.sendMessage(pending.recipientId,"📨 پیام اقتصادی جدید\n\nاز: "+(sender.rows[0]?.display_name||"بازیکن")+"\n🏢 درباره: "+pending.companyName+"\n\n"+body,{reply_markup:new InlineKeyboard().text("↩️ پاسخ","econ:reply:"+msgId).text("📥 صندوق پیام‌ها","econ:inbox")});
+    await ctx.reply("✅ پیام اقتصادی ارسال شد.",{reply_markup:bottomKeyboard(ctx.from.id)});
+  }catch(e){await ctx.reply("پیام در صندوق بازی ذخیره شد، اما تلگرام نتوانست اعلان مستقیم را تحویل دهد. مقصد باید ربات را باز کند.",{reply_markup:bottomKeyboard(ctx.from.id)});}
+});
+bot.callbackQuery("econ:inbox",async ctx=>{
+  const q=await pool.query(`SELECT em.id,em.sender_id,em.company_name,em.body,em.created_at,p.display_name
+    FROM economic_messages em JOIN players p ON p.telegram_id=em.sender_id
+    WHERE em.recipient_id=$1 ORDER BY em.created_at DESC LIMIT 10`,[String(ctx.from.id)]);
+  if(!q.rows.length){await ctx.answerCallbackQuery();return ctx.editMessageText("📥 صندوق پیام‌های اقتصادی خالی است.",{reply_markup:new InlineKeyboard().text("⬅️ پیام اقتصادی","econ:back")});}
+  const kb=new InlineKeyboard();
+  for(const m of q.rows)kb.text("✉️ "+m.display_name.slice(0,14)+" | "+m.company_name.slice(0,18),"econ:read:"+m.id).row();
+  kb.text("🔄 تازه‌سازی","econ:inbox").row().text("⬅️ پیام اقتصادی","econ:back");
+  await ctx.answerCallbackQuery();
+  return ctx.editMessageText("📥 صندوق پیام‌های اقتصادی\n\nآخرین ۱۰ پیام دریافتی:",{reply_markup:kb});
+});
+bot.callbackQuery(/^econ:read:(\d+)$/,async ctx=>{
+  const q=await pool.query(`SELECT em.*,p.display_name FROM economic_messages em JOIN players p ON p.telegram_id=em.sender_id WHERE em.id=$1 AND em.recipient_id=$2`,[ctx.match[1],String(ctx.from.id)]);
+  if(!q.rows.length)return ctx.answerCallbackQuery({text:"پیام پیدا نشد.",show_alert:true});
+  const m=q.rows[0];await pool.query("UPDATE economic_messages SET read_at=COALESCE(read_at,NOW()) WHERE id=$1",[m.id]);
+  await ctx.answerCallbackQuery();
+  return ctx.editMessageText("📨 پیام اقتصادی\n\nاز: "+m.display_name+"\n🏢 درباره: "+m.company_name+"\n🕒 "+new Date(m.created_at).toLocaleString("fa-IR")+"\n\n"+m.body,{reply_markup:new InlineKeyboard().text("↩️ پاسخ","econ:reply:"+m.id).row().text("📥 صندوق پیام‌ها","econ:inbox")});
+});
+bot.callbackQuery("econ:back",async ctx=>{await ctx.answerCallbackQuery();return ctx.editMessageText("📨 پیام اقتصادی: می‌توانی به شرکت‌های بازیکنان دیگر پیام بدهی یا صندوق دریافتی را باز کنی.",{reply_markup:new InlineKeyboard().text("🏢 انتخاب شرکت مقصد","econ:companies").text("📥 صندوق پیام‌ها","econ:inbox").row().text("🔙 بازگشت","home")});});
+bot.callbackQuery("econ:companies",async ctx=>{await ctx.answerCallbackQuery();return ctx.reply("برای شروع ارسال، دکمه «📨 پیام اقتصادی» را از منوی «🌐 بازار و اقتصاد» بزن.");});
+
 bot.hears("🔙 منوی اصلی", async ctx => {
   menuSection.delete(String(ctx.from.id));
   await ctx.reply(await dashboardText(ctx.from.id), { parse_mode: "Markdown", reply_markup: mainKeyboard() });
