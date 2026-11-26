@@ -135,6 +135,8 @@ CREATE TABLE IF NOT EXISTS game_relations(player_id BIGINT,other_id BIGINT,relat
 CREATE TABLE IF NOT EXISTS game_trade(id BIGSERIAL PRIMARY KEY,seller_id BIGINT,buyer_id BIGINT,resource TEXT,quantity BIGINT,unit_price BIGINT,status TEXT DEFAULT 'open',created_at TIMESTAMPTZ DEFAULT NOW());
  CREATE TABLE IF NOT EXISTS game_buildings(telegram_id BIGINT NOT NULL,building_key TEXT NOT NULL,level INT NOT NULL DEFAULT 0,PRIMARY KEY(telegram_id,building_key));
  CREATE TABLE IF NOT EXISTS game_weapon_stock(telegram_id BIGINT NOT NULL,weapon_key TEXT NOT NULL,quantity INT NOT NULL DEFAULT 0,PRIMARY KEY(telegram_id,weapon_key));
+ CREATE TABLE IF NOT EXISTS game_weapon_market(id BIGSERIAL PRIMARY KEY,seller_id BIGINT NOT NULL,weapon_key TEXT NOT NULL,quantity INT NOT NULL,unit_price BIGINT NOT NULL,status TEXT DEFAULT 'open',created_at TIMESTAMPTZ DEFAULT NOW());
+ CREATE INDEX IF NOT EXISTS game_weapon_market_open_idx ON game_weapon_market(status,created_at);
  ALTER TABLE game_players ADD COLUMN IF NOT EXISTS gold_stock BIGINT DEFAULT 0;
  ALTER TABLE game_players ADD COLUMN IF NOT EXISTS electricity_stock BIGINT DEFAULT 0;
  ALTER TABLE game_players ADD COLUMN IF NOT EXISTS fuel_stock BIGINT DEFAULT 0;
