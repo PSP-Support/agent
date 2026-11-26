@@ -607,7 +607,7 @@ bot.hears("📨 پیام اقتصادی", async ctx => {
      ORDER BY pc.company_name LIMIT 30`,
     [String(ctx.from.id)]
   );
-  if (!q.rows.length) return ctx.reply("فعلاً شرکت فعالِ بازیکن دیگری برای ارسال پیام وجود ندارد.", {reply_markup:bottomKeyboard(ctx.from.id)});
+  if (!q.rows.length) return ctx.reply("فعلاً شرکت فعالِ بازیکن دیگری برای ارسال پیام وجود ندارد؛ اما می‌توانی صندوق پیام‌ها را باز کنی.", {reply_markup:new InlineKeyboard().text("📥 صندوق پیام‌ها","econ:inbox").row().text("🔙 منوی اصلی","home")});
   const kb=new InlineKeyboard();
   for(const c of q.rows) kb.text((c.company_name||c.company_type)+" | "+c.display_name.slice(0,16),"econ:to:"+c.id).row();
   kb.text("📥 صندوق پیام‌ها","econ:inbox").row().text("🔙 منوی اصلی","home");
