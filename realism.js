@@ -157,7 +157,7 @@ export async function registerRealism(bot,pool) {
         await client.query("UPDATE players SET balance=balance+$2,last_collect=$3 WHERE telegram_id=$1",[String(player.telegram_id),amount,next]);
         if(amount>0)await client.query("INSERT INTO finance_transactions(telegram_id,transaction_type,amount,description) VALUES($1,'operating_income',$2,$3)",[String(player.telegram_id),amount,"واریز خودکار سود خالص؛ "+intervals+" قسط سه‌ساعته"]);
         await client.query("COMMIT");
-        if(amount>0)await bot.api.sendMessage(String(player.telegram_id),"💵 واریز خودکار سود کسب‌وکارها انجام شد.\\nمبلغ: "+fmt(amount)+"\\nدوره: "+intervals+" × ۳ ساعت").catch(()=>{});
+        if(amount>0)await bot.api.sendMessage(String(player.telegram_id),"💵 واریز خودکار سود کسب‌وکارها انجام شد.\nمبلغ: "+fmt(amount)+"\nدوره: "+intervals+" × ۳ ساعت").catch(()=>{});
       }catch(e){await client.query("ROLLBACK").catch(()=>{});console.error("[auto-income]",player.telegram_id,e);}
       finally{client.release();}
     }
@@ -203,32 +203,32 @@ export async function registerRealism(bot,pool) {
     const kb=new InlineKeyboard();
     for(const row of providers.rows)kb.text((row.company_name||"شرکت مخابراتی")+" | "+row.display_name,"tel:provider:"+row.id).row();
     kb.text("📋 اشتراک‌های من","tel:mine");
-    await ctx.reply("📡 *بازار خدمات مخابراتی*\\n\\nخدمات شرکت‌های مخابراتی بازیکنان دیگر را انتخاب کن. هزینه هر بسته برای یک دوره ۳ ساعته است و پس از فعال‌سازی خودکار تمدید می‌شود.\\n\\n"+(providers.rows.length?"شرکت ارائه‌دهنده را انتخاب کن:":"فعلاً شرکت مخابراتی بازیکن دیگری برای ارائه خدمات وجود ندارد."),{parse_mode:"Markdown",reply_markup:kb});
+    await ctx.reply("📡 *بازار خدمات مخابراتی*\n\nخدمات شرکت‌های مخابراتی بازیکنان دیگر را انتخاب کن. هزینه هر بسته برای یک دوره ۳ ساعته است و پس از فعال‌سازی خودکار تمدید می‌شود.\n\n"+(providers.rows.length?"شرکت ارائه‌دهنده را انتخاب کن:":"فعلاً شرکت مخابراتی بازیکن دیگری برای ارائه خدمات وجود ندارد."),{parse_mode:"Markdown",reply_markup:kb});
   });
 
-  bot.callbackQuery(/^tel:provider:(\\d+)$/,async ctx=>{
+  bot.callbackQuery(/^tel:provider:(\d+)$/,async ctx=>{
     const id=Number(ctx.match[1]);
     const q=await pool.query("SELECT id,telegram_id,company_name FROM player_companies WHERE id=$1 AND company_type='telecom' AND approval_status='approved'",[id]);
     if(!q.rows.length||String(q.rows[0].telegram_id)===String(ctx.from.id))return ctx.answerCallbackQuery({text:"این ارائه‌دهنده در دسترس نیست.",show_alert:true});
     const kb=new InlineKeyboard();
     for(const [key,item] of Object.entries(TELECOM_SERVICES))kb.text(item.name+" | "+fmt(item.price)+"/۳ساعت","tel:service:"+id+":"+key).row();
     kb.text("🔙 ارائه‌دهندگان","tel:back");
-    await ctx.editMessageText("📡 *"+(q.rows[0].company_name||"شرکت مخابراتی")+"*\\n\\nیک خدمت انتخاب کن. هزینه هر ۳ ساعت از موجودی شرکت خریدار کم و به ارائه‌دهنده پرداخت می‌شود.",{parse_mode:"Markdown",reply_markup:kb});
+    await ctx.editMessageText("📡 *"+(q.rows[0].company_name||"شرکت مخابراتی")+"*\n\nیک خدمت انتخاب کن. هزینه هر ۳ ساعت از موجودی شرکت خریدار کم و به ارائه‌دهنده پرداخت می‌شود.",{parse_mode:"Markdown",reply_markup:kb});
     await ctx.answerCallbackQuery();
   });
 
-  bot.callbackQuery(/^tel:service:(\\d+):(mobile|fiber|cloud|enterprise|security)$/,async ctx=>{
+  bot.callbackQuery(/^tel:service:(\d+):(mobile|fiber|cloud|enterprise|security)$/,async ctx=>{
     const providerId=Number(ctx.match[1]),key=ctx.match[2],service=TELECOM_SERVICES[key];
     const q=await pool.query("SELECT id,company_name FROM player_companies WHERE telegram_id=$1 AND approval_status='approved' AND company_type<>'telecom' ORDER BY id",[String(ctx.from.id)]);
     if(!q.rows.length)return ctx.answerCallbackQuery({text:"برای خرید خدمت، یک شرکت غیرمخابراتی لازم داری.",show_alert:true});
     const kb=new InlineKeyboard();
     for(const c of q.rows)kb.text((c.company_name||"شرکت")+" #"+c.id,"tel:activate:"+providerId+":"+c.id+":"+key).row();
     kb.text("🔙 خدمات","tel:provider:"+providerId);
-    await ctx.editMessageText(service.name+"\\n\\n"+service.description+"\\nهزینه هر ۳ ساعت: "+fmt(service.price)+"\\n\\nخدمت برای کدام شرکت فعال شود؟",{reply_markup:kb});
+    await ctx.editMessageText(service.name+"\n\n"+service.description+"\nهزینه هر ۳ ساعت: "+fmt(service.price)+"\n\nخدمت برای کدام شرکت فعال شود؟",{reply_markup:kb});
     await ctx.answerCallbackQuery();
   });
 
-  bot.callbackQuery(/^tel:activate:(\\d+):(\\d+):(mobile|fiber|cloud|enterprise|security)$/,async ctx=>{
+  bot.callbackQuery(/^tel:activate:(\d+):(\d+):(mobile|fiber|cloud|enterprise|security)$/,async ctx=>{
     const providerId=Number(ctx.match[1]),buyerCompanyId=Number(ctx.match[2]),key=ctx.match[3],service=TELECOM_SERVICES[key],client=await pool.connect();
     try{
       await client.query("BEGIN");
@@ -246,7 +246,7 @@ export async function registerRealism(bot,pool) {
       await client.query("INSERT INTO finance_transactions(telegram_id,company_id,transaction_type,amount,description) VALUES($1,$2,'telecom_service_fee',$3,$4),($5,$6,'telecom_service_income',$7,$8)",[buyer,buyerCompanyId,-fee,"فعال‌سازی "+service.name,provider,providerId,fee,"فروش "+service.name]);
       await client.query("COMMIT");
       await ctx.answerCallbackQuery({text:"اشتراک فعال شد و هزینه دوره اول پرداخت شد."});
-      await ctx.reply("✅ "+service.name+" برای شرکت "+(row.buyer_name||("#"+buyerCompanyId))+" فعال شد.\\n💵 پرداخت اولیه: "+fmt(fee)+"\\n🔁 تمدید خودکار هر ۳ ساعت؛ در صورت کمبود موجودی، اشتراک متوقف می‌شود.",{reply_markup:new Keyboard().text("📡 خدمات مخابرات").text("📊 وضعیت بازی").resized().persistent()});
+      await ctx.reply("✅ "+service.name+" برای شرکت "+(row.buyer_name||("#"+buyerCompanyId))+" فعال شد.\n💵 پرداخت اولیه: "+fmt(fee)+"\n🔁 تمدید خودکار هر ۳ ساعت؛ در صورت کمبود موجودی، اشتراک متوقف می‌شود.",{reply_markup:new Keyboard().text("📡 خدمات مخابرات").text("📊 وضعیت بازی").resized().persistent()});
     }catch(e){await client.query("ROLLBACK").catch(()=>{});console.error("[telecom-activate]",e);await ctx.answerCallbackQuery({text:"خطا در فعال‌سازی خدمت.",show_alert:true});}
     finally{client.release();}
   });
@@ -259,8 +259,8 @@ export async function registerRealism(bot,pool) {
 
   bot.callbackQuery("tel:mine",async ctx=>{
     const q=await pool.query("SELECT ts.service_key,ts.price_per_period,ts.status,bc.company_name buyer_name,pc.company_name provider_name FROM telecom_subscriptions ts JOIN player_companies bc ON bc.id=ts.buyer_company_id JOIN player_companies pc ON pc.id=ts.provider_company_id WHERE bc.telegram_id=$1 ORDER BY ts.id",[String(ctx.from.id)]);
-    const lines=q.rows.map(x=>(TELECOM_SERVICES[x.service_key]?.name||x.service_key)+"\\n🏢 شرکت: "+(x.buyer_name||"شرکت شما")+"\\n📡 ارائه‌دهنده: "+(x.provider_name||"مخابرات")+"\\n💵 "+fmt(x.price_per_period)+" هر ۳ ساعت | "+(x.status==="active"?"فعال":"متوقف"));
-    await ctx.editMessageText("📋 *اشتراک‌های مخابراتی شما*\\n\\n"+(lines.join("\\n\\n")||"اشتراکی ثبت نشده است."),{parse_mode:"Markdown",reply_markup:new InlineKeyboard().text("🔙 بازار خدمات","tel:back")});
+    const lines=q.rows.map(x=>(TELECOM_SERVICES[x.service_key]?.name||x.service_key)+"\n🏢 شرکت: "+(x.buyer_name||"شرکت شما")+"\n📡 ارائه‌دهنده: "+(x.provider_name||"مخابرات")+"\n💵 "+fmt(x.price_per_period)+" هر ۳ ساعت | "+(x.status==="active"?"فعال":"متوقف"));
+    await ctx.editMessageText("📋 *اشتراک‌های مخابراتی شما*\n\n"+(lines.join("\n\n")||"اشتراکی ثبت نشده است."),{parse_mode:"Markdown",reply_markup:new InlineKeyboard().text("🔙 بازار خدمات","tel:back")});
     await ctx.answerCallbackQuery();
   });
 
