@@ -1,5 +1,4 @@
-# شاه شاهان | Shah Shahanshah
-
+# شاه شاهان | Shah Shahan
 A historical Telegram strategy and national-governance game set in 1914.
 
 ## Run on Railway
