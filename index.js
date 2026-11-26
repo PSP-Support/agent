@@ -339,8 +339,21 @@ async function settleOne(id){
   if(!row?.approved){await client.query("COMMIT");return null;}
   const ticks=Math.min(8,Math.floor((Date.now()-new Date(row.last_settlement).getTime())/period));
   if(ticks<1){await client.query("COMMIT");return null;}
-  const d=calc(row),oilProduced=Math.min(Number(row.oil_reserves||0),Math.round(d.oilProduction*ticks/8)),oilDemand=Math.round(d.oilConsumption*ticks/8),oilAvailable=Math.max(0,Number(row.oil_stock||0))+oilProduced,oilConsumed=Math.min(oilAvailable,oilDemand),oilShortage=oilDemand-oilConsumed,oilStock=oilAvailable-oilConsumed,oilPenalty=Math.round(Number(row.industry||0)*1200*(oilShortage/Math.max(1,oilDemand))*0.35*ticks/8),earned=Math.max(0,Math.round(d.income*ticks/8)-oilPenalty),due=Math.max(0,Math.round(d.expense*ticks/8)),available=Number(row.treasury)+earned,paid=Math.min(available,due),balance=Math.max(0,available-paid),net=balance-Number(row.treasury);
-  await client.query("UPDATE game_players SET treasury=$2,oil_stock=$3,oil_reserves=GREATEST(0,oil_reserves-$4),last_settlement=NOW() WHERE telegram_id=$1",[id,balance,oilStock,oilProduced]);
+  const buildings=(await client.query("SELECT building_key,level FROM game_buildings WHERE telegram_id=$1",[id])).rows.reduce((a,x)=>(a[x.building_key]=Number(x.level),a),{});
+  const lv=k=>Number(buildings[k]||0), scale=ticks/8;
+  const oilProduced=Math.min(Number(row.oil_reserves||0),Math.round(Number(row.oil_field_level||0)*(1+Number(row.technology||0)/250)*scale));
+  const rawOil=Math.max(0,Number(row.oil_stock||0))+oilProduced;
+  const refineryOil=Math.min(rawOil,Math.round(lv("oil_refinery")*55*scale));
+  const fuelMade=Math.round(refineryOil*1.7);
+  const coalUsed=Math.min(Number(row.coal||0),Math.round(lv("coal_power")*120*scale));
+  const goldMade=Math.round(lv("gold_mine")*35*scale),ironMade=Math.round(lv("iron_mine")*180*scale),coalMade=Math.round(lv("coal_mine")*220*scale);
+  const grainMade=Math.round((lv("wheat_farm")*250+lv("plateau_farm")*160)*scale);
+  const electricityMade=Math.round((lv("coal_power")*500+lv("hydro_power")*650+lv("oil_power")*420)*scale);
+  const transportInfra=Math.round((lv("highway")*2+lv("railway")*3)*scale);
+  const dailyBuildingIncome=lv("commercial")*4000+lv("hotel")*6000+lv("station")*2000+lv("airport")*12000+lv("port")*9000+lv("admin")*Math.max(0,calc(row).tax)*0.05;
+  const dailyBuildingUpkeep=lv("gold_mine")*250+lv("iron_mine")*250+lv("coal_mine")*250+lv("oil_refinery")*500+lv("commercial")*300+lv("hotel")*500+lv("airport")*1000+lv("port")*800+lv("coal_power")*700+lv("hydro_power")*500+lv("oil_power")*650+lv("arms_factory")*600;
+  const d=calc(row),oilDemand=Math.round(d.oilConsumption*ticks/8),oilAvailable=Math.max(0,rawOil-refineryOil),oilConsumed=Math.min(oilAvailable,oilDemand),oilShortage=oilDemand-oilConsumed,oilStock=oilAvailable-oilConsumed,oilPenalty=Math.round(Number(row.industry||0)*1200*(oilShortage/Math.max(1,oilDemand))*0.35*scale),earned=Math.max(0,Math.round((d.income+dailyBuildingIncome)*scale)-oilPenalty),due=Math.max(0,Math.round((d.expense+dailyBuildingUpkeep)*scale)),available=Number(row.treasury)+earned,paid=Math.min(available,due),balance=Math.max(0,available-paid),net=balance-Number(row.treasury);Math.min(Number(row.oil_reserves||0),Math.round(d.oilProduction*ticks/8)),oilDemand=Math.round(d.oilConsumption*ticks/8),oilAvailable=Math.max(0,Number(row.oil_stock||0))+oilProduced,oilConsumed=Math.min(oilAvailable,oilDemand),oilShortage=oilDemand-oilConsumed,oilStock=oilAvailable-oilConsumed,oilPenalty=Math.round(Number(row.industry||0)*1200*(oilShortage/Math.max(1,oilDemand))*0.35*ticks/8),earned=Math.max(0,Math.round(d.income*ticks/8)-oilPenalty),due=Math.max(0,Math.round(d.expense*ticks/8)),available=Number(row.treasury)+earned,paid=Math.min(available,due),balance=Math.max(0,available-paid),net=balance-Number(row.treasury);
+  await client.query("UPDATE game_players SET treasury=$2,oil_stock=$3,oil_reserves=GREATEST(0,oil_reserves-$4),gold_stock=gold_stock+$5,iron=iron+$6,coal=coal-$7+$8,grain=grain+$9,electricity_stock=electricity_stock+$10,fuel_stock=fuel_stock+$11,population=population+$12,infrastructure=infrastructure+$13,last_settlement=NOW() WHERE telegram_id=$1",[id,balance,oilStock,oilProduced,goldMade,ironMade,coalUsed,coalMade,grainMade,electricityMade,fuelMade,Math.round(lv("housing")*5*scale),transportInfra]);
   await client.query("INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,$3,$4)",[id,"تسویه‌ی "+ticks+" نوبت سه‌ساعته",net,balance]);
   await client.query("COMMIT");return {ticks,net,balance};
  }catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
