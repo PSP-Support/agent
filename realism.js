@@ -161,8 +161,107 @@ export async function registerRealism(bot,pool) {
       finally{client.release();}
     }
   };
+
+  const billTelecomServices=async()=>{
+    for(let attempt=0;attempt<30;attempt++){
+      const client=await pool.connect();
+      try{
+        await client.query("BEGIN");
+        const q=await client.query("SELECT ts.*,pc.telegram_id provider_owner,bc.telegram_id buyer_owner FROM telecom_subscriptions ts JOIN player_companies pc ON pc.id=ts.provider_company_id JOIN player_companies bc ON bc.id=ts.buyer_company_id WHERE ts.status='active' AND ts.last_billed_at<=NOW()-INTERVAL '3 hours' ORDER BY ts.last_billed_at LIMIT 1 FOR UPDATE OF ts SKIP LOCKED");
+        if(!q.rows.length){await client.query("COMMIT");break;}
+        const sub=q.rows[0],provider=String(sub.provider_owner),buyer=String(sub.buyer_owner),fee=Number(sub.price_per_period);
+        if(provider===buyer){await client.query("UPDATE telecom_subscriptions SET status='cancelled' WHERE id=$1",[sub.id]);await client.query("COMMIT");continue;}
+        const players=await client.query("SELECT telegram_id,balance FROM players WHERE telegram_id IN ($1,$2) ORDER BY telegram_id FOR UPDATE",[provider,buyer]);
+        const buyerRow=players.rows.find(x=>String(x.telegram_id)===buyer);
+        if(!buyerRow||Number(buyerRow.balance)<fee){
+          await client.query("UPDATE telecom_subscriptions SET status='paused' WHERE id=$1",[sub.id]);
+          await client.query("COMMIT");
+          await bot.api.sendMessage(buyer,"⏸️ اشتراک مخابراتی به‌دلیل کمبود موجودی متوقف شد. برای فعال‌سازی دوباره، از بخش «خدمات مخابرات» اقدام کن.").catch(()=>{});
+          continue;
+        }
+        await client.query("UPDATE players SET balance=balance-$2 WHERE telegram_id=$1",[buyer,fee]);
+        await client.query("UPDATE players SET balance=balance+$2 WHERE telegram_id=$1",[provider,fee]);
+        await client.query("UPDATE telecom_subscriptions SET last_billed_at=last_billed_at+INTERVAL '3 hours' WHERE id=$1",[sub.id]);
+        await client.query("INSERT INTO finance_transactions(telegram_id,company_id,transaction_type,amount,description) VALUES($1,$2,'telecom_service_fee',$3,$4),($5,$6,'telecom_service_income',$7,$8)",[buyer,sub.buyer_company_id,-fee,"پرداخت دوره‌ای خدمات مخابرات: "+(TELECOM_SERVICES[sub.service_key]?.name||sub.service_key),provider,sub.provider_company_id,fee,"دریافت درآمد خدمات مخابرات"]);
+        await client.query("COMMIT");
+      }catch(e){await client.query("ROLLBACK").catch(()=>{});console.error("[telecom-billing]",e);break;}
+      finally{client.release();}
+    }
+  };
+
   setInterval(()=>settleDueIncome().catch(e=>console.error("[auto-income loop]",e)),60000);
+  setInterval(()=>billTelecomServices().catch(e=>console.error('[telecom billing loop]',e)),60000);
+  billTelecomServices().catch(e=>console.error('[telecom billing startup]',e));
   settleDueIncome().catch(e=>console.error("[auto-income startup]",e));
+
+
+  bot.hears("📡 خدمات مخابرات",async ctx=>{
+    const own=await pool.query("SELECT id FROM player_companies WHERE telegram_id=$1 AND approval_status='approved' ORDER BY id",[String(ctx.from.id)]);
+    if(!own.rows.length)return ctx.reply("برای خرید خدمات، ابتدا یک شرکت تأسیس کن.");
+    const providers=await pool.query("SELECT pc.id,pc.company_name,p.display_name FROM player_companies pc JOIN players p ON p.telegram_id=pc.telegram_id WHERE pc.company_type='telecom' AND pc.approval_status='approved' AND pc.telegram_id<>$1 ORDER BY pc.id",[String(ctx.from.id)]);
+    const kb=new InlineKeyboard();
+    for(const row of providers.rows)kb.text((row.company_name||"شرکت مخابراتی")+" | "+row.display_name,"tel:provider:"+row.id).row();
+    kb.text("📋 اشتراک‌های من","tel:mine");
+    await ctx.reply("📡 *بازار خدمات مخابراتی*\\n\\nخدمات شرکت‌های مخابراتی بازیکنان دیگر را انتخاب کن. هزینه هر بسته برای یک دوره ۳ ساعته است و پس از فعال‌سازی خودکار تمدید می‌شود.\\n\\n"+(providers.rows.length?"شرکت ارائه‌دهنده را انتخاب کن:":"فعلاً شرکت مخابراتی بازیکن دیگری برای ارائه خدمات وجود ندارد."),{parse_mode:"Markdown",reply_markup:kb});
+  });
+
+  bot.callbackQuery(/^tel:provider:(\\d+)$/,async ctx=>{
+    const id=Number(ctx.match[1]);
+    const q=await pool.query("SELECT id,telegram_id,company_name FROM player_companies WHERE id=$1 AND company_type='telecom' AND approval_status='approved'",[id]);
+    if(!q.rows.length||String(q.rows[0].telegram_id)===String(ctx.from.id))return ctx.answerCallbackQuery({text:"این ارائه‌دهنده در دسترس نیست.",show_alert:true});
+    const kb=new InlineKeyboard();
+    for(const [key,item] of Object.entries(TELECOM_SERVICES))kb.text(item.name+" | "+fmt(item.price)+"/۳ساعت","tel:service:"+id+":"+key).row();
+    kb.text("🔙 ارائه‌دهندگان","tel:back");
+    await ctx.editMessageText("📡 *"+(q.rows[0].company_name||"شرکت مخابراتی")+"*\\n\\nیک خدمت انتخاب کن. هزینه هر ۳ ساعت از موجودی شرکت خریدار کم و به ارائه‌دهنده پرداخت می‌شود.",{parse_mode:"Markdown",reply_markup:kb});
+    await ctx.answerCallbackQuery();
+  });
+
+  bot.callbackQuery(/^tel:service:(\\d+):(mobile|fiber|cloud|enterprise|security)$/,async ctx=>{
+    const providerId=Number(ctx.match[1]),key=ctx.match[2],service=TELECOM_SERVICES[key];
+    const q=await pool.query("SELECT id,company_name FROM player_companies WHERE telegram_id=$1 AND approval_status='approved' AND company_type<>'telecom' ORDER BY id",[String(ctx.from.id)]);
+    if(!q.rows.length)return ctx.answerCallbackQuery({text:"برای خرید خدمت، یک شرکت غیرمخابراتی لازم داری.",show_alert:true});
+    const kb=new InlineKeyboard();
+    for(const c of q.rows)kb.text((c.company_name||"شرکت")+" #"+c.id,"tel:activate:"+providerId+":"+c.id+":"+key).row();
+    kb.text("🔙 خدمات","tel:provider:"+providerId);
+    await ctx.editMessageText(service.name+"\\n\\n"+service.description+"\\nهزینه هر ۳ ساعت: "+fmt(service.price)+"\\n\\nخدمت برای کدام شرکت فعال شود؟",{reply_markup:kb});
+    await ctx.answerCallbackQuery();
+  });
+
+  bot.callbackQuery(/^tel:activate:(\\d+):(\\d+):(mobile|fiber|cloud|enterprise|security)$/,async ctx=>{
+    const providerId=Number(ctx.match[1]),buyerCompanyId=Number(ctx.match[2]),key=ctx.match[3],service=TELECOM_SERVICES[key],client=await pool.connect();
+    try{
+      await client.query("BEGIN");
+      const q=await client.query("SELECT pc.id provider_id,pc.telegram_id provider_owner,pc.company_name provider_name,bc.id buyer_id,bc.telegram_id buyer_owner,bc.company_name buyer_name FROM player_companies pc JOIN player_companies bc ON bc.id=$2 WHERE pc.id=$1 AND pc.company_type='telecom' AND pc.approval_status='approved' AND bc.telegram_id=$3 AND bc.company_type<>'telecom' AND bc.approval_status='approved' FOR UPDATE OF pc,bc",[providerId,buyerCompanyId,String(ctx.from.id)]);
+      if(!q.rows.length||String(q.rows[0].provider_owner)===String(ctx.from.id)){await client.query("ROLLBACK");return ctx.answerCallbackQuery({text:"شرکت انتخاب‌شده معتبر نیست.",show_alert:true});}
+      const row=q.rows[0],provider=String(row.provider_owner),buyer=String(row.buyer_owner),fee=service.price;
+      const existing=await client.query("SELECT id,status FROM telecom_subscriptions WHERE buyer_company_id=$1 AND service_key=$2 FOR UPDATE",[buyerCompanyId,key]);
+      if(existing.rows[0]?.status==="active"){await client.query("ROLLBACK");return ctx.answerCallbackQuery({text:"این خدمت از قبل فعال است.",show_alert:true});}
+      const balances=await client.query("SELECT telegram_id,balance FROM players WHERE telegram_id IN ($1,$2) ORDER BY telegram_id FOR UPDATE",[provider,buyer]);
+      const b=balances.rows.find(x=>String(x.telegram_id)===buyer);
+      if(!b||Number(b.balance)<fee){await client.query("ROLLBACK");return ctx.answerCallbackQuery({text:"موجودی شرکت برای پرداخت دوره اول کافی نیست.",show_alert:true});}
+      await client.query("UPDATE players SET balance=balance-$2 WHERE telegram_id=$1",[buyer,fee]);
+      await client.query("UPDATE players SET balance=balance+$2 WHERE telegram_id=$1",[provider,fee]);
+      await client.query("INSERT INTO telecom_subscriptions(provider_company_id,buyer_company_id,service_key,price_per_period,status,last_billed_at) VALUES($1,$2,$3,$4,'active',NOW()) ON CONFLICT(buyer_company_id,service_key) DO UPDATE SET provider_company_id=EXCLUDED.provider_company_id,price_per_period=EXCLUDED.price_per_period,status='active',last_billed_at=NOW()",[providerId,buyerCompanyId,key,fee]);
+      await client.query("INSERT INTO finance_transactions(telegram_id,company_id,transaction_type,amount,description) VALUES($1,$2,'telecom_service_fee',$3,$4),($5,$6,'telecom_service_income',$7,$8)",[buyer,buyerCompanyId,-fee,"فعال‌سازی "+service.name,provider,providerId,fee,"فروش "+service.name]);
+      await client.query("COMMIT");
+      await ctx.answerCallbackQuery({text:"اشتراک فعال شد و هزینه دوره اول پرداخت شد."});
+      await ctx.reply("✅ "+service.name+" برای شرکت "+(row.buyer_name||("#"+buyerCompanyId))+" فعال شد.\\n💵 پرداخت اولیه: "+fmt(fee)+"\\n🔁 تمدید خودکار هر ۳ ساعت؛ در صورت کمبود موجودی، اشتراک متوقف می‌شود.",{reply_markup:new Keyboard().text("📡 خدمات مخابرات").text("📊 وضعیت بازی").resized().persistent()});
+    }catch(e){await client.query("ROLLBACK").catch(()=>{});console.error("[telecom-activate]",e);await ctx.answerCallbackQuery({text:"خطا در فعال‌سازی خدمت.",show_alert:true});}
+    finally{client.release();}
+  });
+
+  bot.callbackQuery("tel:back",async ctx=>{
+    const providers=await pool.query("SELECT id,company_name FROM player_companies WHERE company_type='telecom' AND approval_status='approved' AND telegram_id<>$1 ORDER BY id",[String(ctx.from.id)]);
+    const kb=new InlineKeyboard();for(const p of providers.rows)kb.text(p.company_name||"شرکت مخابراتی","tel:provider:"+p.id).row();
+    await ctx.editMessageText("📡 شرکت مخابراتی را انتخاب کن:",{reply_markup:kb});await ctx.answerCallbackQuery();
+  });
+
+  bot.callbackQuery("tel:mine",async ctx=>{
+    const q=await pool.query("SELECT ts.service_key,ts.price_per_period,ts.status,bc.company_name buyer_name,pc.company_name provider_name FROM telecom_subscriptions ts JOIN player_companies bc ON bc.id=ts.buyer_company_id JOIN player_companies pc ON pc.id=ts.provider_company_id WHERE bc.telegram_id=$1 ORDER BY ts.id",[String(ctx.from.id)]);
+    const lines=q.rows.map(x=>(TELECOM_SERVICES[x.service_key]?.name||x.service_key)+"\\n🏢 شرکت: "+(x.buyer_name||"شرکت شما")+"\\n📡 ارائه‌دهنده: "+(x.provider_name||"مخابرات")+"\\n💵 "+fmt(x.price_per_period)+" هر ۳ ساعت | "+(x.status==="active"?"فعال":"متوقف"));
+    await ctx.editMessageText("📋 *اشتراک‌های مخابراتی شما*\\n\\n"+(lines.join("\\n\\n")||"اشتراکی ثبت نشده است."),{parse_mode:"Markdown",reply_markup:new InlineKeyboard().text("🔙 بازار خدمات","tel:back")});
+    await ctx.answerCallbackQuery();
+  });
 
   bot.hears("📒 دفتر مالی",async ctx=>{
     const q=await pool.query("SELECT transaction_type,amount,description,created_at FROM finance_transactions WHERE telegram_id=$1 ORDER BY created_at DESC LIMIT 12",[String(ctx.from.id)]);
