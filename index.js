@@ -440,11 +440,9 @@ bot.callbackQuery(/^buy:([a-z_]+)$/,async ctx=>{
     const p=await pool.query("SELECT balance,player_level,reputation,season_points,last_season_rank FROM players WHERE telegram_id=$1",[uid]);
     if(!p.rows.length)return ctx.reply("پروفایل بازیکن پیدا نشد.");
     if(Number(p.rows[0].balance)<type.price)return ctx.reply("سرمایه کافی نیست. هزینه شروع: "+money(type.price));
-    const companyName=type.name;
     const perf=p.rows[0],rank=perf.last_season_rank;
-    const q=await pool.query("INSERT INTO company_requests(telegram_id,company_type,company_name,brand_name,season_rank,player_level,reputation) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id",[uid,type.id,companyName,companyName,rank,perf.player_level,perf.reputation]);
-    await ctx.reply("📨 درخواست تأسیس با موفقیت ثبت شد\n\n🏢 "+companyName+"\n💵 هزینه: "+money(type.price)+"\n👷 نیروی پایه: "+type.employees+" نفر\n📈 درآمد پایه: "+money(type.income)+"/ساعت\n\nنام شرکت به‌صورت خودکار انتخاب شد؛ نیازی به تایپ نیست. پس از بررسی مدیر فعال می‌شود.",{reply_markup:quickKeyboard(ctx.from.id)});
-    if(ownerTelegramId)await bot.api.sendMessage(ownerTelegramId,"📝 درخواست شرکت #"+q.rows[0].id+"\nبازیکن: "+uid+"\nشرکت: "+companyName+" ("+type.name+")\nرتبه فصل قبل: "+(rank??"ثبت نشده")+" | Level "+perf.player_level+" | Reputation "+perf.reputation+" | امتیاز "+perf.season_points+"\nهزینه: "+money(type.price),{reply_markup:new InlineKeyboard().text("✅ تأیید و تأسیس","corp:approve:"+q.rows[0].id).text("❌ رد","corp:reject:"+q.rows[0].id)});
+    companyNamePending.set(uid,{typeId:type.id,rank,playerLevel:perf.player_level,reputation:perf.reputation,seasonPoints:perf.season_points});
+    await ctx.reply("🏷️ برای شرکت «"+type.name+"» یک نام اختصاصی انتخاب کن.\\n\\nنام باید 2 تا 40 حرف باشد. هر شرکت می‌تواند نام متفاوتی داشته باشد. برای لغو /cancel را بفرست.",{reply_markup:quickKeyboard(ctx.from.id)});
 });
 bot.callbackQuery(/^corp:(approve|reject):(\d+)$/,async ctx=>{
   if(String(ctx.from.id)!==ownerTelegramId)return ctx.answerCallbackQuery({text:"فقط مدیر کل دسترسی دارد.",show_alert:true});
@@ -598,7 +596,7 @@ for (const [label, section, title] of menuSections) {
   });
 }
 // Economic message composer: choose another player's company, then send a private in-game business message.
-const economicCompose = new Map();
+const companyNamePending = new Map();\nconst economicCompose = new Map();
 bot.hears("📨 پیام اقتصادی", async ctx => {
   const q = await pool.query(
     `SELECT pc.id,pc.company_name,pc.company_type,p.telegram_id,p.display_name
@@ -629,7 +627,7 @@ bot.callbackQuery(/^econ:reply:(\d+)$/,async ctx=>{
   await ctx.answerCallbackQuery();
   return ctx.reply("↩️ پاسخ به پیام درباره «"+m.company_name+"» را بنویس.\n\nبرای لغو /cancel را بفرست.");
 });
-bot.command("cancel",async ctx=>{if(economicCompose.delete(String(ctx.from.id)))return ctx.reply("ارسال پیام لغو شد.");return ctx.reply("در حال حاضر پیام اقتصادی در انتظار ارسال نداری.");});
+bot.command("cancel",async ctx=>{const uid=String(ctx.from.id);if(companyNamePending.delete(uid))return ctx.reply("انتخاب نام شرکت و درخواست تأسیس لغو شد.");if(economicCompose.delete(uid))return ctx.reply("ارسال پیام لغو شد.");return ctx.reply("در حال حاضر عملیات در انتظار لغو نداری.");});
 bot.on("message:text",async (ctx,next)=>{
   const pending=economicCompose.get(String(ctx.from.id));
   if(!pending)return next();
@@ -638,7 +636,24 @@ bot.on("message:text",async (ctx,next)=>{
   if(!body||body.length>1000)return ctx.reply("متن باید بین ۱ تا ۱۰۰۰ حرف باشد. دوباره بنویس یا /cancel بزن.");
   const recipient=await pool.query("SELECT approval_status FROM players WHERE telegram_id=$1",[pending.recipientId]);
   if(!recipient.rows.length||recipient.rows[0].approval_status!=="approved"){economicCompose.delete(String(ctx.from.id));return ctx.reply("بازیکن مقصد دیگر فعال نیست؛ ارسال لغو شد.");}
-  const ins=await pool.query("INSERT INTO economic_messages(sender_id,recipient_id,company_id,company_name,body,reply_to) VALUES($1,$2,$3,$4,$5,$6) RETURNING id,created_at",[String(ctx.from.id),pending.recipientId,pending.companyId,pending.companyName,body,pending.replyTo]);
+  const ins=await pool.query("INSERT INTO economic_messages(sender_id,recipient_id,  const uid=String(ctx.from.id);
+  const naming=companyNamePending.get(uid);
+  if(naming){
+    const raw=(ctx.message.text||"").trim();
+    if(raw.startsWith("/"))return next();
+    const companyName=raw.replace(/[<>]/g,"").replace(/[\\*_]/g,"").trim();
+    if(companyName.length<2||companyName.length>40)return ctx.reply("نام شرکت باید 2 تا 40 حرف باشد. دوباره بنویس یا /cancel بزن.");
+    const type=COMPANY_TYPES.find(x=>x.id===naming.typeId);
+    if(!type){companyNamePending.delete(uid);return ctx.reply("نوع شرکت نامعتبر شد؛ دوباره از منوی تأسیس انتخاب کن.");}
+    const p=await pool.query("SELECT balance FROM players WHERE telegram_id=$1",[uid]);
+    if(!p.rows.length||Number(p.rows[0].balance)<type.price){companyNamePending.delete(uid);return ctx.reply("سرمایه کافی نیست؛ درخواست تأسیس لغو شد.");}
+    const q=await pool.query("INSERT INTO company_requests(telegram_id,company_type,company_name,brand_name,season_rank,player_level,reputation) VALUES($1,$2,$3,$3,$4,$5,$6) RETURNING id",[uid,type.id,companyName,naming.rank,naming.playerLevel,naming.reputation]);
+    companyNamePending.delete(uid);
+    await ctx.reply("📨 درخواست تأسیس ثبت شد\\n\\n🏢 "+companyName+"\\nنوع: "+type.name+"\\n💵 هزینه: "+money(type.price)+"\\n\\nپس از تأیید مدیر، شرکت با همین نام فعال می‌شود.",{reply_markup:quickKeyboard(ctx.from.id)});
+    if(ownerTelegramId)await bot.api.sendMessage(ownerTelegramId,"📝 درخواست شرکت #"+q.rows[0].id+"\\nبازیکن: "+uid+"\\nشرکت: "+companyName+" ("+type.name+")\\nرتبه فصل قبل: "+(naming.rank??"ثبت نشده")+" | Level "+naming.playerLevel+" | Reputation "+naming.reputation+" | امتیاز "+naming.seasonPoints+"\\nهزینه: "+money(type.price),{reply_markup:new InlineKeyboard().text("✅ تأیید و تأسیس","corp:approve:"+q.rows[0].id).text("❌ رد","corp:reject:"+q.rows[0].id)});
+    return;
+  }
+company_id,company_name,body,reply_to) VALUES($1,$2,$3,$4,$5,$6) RETURNING id,created_at",[String(ctx.from.id),pending.recipientId,pending.companyId,pending.companyName,body,pending.replyTo]);
   economicCompose.delete(String(ctx.from.id));
   const sender=await pool.query("SELECT display_name FROM players WHERE telegram_id=$1",[String(ctx.from.id)]);
   const msgId=ins.rows[0].id;
