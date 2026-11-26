@@ -57,12 +57,14 @@ bot.use(async (ctx, next) => {
 bot.use(async (ctx, next) => {
   if (!ctx.from) return next();
   const id=String(ctx.from.id), text=ctx.message?.text || "";
+  const callbackData=ctx.callbackQuery?.data || "";
   if (id===ownerTelegramId || /^\/(start|status|myid)(\s|$)/.test(text)) return next();
+  if (callbackData.startsWith("reg:") || companyNamePending.has(id)) return next();
   const q=await pool.query("SELECT approval_status FROM players WHERE telegram_id=$1",[id]);
   const status=q.rows[0]?.approval_status;
   if (!status) { if(ctx.message) await ctx.reply("برای ثبت درخواست عضویت /start را بزن."); return; }
   if(status==="banned") { if(ctx.message) await ctx.reply("⛔ دسترسی شما مسدود شده است."); else await ctx.answerCallbackQuery({text:"حساب مسدود است.",show_alert:true}).catch(()=>{}); return; }
-  if(status!=="approved") { if(ctx.message) await ctx.reply("🕓 حساب شما هنوز تأیید نشده است."); else await ctx.answerCallbackQuery({text:"حساب در انتظار تأیید مدیر است.",show_alert:true}).catch(()=>{}); return; }
+  if(status!=="approved") { if(ctx.message) await ctx.reply("🕓 حساب شما هنوز تأیید نشده است. برای تکمیل ثبت‌نام /start را بزن."); else await ctx.answerCallbackQuery({text:"حساب در انتظار تأیید مدیر است.",show_alert:true}).catch(()=>{}); return; }
   return next();
 });
 bot.command("myid", ctx => ctx.reply("Telegram ID شما: "+ctx.from.id+"\nاین عدد را در Railway در متغیر OWNER_TELEGRAM_ID قرار بده."));
@@ -183,6 +185,7 @@ async function initDb() {
     ALTER TABLE players ADD COLUMN IF NOT EXISTS reputation INTEGER NOT NULL DEFAULT 0;
     ALTER TABLE players ADD COLUMN IF NOT EXISTS season_points INTEGER NOT NULL DEFAULT 0;
     ALTER TABLE players ADD COLUMN IF NOT EXISTS last_season_rank INTEGER;
+    ALTER TABLE players ADD COLUMN IF NOT EXISTS registration_source TEXT;
     ALTER TABLE player_companies ADD COLUMN IF NOT EXISTS company_name TEXT;
     ALTER TABLE player_companies ADD COLUMN IF NOT EXISTS brand_name TEXT;
     ALTER TABLE player_companies ADD COLUMN IF NOT EXISTS approved_by BIGINT;
@@ -197,10 +200,14 @@ async function initDb() {
       season_rank INTEGER,
       player_level INTEGER NOT NULL DEFAULT 1,
       reputation INTEGER NOT NULL DEFAULT 0,
+      is_registration BOOLEAN NOT NULL DEFAULT false,
+      source_tag TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       reviewed_at TIMESTAMPTZ,
       reviewed_by BIGINT
     );
+    ALTER TABLE company_requests ADD COLUMN IF NOT EXISTS is_registration BOOLEAN NOT NULL DEFAULT false;
+    ALTER TABLE company_requests ADD COLUMN IF NOT EXISTS source_tag TEXT;
   `);
 }
 
@@ -354,13 +361,16 @@ function homeText() {
 
 bot.command("start", async (ctx) => {
   const status = await ensurePlayer(ctx);
-  if (status !== "approved" && String(ctx.from.id) !== ownerTelegramId) {
-    const msg = status === "banned" ? "⛔ دسترسی حساب شما مسدود شده است." : status === "rejected" ? "❌ درخواست عضویت شما رد شده است." : "🕓 درخواست عضویت شما ثبت شد و منتظر تأیید مدیر کل است.";
-    return ctx.reply(msg, { reply_markup: new Keyboard().text("🔄 بررسی وضعیت").resized().persistent() });
-  }
-  await ctx.reply(await dashboardText(ctx.from.id), { parse_mode: "Markdown", reply_markup: bottomKeyboard(ctx.from.id) });
+  const uid=String(ctx.from.id);
+  const source=String(ctx.match||"").trim().slice(0,120) || "direct";
+  await pool.query("UPDATE players SET registration_source=COALESCE(registration_source,$2) WHERE telegram_id=$1",[uid,source]);
+  if(uid===ownerTelegramId || status==="approved")return ctx.reply(await dashboardText(ctx.from.id),{parse_mode:"Markdown",reply_markup:bottomKeyboard(ctx.from.id)});
+  if(status==="banned")return ctx.reply("⛔ دسترسی حساب شما مسدود شده است.");
+  if(status==="rejected")return ctx.reply("❌ درخواست قبلی شما رد شده است. برای بررسی دوباره با مدیر کل تماس بگیر.");
+  const pending=await pool.query("SELECT id,company_name FROM company_requests WHERE telegram_id=$1 AND request_status='pending' ORDER BY id DESC LIMIT 1",[uid]);
+  if(pending.rows.length)return ctx.reply("🕓 درخواست شما برای شرکت «"+pending.rows[0].company_name+"» ثبت شده و منتظر بررسی مدیر کل است. پس از تأیید، پیام دریافت می‌کنی.");
+  return ctx.reply("🏙️ به Open Many خوش آمدی!\n\nبرای ثبت‌نام، ابتدا نوع شرکت شروع خودت را انتخاب کن. بعد نام شرکت را می‌گذاری و درخواست را تأیید می‌کنی. تا زمان تأیید مدیر، وارد بازی نمی‌شوی.",{reply_markup:registrationKeyboard()});
 });
-
 bot.hears("🧰 دسترسی آسان", async ctx => {
   const userCommands = "برای بازی نیازی به تایپ دستور نیست.\n\n۱. از منوی پایین بخش را انتخاب کن.\n۲. عملیات را با دکمه‌ها انجام بده.\n۳. راهنمای مرحله‌ای قدم‌به‌قدم راهنمایی می‌کند.\n\n🌐 بازار و اقتصاد — گزارش بازار\n🏦 امور مالی — درآمد، بانک و دفتر مالی\n🏢 کسب‌وکارها — خرید و مدیریت شرکت\n🏆 رقابت و پیشرفت — مأموریت، جایزه و رتبه‌بندی";
   const adminCommands = "\n\n🛡️ دستورات مدیر کل:\n/admin یا /panel — پنل مدیریت مرحله‌ای\n/pending — درخواست‌های عضویت\n/approve ID — تأیید بازیکن\n/reject ID — رد درخواست\n/ban ID — مسدود کردن\n/unban ID — رفع مسدودی\n/players — فهرست بازیکنان\n/balance ID — مشاهده موجودی\n/setbalance ID AMOUNT — تنظیم موجودی\n/give ID AMOUNT — هدیه پول\n/broadcast متن — پیام همگانی";
@@ -426,9 +436,9 @@ bot.callbackQuery("buy_menu", async ctx => {
   const p=await pool.query("SELECT player_level,last_season_rank,reputation FROM players WHERE telegram_id=$1",[String(ctx.from.id)]);
   const perf=p.rows[0]||{player_level:1,last_season_rank:null,reputation:0};
   const unlocked=COMPANY_TYPES.filter(t=>!t.special||(Number(perf.player_level)>=t.minLevel&&Number(perf.reputation)>=20&&Number(perf.last_season_rank)>0&&Number(perf.last_season_rank)<=t.maxRank));
-  for(const t of unlocked) kb.text(t.name+" | "+money(t.price),"buy:"+t.id).row();
+  for(const t of unlocked) kb.text(t.name,"buy:"+t.id).row();
   kb.text("🔙 بازگشت","home");
-  await ctx.editMessageText("🏗️ *فرصت‌های تأسیس شرکت*\n\n۲۰ نوع کسب‌وکار با هزینه، نیروی انسانی و درآمد متفاوت. هر تأسیس جدید برای بررسی مدیر ارسال می‌شود.",{parse_mode:"Markdown",reply_markup:kb});
+  await ctx.editMessageText("🏗️ *فرصت‌های تأسیس شرکت*\n\nنوع شرکت را انتخاب کن؛ نام اختصاصی می‌گذاری و پیش از ارسال، درخواست را تأیید می‌کنی.",{parse_mode:"Markdown",reply_markup:kb});
   await ctx.answerCallbackQuery();
 });
 bot.callbackQuery(/^buy:([a-z_]+)$/,async ctx=>{
@@ -597,7 +607,14 @@ for (const [label, section, title] of menuSections) {
 }
 // Economic message composer: choose another player's company, then send a private in-game business message.
 const companyNamePending = new Map();
+const companyConfirmPending = new Map();
 const economicCompose = new Map();
+const registrationKeyboard = () => {
+  const kb=new InlineKeyboard();
+  for(const t of COMPANY_TYPES.filter(x=>!x.special)) kb.text(t.name,"reg:company:"+t.id).row();
+  kb.text("❌ انصراف","reg:cancel");
+  return kb;
+};
 bot.hears("📨 پیام اقتصادی", async ctx => {
   const q = await pool.query(
     `SELECT pc.id,pc.company_name,pc.company_type,p.telegram_id,p.display_name
