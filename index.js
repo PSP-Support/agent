@@ -58,7 +58,7 @@ bot.use(async (ctx, next) => {
   if (!ctx.from) return next();
   const id=String(ctx.from.id), text=ctx.message?.text || "";
   const callbackData=ctx.callbackQuery?.data || "";
-  if (id===ownerTelegramId || /^\/(start|status|myid)(\s|$)/.test(text)) return next();
+  if (id===ownerTelegramId || /^\/(start|status|myid)(\s|$)/.test(text) || text==="🔄 بررسی وضعیت") return next();
   if (callbackData.startsWith("reg:") || companyNamePending.has(id)) return next();
   const q=await pool.query("SELECT approval_status FROM players WHERE telegram_id=$1",[id]);
   const status=q.rows[0]?.approval_status;
