@@ -629,14 +629,7 @@ bot.callbackQuery(/^econ:reply:(\d+)$/,async ctx=>{
 });
 bot.command("cancel",async ctx=>{const uid=String(ctx.from.id);if(companyNamePending.delete(uid))return ctx.reply("انتخاب نام شرکت و درخواست تأسیس لغو شد.");if(economicCompose.delete(uid))return ctx.reply("ارسال پیام لغو شد.");return ctx.reply("در حال حاضر عملیات در انتظار لغو نداری.");});
 bot.on("message:text",async (ctx,next)=>{
-  const pending=economicCompose.get(String(ctx.from.id));
-  if(!pending)return next();
-  const body=(ctx.message.text||"").trim();
-  if(body.startsWith("/"))return next();
-  if(!body||body.length>1000)return ctx.reply("متن باید بین ۱ تا ۱۰۰۰ حرف باشد. دوباره بنویس یا /cancel بزن.");
-  const recipient=await pool.query("SELECT approval_status FROM players WHERE telegram_id=$1",[pending.recipientId]);
-  if(!recipient.rows.length||recipient.rows[0].approval_status!=="approved"){economicCompose.delete(String(ctx.from.id));return ctx.reply("بازیکن مقصد دیگر فعال نیست؛ ارسال لغو شد.");}
-  const ins=await pool.query("INSERT INTO economic_messages(sender_id,recipient_id,  const uid=String(ctx.from.id);
+  const uid=String(ctx.from.id);
   const naming=companyNamePending.get(uid);
   if(naming){
     const raw=(ctx.message.text||"").trim();
@@ -653,12 +646,19 @@ bot.on("message:text",async (ctx,next)=>{
     if(ownerTelegramId)await bot.api.sendMessage(ownerTelegramId,"📝 درخواست شرکت #"+q.rows[0].id+"\\nبازیکن: "+uid+"\\nشرکت: "+companyName+" ("+type.name+")\\nرتبه فصل قبل: "+(naming.rank??"ثبت نشده")+" | Level "+naming.playerLevel+" | Reputation "+naming.reputation+" | امتیاز "+naming.seasonPoints+"\\nهزینه: "+money(type.price),{reply_markup:new InlineKeyboard().text("✅ تأیید و تأسیس","corp:approve:"+q.rows[0].id).text("❌ رد","corp:reject:"+q.rows[0].id)});
     return;
   }
-company_id,company_name,body,reply_to) VALUES($1,$2,$3,$4,$5,$6) RETURNING id,created_at",[String(ctx.from.id),pending.recipientId,pending.companyId,pending.companyName,body,pending.replyTo]);
-  economicCompose.delete(String(ctx.from.id));
-  const sender=await pool.query("SELECT display_name FROM players WHERE telegram_id=$1",[String(ctx.from.id)]);
+  const pending=economicCompose.get(uid);
+  if(!pending)return next();
+  const body=(ctx.message.text||"").trim();
+  if(body.startsWith("/"))return next();
+  if(!body||body.length>1000)return ctx.reply("متن باید بین ۱ تا ۱۰۰۰ حرف باشد. دوباره بنویس یا /cancel بزن.");
+  const recipient=await pool.query("SELECT approval_status FROM players WHERE telegram_id=$1",[pending.recipientId]);
+  if(!recipient.rows.length||recipient.rows[0].approval_status!=="approved"){economicCompose.delete(uid);return ctx.reply("بازیکن مقصد دیگر فعال نیست؛ ارسال لغو شد.");}
+  const ins=await pool.query("INSERT INTO economic_messages(sender_id,recipient_id,company_id,company_name,body,reply_to) VALUES($1,$2,$3,$4,$5,$6) RETURNING id,created_at",[uid,pending.recipientId,pending.companyId,pending.companyName,body,pending.replyTo]);
+  economicCompose.delete(uid);
+  const sender=await pool.query("SELECT display_name FROM players WHERE telegram_id=$1",[uid]);
   const msgId=ins.rows[0].id;
   try{
-    await bot.api.sendMessage(pending.recipientId,"📨 پیام اقتصادی جدید\n\nاز: "+(sender.rows[0]?.display_name||"بازیکن")+"\n🏢 درباره: "+pending.companyName+"\n\n"+body,{reply_markup:new InlineKeyboard().text("↩️ پاسخ","econ:reply:"+msgId).text("📥 صندوق پیام‌ها","econ:inbox")});
+    await bot.api.sendMessage(pending.recipientId,"📨 پیام اقتصادی جدید\\n\\nاز: "+(sender.rows[0]?.display_name||"بازیکن")+"\\n🏢 درباره: "+pending.companyName+"\\n\\n"+body,{reply_markup:new InlineKeyboard().text("↩️ پاسخ","econ:reply:"+msgId).text("📥 صندوق پیام‌ها","econ:inbox")});
     await ctx.reply("✅ پیام اقتصادی ارسال شد.",{reply_markup:bottomKeyboard(ctx.from.id)});
   }catch(e){await ctx.reply("پیام در صندوق بازی ذخیره شد، اما تلگرام نتوانست اعلان مستقیم را تحویل دهد. مقصد باید ربات را باز کند.",{reply_markup:bottomKeyboard(ctx.from.id)});}
 });
