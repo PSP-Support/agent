@@ -596,7 +596,8 @@ for (const [label, section, title] of menuSections) {
   });
 }
 // Economic message composer: choose another player's company, then send a private in-game business message.
-const companyNamePending = new Map();\nconst economicCompose = new Map();
+const companyNamePending = new Map();
+const economicCompose = new Map();
 bot.hears("📨 پیام اقتصادی", async ctx => {
   const q = await pool.query(
     `SELECT pc.id,pc.company_name,pc.company_type,p.telegram_id,p.display_name
