@@ -153,7 +153,7 @@ async function initDb() {
       id BIGSERIAL PRIMARY KEY,
       sender_id BIGINT NOT NULL REFERENCES players(telegram_id) ON DELETE CASCADE,
       recipient_id BIGINT NOT NULL REFERENCES players(telegram_id) ON DELETE CASCADE,
-      company_id BIGINT REFERENCES player_companies(id) ON DELETE SET NULL,
+      company_id BIGINT,
       company_name TEXT NOT NULL,
       subject TEXT NOT NULL DEFAULT 'پیام اقتصادی',
       body TEXT NOT NULL,
@@ -611,9 +611,7 @@ bot.hears("📨 پیام اقتصادی", async ctx => {
   const kb=new InlineKeyboard();
   for(const c of q.rows) kb.text((c.company_name||c.company_type)+" | "+c.display_name.slice(0,16),"econ:to:"+c.id).row();
   kb.text("📥 صندوق پیام‌ها","econ:inbox").row().text("🔙 منوی اصلی","home");
-  return ctx.reply("📨 پیام اقتصادی به شرکت
-
-شرکت مقصد را انتخاب کن. پیام خصوصی برای مالک شرکت ارسال می‌شود و می‌توانی درباره خرید، فروش، تأمین کالا، قرارداد یا همکاری مذاکره کنی.",{reply_markup:kb});
+  return ctx.reply("📨 پیام اقتصادی به شرکت\n\nشرکت مقصد را انتخاب کن. پیام خصوصی برای مالک شرکت ارسال می‌شود و می‌توانی درباره خرید، فروش، تأمین کالا، قرارداد یا همکاری مذاکره کنی.",{reply_markup:kb});
 });
 bot.callbackQuery(/^econ:to:(\d+)$/,async ctx=>{
   const q=await pool.query(`SELECT pc.id,pc.company_name,pc.company_type,pc.telegram_id,p.display_name
@@ -655,7 +653,7 @@ bot.callbackQuery("econ:inbox",async ctx=>{
     WHERE em.recipient_id=$1 ORDER BY em.created_at DESC LIMIT 10`,[String(ctx.from.id)]);
   if(!q.rows.length){await ctx.answerCallbackQuery();return ctx.editMessageText("📥 صندوق پیام‌های اقتصادی خالی است.",{reply_markup:new InlineKeyboard().text("⬅️ پیام اقتصادی","econ:back")});}
   const kb=new InlineKeyboard();
-  for(const m of q.rows)kb.text("✉️ "+m.display_name.slice(0,14)+" | "+m.company_name.slice(0,18),"econ:read:"+m.id).row();
+  for(const m of q.rows)kb.text("✉️ "+m.display_name.slice(0,14)+" | "+String(m.company_name||"شرکت").slice(0,18),"econ:read:"+m.id).row();
   kb.text("🔄 تازه‌سازی","econ:inbox").row().text("⬅️ پیام اقتصادی","econ:back");
   await ctx.answerCallbackQuery();
   return ctx.editMessageText("📥 صندوق پیام‌های اقتصادی\n\nآخرین ۱۰ پیام دریافتی:",{reply_markup:kb});
