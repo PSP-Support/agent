@@ -245,7 +245,7 @@ bot.callbackQuery(/^turn$/,async ctx=>{
  const result=await settleOne(ctx.from.id);
  await edit(ctx,result?`<b>📜 تسویه‌ی دوره‌ای</b>\nتعداد نوبت: ${result.ticks}\nتغییر خزانه: ${money(result.net)}\nمانده: ${money(result.balance)}`:"هنوز زمان تسویه‌ی سه‌ساعته نرسیده است.",nation());
 });
-bot.on("callback_query:data",async ctx=>{try{await ctx.answerCallbackQuery({text:"این دکمه قدیمی یا نامعتبر است؛ منو را دوباره باز کنید."});}catch{}const p=await get(ctx.from.id);if(p?.approved)await say(ctx,\"دکمه‌ی انتخاب‌شده دیگر معتبر نیست. از منوی دربار دوباره وارد شوید.\",nation());else await say(ctx,\"این دکمه معتبر نیست. برای آغاز بازی /start را بفرستید.\",main());});
+bot.on("callback_query:data",async ctx=>{try{await ctx.answerCallbackQuery({text:"این دکمه قدیمی یا نامعتبر است؛ منو را دوباره باز کنید."});}catch{}const p=await get(ctx.from.id);if(p?.approved)await say(ctx,"دکمه‌ی انتخاب‌شده دیگر معتبر نیست. از منوی دربار دوباره وارد شوید.",nation());else await say(ctx,"این دکمه معتبر نیست. برای آغاز بازی /start را بفرستید.",main());});
  setInterval(async()=>{
  try{
   const ids=(await pool.query("SELECT telegram_id FROM game_players WHERE approved=TRUE")).rows;
