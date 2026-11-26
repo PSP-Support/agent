@@ -111,7 +111,7 @@ const money = (n) => "$" + Math.floor(Number(n)).toLocaleString("en-US");
 const menuSection = new Map();
 const mainKeyboard = () => new Keyboard()
   .text("🏛️ دربار و کشور").row()
-  .text("📘 راهنمای شاه شاهان").resized().persistent(true);
+  .text("📘 راهنمای مرحله‌ای").resized().persistent(true);
 const quickKeyboard = (userId) => {
   const kb=new InlineKeyboard()
     .text("🏢 کسب‌وکارها","quick:business").text("💰 امور مالی","quick:finance").row()
@@ -465,9 +465,11 @@ bot.callbackQuery(/^corp:(approve|reject):(\d+)$/,async ctx=>{
     if(action==="approve"){
       const p=await client.query("SELECT balance FROM players WHERE telegram_id=$1 FOR UPDATE",[String(req.telegram_id)]);
       if(!p.rows.length||Number(p.rows[0].balance)<type.price){await client.query("ROLLBACK");return ctx.answerCallbackQuery({text:"سرمایه بازیکن برای تأسیس کافی نیست.",show_alert:true});}
-      await client.query("UPDATE players SET balance=(CASE WHEN $3 THEN 100000 ELSE balance END)-$2,player_level=CASE WHEN $3 THEN 1 ELSE GREATEST(player_level,1) END,reputation=CASE WHEN $3 THEN 2 ELSE LEAST(100,reputation+2) END,season_points=CASE WHEN $3 THEN 0 ELSE season_points END,last_season_rank=CASE WHEN $3 THEN NULL ELSE last_season_rank END,last_collect=CASE WHEN $3 THEN NOW() ELSE last_collect END,approval_status=CASE WHEN $3 THEN 'approved' ELSE approval_status END,approved_at=CASE WHEN $3 THEN NOW() ELSE approved_at END,approved_by=CASE WHEN $3 THEN $4 ELSE approved_by END,historical_country_id=COALESCE($5,historical_country_id),historical_ruler=COALESCE($6,historical_ruler),historical_scenario=COALESCE($7,historical_scenario) WHERE telegram_id=$1",[String(req.telegram_id),type.price,!!req.is_registration,ownerTelegramId,req.country_id||null,req.ruler_name||null,req.scenario_id||null]);
-      await client.query("INSERT INTO player_companies(telegram_id,company_type,company_name,brand_name,employee_count,approved_by,approval_status) VALUES($1,$2,$3,$4,$5,$6,'approved')",[String(req.telegram_id),req.company_type,req.company_name,req.brand_name,type.employees,ownerTelegramId]);
-      await client.query("INSERT INTO finance_transactions(telegram_id,transaction_type,amount,description) VALUES($1,'company_foundation',$2,$3)",[String(req.telegram_id),-type.price,"هزینه تأسیس "+req.company_name]);
+      await client.query("UPDATE players SET balance=CASE WHEN $3 THEN 100000 ELSE balance-$2 END,player_level=CASE WHEN $3 THEN 1 ELSE GREATEST(player_level,1) END,reputation=CASE WHEN $3 THEN 2 ELSE LEAST(100,reputation+2) END,season_points=CASE WHEN $3 THEN 0 ELSE season_points END,last_season_rank=CASE WHEN $3 THEN NULL ELSE last_season_rank END,last_collect=CASE WHEN $3 THEN NOW() ELSE last_collect END,approval_status=CASE WHEN $3 THEN 'approved' ELSE approval_status END,approved_at=CASE WHEN $3 THEN NOW() ELSE approved_at END,approved_by=CASE WHEN $3 THEN $4 ELSE approved_by END,historical_country_id=COALESCE($5,historical_country_id),historical_ruler=COALESCE($6,historical_ruler),historical_scenario=COALESCE($7,historical_scenario) WHERE telegram_id=$1",[String(req.telegram_id),type.price,!!req.is_registration,ownerTelegramId,req.country_id||null,req.ruler_name||null,req.scenario_id||null]);
+      if(!req.is_registration){
+        await client.query("INSERT INTO player_companies(telegram_id,company_type,company_name,brand_name,employee_count,approved_by,approval_status) VALUES($1,$2,$3,$4,$5,$6,'approved')",[String(req.telegram_id),req.company_type,req.company_name,req.brand_name,type.employees,ownerTelegramId]);
+        await client.query("INSERT INTO finance_transactions(telegram_id,transaction_type,amount,description) VALUES($1,'company_foundation',$2,$3)",[String(req.telegram_id),-type.price,"هزینه تأسیس "+req.company_name]);
+      }
       await client.query("UPDATE company_requests SET request_status='approved',reviewed_at=NOW(),reviewed_by=$2 WHERE id=$1",[id,ownerTelegramId]);
     }else { await client.query("UPDATE company_requests SET request_status='rejected',reviewed_at=NOW(),reviewed_by=$2 WHERE id=$1",[id,ownerTelegramId]); if(req.is_registration)await client.query("UPDATE players SET approval_status='rejected' WHERE telegram_id=$1",[String(req.telegram_id)]); }
     await client.query("COMMIT");
