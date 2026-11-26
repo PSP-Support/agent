@@ -124,7 +124,7 @@ const countries=[
 ["kurdistan","سرزمین‌های کردنشین عثمانی و ایران","حاکمان محلی","موصل",3000000,80000]];
 const country=id=>countries.find(c=>c[0]===id), money=n=>new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0}).format(Math.round(Number(n)||0)), fmt=n=>Math.round(Number(n)||0).toLocaleString("fa-IR");
 const mainReply=()=>new Keyboard().text("🏛️ دربار و کشور").row().text("📜 تسویه‌ی نوبت").text("📚 راهنما").resized().persistent();
-const nationReply=()=>new Keyboard().text("📊 وضعیت کشور").text("💰 خزانه").row().text("🧾 مالیات").text("🏭 تولید").row().text("👥 جمعیت").text("🛡️ ارتش").row().text("🤝 دیپلماسی").text("🛒 تجارت و بورس").row().text("⚙️ تنظیمات").text("🏠 منوی اصلی").resized().persistent();
+const nationReply=()=>new Keyboard().text("📊 وضعیت کشور").text("💰 خزانه").row().text("🧾 مالیات").text("🏭 تولید").row().text("👥 جمعیت").text("🛡️ ارتش").row().text("🤝 دیپلماسی").text("🛒 تجارت و بورس").row().text("🏪 فروشگاه").text("⚙️ تنظیمات").row().text("🏠 منوی اصلی").resized().persistent();
 const K=rows=>new InlineKeyboard(rows), main=()=>K([[{text:"🏛️ دربار و کشور",callback_data:"m:n"},{text:"📜 تسویه‌ی نوبت",callback_data:"turn"}],[{text:"📚 راهنما",callback_data:"help"}]]);
 const nation=()=>K([[{text:"📊 وضعیت",callback_data:"n:status"},{text:"💰 خزانه",callback_data:"n:money"}],[{text:"🧾 مالیات",callback_data:"n:tax"},{text:"🏭 تولید",callback_data:"n:industry"}],[{text:"👥 جمعیت",callback_data:"n:people"},{text:"🛡️ ارتش",callback_data:"n:army"}],[{text:"🤝 دیپلماسی",callback_data:"n:diplomacy"},{text:"🛒 بورس و تجارت",callback_data:"n:stocks"}],[{text:"⚙️ تنظیمات",callback_data:"n:settings"}],[{text:"🏠 منوی اصلی",callback_data:"m:main"}]]);
 const back=()=>K([[{text:"↩️ دربار",callback_data:"m:n"},{text:"🏠 خانه",callback_data:"m:main"}]]);
@@ -166,6 +166,11 @@ async function ready(ctx){const p=await get(ctx.from.id);if(!p?.approved){await 
 function calc(p){const taxable=Math.max(10000,Number(p.population)/100),tax=taxable*p.tax_rate/100,production=p.industry*1200+p.agriculture*800,tariff=p.tariff*500,wages=p.population/1000*p.wage,army=p.army*900+p.navy*1400,services=Number(p.service_budget),roads=p.infrastructure*250,upkeep=p.industry*300+p.agriculture*150,oilProduction=Math.min(Number(p.oil_reserves||0),Math.round(Number(p.oil_field_level||0)*(1+Number(p.technology||0)/250))),oilConsumption=Math.max(10,Number(p.industry||0)*4+Number(p.army||0)*2+Number(p.navy||0)*10);return {income:tax+production+tariff,expense:wages+army+services+roads+upkeep,tax,production,tariff,wages,army,services,roads,upkeep,oilProduction,oilConsumption,oilNet:oilProduction-oilConsumption};}
 async function status(p){
  const c=country(p.country_id),d=calc(p),net=d.income-d.expense;
+ const owned=(await pool.query("SELECT building_key,level FROM game_buildings WHERE telegram_id=$1",[p.telegram_id])).rows;
+ const levels=owned.reduce((a,x)=>(a[x.building_key]=Number(x.level),a),{}),lv=k=>Number(levels[k]||0);
+ const buildingIncome=lv("commercial")*4000+lv("hotel")*6000+lv("station")*2000+lv("airport")*12000+lv("port")*9000+lv("admin")*Math.max(0,d.tax)*0.05;
+ const buildingUpkeep=lv("gold_mine")*250+lv("iron_mine")*250+lv("coal_mine")*250+lv("oil_refinery")*500+lv("commercial")*300+lv("hotel")*500+lv("airport")*1000+lv("port")*800+lv("coal_power")*700+lv("hydro_power")*500+lv("oil_power")*650+lv("arms_factory")*600;
+ const weapons=(await pool.query("SELECT weapon_key,quantity FROM game_weapon_stock WHERE telegram_id=$1 AND quantity>0",[p.telegram_id])).rows;
  const percent=(n,max)=>Math.max(0,Math.min(100,Math.round(Number(n||0)/Math.max(1,Number(max||1))*100)));
  const mood=p.stability>=75?"آرام و باثبات":p.stability>=50?"قابل کنترل":p.stability>=30?"پر تنش":"در آستانه‌ی بحران";
  const budget="درآمد قابل وصول";
@@ -178,17 +183,17 @@ async function status(p){
 
 <b>💰 خزانه و بودجه</b>
 خزانه: ${money(p.treasury)}
-📈 درآمد روزانه: ${money(d.income)}
+📈 درآمد روزانه: ${money(d.income+buildingIncome)}
   ├ مالیات: ${money(d.tax)}
   ├ تولید صنعتی و کشاورزی: ${money(d.production)}
   └ تعرفه‌ی تجارت: ${money(d.tariff)}
-📉 هزینه‌ی روزانه: ${money(d.expense)}
+📉 هزینه‌ی روزانه: ${money(d.expense+buildingUpkeep)}
   ├ حقوق مردم و کارکنان: ${money(d.wages)}
   ├ ارتش و نیروی دریایی: ${money(d.army)}
   ├ خدمات عمومی: ${money(d.services)}
   ├ زیرساخت: ${money(d.roads)}
   └ نگهداری صنایع: ${money(d.upkeep)}
-🧮 ${budget} روزانه: ${money(Math.max(0,net))}
+🧮 مانده‌ی روزانه‌ی قابل وصول: ${money(Math.max(0,net+buildingIncome-buildingUpkeep))}
 
 <b>👥 مردم و ثبات</b>
 جمعیت: ${fmt(p.population)}
@@ -201,11 +206,16 @@ async function status(p){
 صنعت: ${p.industry} | کشاورزی: ${p.agriculture}
 🌾 غله: ${fmt(p.grain)} (تقریباً ${fmt(foodDays)} روز ذخیره بر مبنای شاخص جمعیت)
 🪨 زغال‌سنگ: ${fmt(p.coal)} | ⛓ آهن: ${fmt(p.iron)} | 🧵 پارچه: ${fmt(p.cloth)}
+🪙 طلا: ${fmt(p.gold_stock||0)} | ⚡ برق: ${fmt(p.electricity_stock||0)} | ⛽ سوخت: ${fmt(p.fuel_stock||0)}
 🛢 نفت: ${fmt(oilStock)} واحد
   ├ تولید روزانه: ${fmt(d.oilProduction)}
   ├ مصرف روزانه: ${fmt(d.oilConsumption)}
   └ ذخیره برای حدود ${fmt(oilDays)} روز مصرف
 🧠 فناوری: ${p.technology} | 🛤 زیرساخت: ${p.infrastructure}
+
+<b>🏗️ دارایی‌های ساخته‌شده</b>
+${owned.length?owned.map(x=>(storeItems().find(i=>i[0]===x.building_key)?.[1]||x.building_key)+" × "+fmt(x.level)).join("\n"):"هنوز پروژه‌ای ساخته نشده است."}
+${weapons.length?"\n<b>انبار تسلیحات</b>\n"+weapons.map(w=>{const found=getCountryWeapons(p.country_id).find(x=>x[0]===w.weapon_key);return (found?.[1]||w.weapon_key)+" × "+fmt(w.quantity)}).join("\n"):""}
 
 <b>🛡️ نیروهای مسلح</b>
 🪖 ارتش: ${p.army} | ⚓ ناوگان: ${p.navy}
@@ -282,7 +292,7 @@ bot.command("help",async ctx=>{await say(ctx,"<b>راهنمای بازی</b>\n۱
 bot.callbackQuery(/^shop$/,async ctx=>{await ctx.answerCallbackQuery();const p=await ready(ctx);if(p)await openStore(ctx);});
 bot.callbackQuery(/^shopcat:(mining|buildings|transport|agriculture|energy|military)$/,async ctx=>{await ctx.answerCallbackQuery();const p=await ready(ctx);if(p)await openStoreCategory(ctx,ctx.match[1]);});
 bot.callbackQuery(/^shopweapons$/,async ctx=>{await ctx.answerCallbackQuery();const p=await ready(ctx);if(!p)return;const list=getCountryWeapons(p.country_id),rows=list.map(w=>[{text:w[1]+" — "+money(w[2]),callback_data:"weaponbuy:"+w[0]}]);rows.unshift([{text:"🏭 کارخانه تسلیحات",callback_data:"shopbuy:arms_factory"}]);rows.push([{text:"↩️ فروشگاه",callback_data:"shop"},{text:"🏛️ دربار",callback_data:"m:n"}]);await edit(ctx,"<b>🛡️ تسلیحات ویژه "+(country(p.country_id)?.[1]||"کشور")+"</b>\nفهرست تسلیحات متناسب با کشور و دوره‌ی ۱۹۱۴ است. برای ساخت ابتدا کارخانه تسلیحات بسازید.\n\n"+(list.length?list.map(w=>"• "+w[1]+" — "+money(w[2])+" / عدد").join("\n"):"برای این کشور فهرست اختصاصی ثبت نشده است."),K(rows));});
-bot.callbackQuery(/^shopbuy:([a-z_]+)$/,async ctx=>{await ctx.answerCallbackQuery();const p=await ready(ctx);if(!p)return;const item=findStoreItem(ctx.match[1]);if(!item){await say(ctx,"این کالا در فروشگاه نیست.",nation());return;}const client=await pool.connect();try{await client.query("BEGIN");const row=(await client.query("SELECT treasury,grain,coal,iron,cloth,oil_stock FROM game_players WHERE telegram_id=$1 FOR UPDATE",[ctx.from.id])).rows[0];const shortage=Object.entries(item[3]).filter(([r,n])=>Number(row[r]||0)<n);if(Number(row.treasury)<item[2]||shortage.length){await client.query("ROLLBACK");await say(ctx,"خزانه یا مواد اولیه برای ساخت کافی نیست.\nقیمت: "+money(item[2])+"\n"+(shortage.length?"کمبود: "+shortage.map(([r,n])=>resourceNames[r]+" "+fmt(n-Number(row[r]||0))).join("، "):"موجودی پول کافی نیست."),K([[{text:"🏪 فروشگاه",callback_data:"shop"}],[{text:"🏛️ دربار",callback_data:"m:n"}]]));return;}const sets=["treasury=treasury-$2"],args=[ctx.from.id,item[2]];let idx=3;for(const [r,n] of Object.entries(item[3])){sets.push(r+"="+r+"-$"+idx);args.push(n);idx++;}await client.query("UPDATE game_players SET "+sets.join(",")+" WHERE telegram_id=$1",args);await client.query("INSERT INTO game_buildings(telegram_id,building_key,level) VALUES($1,$2,1) ON CONFLICT(telegram_id,building_key) DO UPDATE SET level=game_buildings.level+1",[ctx.from.id,item[0]]);await client.query("INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,$3,$4)",[ctx.from.id,"ساخت "+item[1],-item[2],Number(row.treasury)-item[2]]);await client.query("COMMIT");await edit(ctx,"<b>🏗️ پروژه ساخته شد</b>\n"+item[1]+"\n"+item[4]+"\nهزینه: "+money(item[2])+"\nخزانه: "+money(Number(row.treasury)-item[2]),K([[{text:"🏪 ادامه ساخت",callback_data:"shopcat:"+storeCats.find(c=>c.items.some(x=>x[0]===item[0])).id}],[{text:"🛡️ تسلیحات",callback_data:"shopweapons"}],[{text:"🏛️ دربار",callback_data:"m:n"}]]));}catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}});
+bot.callbackQuery(/^shopbuy:([a-z_]+)$/,async ctx=>{await ctx.answerCallbackQuery();const p=await ready(ctx);if(!p)return;const item=findStoreItem(ctx.match[1]);if(!item){await say(ctx,"این کالا در فروشگاه نیست.",nation());return;}const client=await pool.connect();try{await client.query("BEGIN");const row=(await client.query("SELECT treasury,grain,coal,iron,cloth,oil_stock FROM game_players WHERE telegram_id=$1 FOR UPDATE",[ctx.from.id])).rows[0];const shortage=Object.entries(item[3]).filter(([r,n])=>Number(row[r]||0)<n);if(Number(row.treasury)<item[2]||shortage.length){await client.query("ROLLBACK");await say(ctx,"خزانه یا مواد اولیه برای ساخت کافی نیست.\nقیمت: "+money(item[2])+"\n"+(shortage.length?"کمبود: "+shortage.map(([r,n])=>resourceNames[r]+" "+fmt(n-Number(row[r]||0))).join("، "):"موجودی پول کافی نیست."),K([[{text:"🏪 فروشگاه",callback_data:"shop"}],[{text:"🏛️ دربار",callback_data:"m:n"}]]));return;}const sets=["treasury=treasury-$2"],args=[ctx.from.id,item[2]];let idx=3;for(const [r,n] of Object.entries(item[3])){sets.push(r+"="+r+"-$"+idx);args.push(n);idx++;}await client.query("UPDATE game_players SET "+sets.join(",")+" WHERE telegram_id=$1",args);await client.query("INSERT INTO game_buildings(telegram_id,building_key,level) VALUES($1,$2,1) ON CONFLICT(telegram_id,building_key) DO UPDATE SET level=game_buildings.level+1",[ctx.from.id,item[0]]);await client.query("UPDATE game_players SET population=population+$2,infrastructure=infrastructure+$3 WHERE telegram_id=$1",[ctx.from.id,item[0]==="housing"?1000:0,item[0]==="highway"?2:item[0]==="railway"?3:0]);await client.query("INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,$3,$4)",[ctx.from.id,"ساخت "+item[1],-item[2],Number(row.treasury)-item[2]]);await client.query("COMMIT");await edit(ctx,"<b>🏗️ پروژه ساخته شد</b>\n"+item[1]+"\n"+item[4]+"\nهزینه: "+money(item[2])+"\nخزانه: "+money(Number(row.treasury)-item[2]),K([[{text:"🏪 ادامه ساخت",callback_data:"shopcat:"+storeCats.find(c=>c.items.some(x=>x[0]===item[0])).id}],[{text:"🛡️ تسلیحات",callback_data:"shopweapons"}],[{text:"🏛️ دربار",callback_data:"m:n"}]]));}catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}});
 bot.callbackQuery(/^weaponbuy:([a-z0-9_]+)$/,async ctx=>{await ctx.answerCallbackQuery();const p=await ready(ctx);if(!p)return;const w=getCountryWeapons(p.country_id).find(x=>x[0]===ctx.match[1]);if(!w){await say(ctx,"این سلاح برای کشور شما تعریف نشده است.",nation());return;}const client=await pool.connect();try{await client.query("BEGIN");const row=(await client.query("SELECT treasury FROM game_players WHERE telegram_id=$1 FOR UPDATE",[ctx.from.id])).rows[0],factory=(await client.query("SELECT level FROM game_buildings WHERE telegram_id=$1 AND building_key='arms_factory' FOR UPDATE",[ctx.from.id])).rows[0];if(!factory||Number(factory.level)<1){await client.query("ROLLBACK");await say(ctx,"برای تولید سلاح ابتدا کارخانه تسلیحات بسازید.",K([[{text:"🏭 ساخت کارخانه",callback_data:"shopbuy:arms_factory"}],[{text:"↩️ تسلیحات",callback_data:"shopweapons"}]]));return;}if(Number(row.treasury)<w[2]){await client.query("ROLLBACK");await say(ctx,"خزانه برای تولید این سلاح کافی نیست.",nation());return;}await client.query("UPDATE game_players SET treasury=treasury-$2 WHERE telegram_id=$1",[ctx.from.id,w[2]]);await client.query("INSERT INTO game_weapon_stock(telegram_id,weapon_key,quantity) VALUES($1,$2,1) ON CONFLICT(telegram_id,weapon_key) DO UPDATE SET quantity=game_weapon_stock.quantity+1",[ctx.from.id,w[0]]);await client.query("INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,$3,$4)",[ctx.from.id,"تولید "+w[1],-w[2],Number(row.treasury)-w[2]]);await client.query("COMMIT");await edit(ctx,"🛡️ یک واحد "+w[1]+" به انبار تسلیحات افزوده شد.\nهزینه: "+money(w[2])+"\nخزانه: "+money(Number(row.treasury)-w[2]),K([[{text:"🛡️ ادامه تسلیحات",callback_data:"shopweapons"}],[{text:"🏛️ دربار",callback_data:"m:n"}]]));}catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}});
 
 bot.callbackQuery(/^start$/,async ctx=>{await ctx.answerCallbackQuery();await chooseCountry(ctx);});
@@ -349,7 +359,7 @@ async function settleOne(id){
   const goldMade=Math.round(lv("gold_mine")*35*scale),ironMade=Math.round(lv("iron_mine")*180*scale),coalMade=Math.round(lv("coal_mine")*220*scale);
   const grainMade=Math.round((lv("wheat_farm")*250+lv("plateau_farm")*160)*scale);
   const electricityMade=Math.round((lv("coal_power")*500+lv("hydro_power")*650+lv("oil_power")*420)*scale);
-  const transportInfra=Math.round((lv("highway")*2+lv("railway")*3)*scale);
+  const transportInfra=0;
   const dailyBuildingIncome=lv("commercial")*4000+lv("hotel")*6000+lv("station")*2000+lv("airport")*12000+lv("port")*9000+lv("admin")*Math.max(0,calc(row).tax)*0.05;
   const dailyBuildingUpkeep=lv("gold_mine")*250+lv("iron_mine")*250+lv("coal_mine")*250+lv("oil_refinery")*500+lv("commercial")*300+lv("hotel")*500+lv("airport")*1000+lv("port")*800+lv("coal_power")*700+lv("hydro_power")*500+lv("oil_power")*650+lv("arms_factory")*600;
   const d=calc(row),oilDemand=Math.round(d.oilConsumption*ticks/8),oilAvailable=Math.max(0,rawOil-refineryOil),oilConsumed=Math.min(oilAvailable,oilDemand),oilShortage=oilDemand-oilConsumed,oilStock=oilAvailable-oilConsumed,oilPenalty=Math.round(Number(row.industry||0)*1200*(oilShortage/Math.max(1,oilDemand))*0.35*scale),earned=Math.max(0,Math.round((d.income+dailyBuildingIncome)*scale)-oilPenalty),due=Math.max(0,Math.round((d.expense+dailyBuildingUpkeep)*scale)),available=Number(row.treasury)+earned,paid=Math.min(available,due),balance=Math.max(0,available-paid),net=balance-Number(row.treasury);
