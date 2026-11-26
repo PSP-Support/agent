@@ -121,7 +121,7 @@ const sectionKeyboard = (section) => {
   const k = new Keyboard();
   if (section === "business") k.text("🏢 شرکت‌های من").text("🛒 خرید شرکت").row().text("👨‍💼 مدیریت شرکت‌ها").row();
   else if (section === "finance") k.text("💵 دریافت درآمد").text("🏦 بانک و وام").row().text("📒 دفتر مالی").row();
-  else if (section === "market") k.text("🌐 اقتصاد واقعی").row();
+  else if (section === "market") k.text("🌐 اقتصاد واقعی").row().text("📡 خدمات مخابرات").row();
   else if (section === "progress") k.text("🧭 مأموریت روزانه").text("🏅 دستاوردها").row().text("🏆 رتبه‌بندی").text("🎁 پاداش روزانه").row();
   else if (section === "more") k.text("👤 پروفایل").text("ℹ️ راهنما").row().text("📘 راهنمای مرحله‌ای").text("🧰 دسترسی آسان").row();
   return k.text("🔙 منوی اصلی").resized().persistent(true);
@@ -284,6 +284,14 @@ async function detailedStatusText(id) {
     "💵 *سود باقی‌مانده: "+money(f.net)+" در هر ساعت*",
     "📅 سود یک روز کامل (اگر همین شرایط ادامه یابد): "+money(f.net*24),
     "🏦 بدهی بانکی: "+money(r.debt),
+    "",
+    "📡 *۵. خدمات مخابراتی بین بازیکنان*",
+    ...(r.telecom.length?r.telecom.map(x=>{
+      const serviceNames={mobile:"اینترنت موبایل",fiber:"اینترنت فیبر",cloud:"سرور و فضای ابری",enterprise:"ارتباطات سازمانی",security:"امنیت شبکه"};
+      const active=x.status==="active"?"فعال":"متوقف";
+      if(String(x.buyer_owner)===String(id))return "🔻 "+(serviceNames[x.service_key]||x.service_key)+" | خرید برای "+(x.buyer_name||"شرکت شما")+" | "+money(x.price_per_period)+" هر ۳ ساعت | "+active;
+      return "🟢 "+(serviceNames[x.service_key]||x.service_key)+" | فروش به "+(x.buyer_name||"شرکت خریدار")+" | "+money(x.price_per_period)+" هر ۳ ساعت | "+active;
+    }):["هنوز خرید یا فروش خدمات مخابراتی ندارید."]),
     "",
     "👥 *۲. وضعیت کلی کسب‌وکارها*",
     "🏢 تعداد شرکت‌ها: "+o.companies,
