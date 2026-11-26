@@ -114,9 +114,10 @@ const mainKeyboard = () => new Keyboard()
   .text("📘 راهنمای مرحله‌ای").resized().persistent(true);
 const quickKeyboard = (userId) => {
   const kb=new InlineKeyboard()
-    .text("🏢 کسب‌وکارها","quick:business").text("💰 امور مالی","quick:finance").row()
-    .text("🏆 پیشرفت و جوایز","quick:progress").text("👤 پروفایل","profile").row()
-    .text("📊 داشبورد","quick:home").text("📘 راهنمای مرحله‌ای","guide:1");
+    .text("🏛️ دربار و کشور","nation:home").text("📊 گزارش کشور","nation:home").row()
+    .text("🧾 مالیات و بودجه","nation:tax").text("🏭 تولید و منابع","nation:production").row()
+    .text("🪖 ارتش","nation:army").text("🌍 دیپلماسی","nation:diplomacy").row()
+    .text("🤝 تجارت کشورها","nation:trade").text("📘 راهنمای مرحله‌ای","guide:1");
   if(String(userId)===ownerTelegramId)kb.row().text("🛡️ پنل مدیریت","quick:admin");
   return kb;
 };
