@@ -62,7 +62,66 @@ const countries=[
 ["czech","سرزمین‌های چک در اتریش-مجارستان","فرانتس یوزف یکم","پراگ",6500000,200000],
 ["slovakia","سرزمین‌های اسلواک در مجارستان","فرانتس یوزف یکم","پوزونی",3000000,100000],
 ["hungary","پادشاهی مجارستان","فرانتس یوزف یکم","بوداپست",21000000,450000],
-["ireland_home","جنبش خودمختاری ایرلند","جورج پنجم","دوبلین",4500000,100000]];
+["ireland_home","جنبش خودمختاری ایرلند","جورج پنجم","دوبلین",4500000,100000],
+["peru","جمهوری پرو","گیلرمو بیلینگهرست","لیما",5000000,180000],
+["paraguay","جمهوری پاراگوئه","ادواردو شرر","آسونسیون",700000,90000],
+["ecuador","جمهوری اکوادور","لئونیداس پلازا","کیتو",1500000,100000],
+["colombia","جمهوری کلمبیا","کارلوس اوخینیو","بوگوتا",5000000,180000],
+["panama","جمهوری پاناما","بلساریو پوراس","پاناما",400000,80000],
+["haiti","جمهوری هائیتی","میشل اورسته","پورتو پرنس",2000000,90000],
+["dominican","جمهوری دومینیکن","رامون کاسرس","سانتو دومینگو",700000,70000],
+["guatemala","جمهوری گواتمالا","مانوئل استرادا کابرا","گواتمالاسیتی",2000000,100000],
+["honduras","جمهوری هندوراس","فرانسیسکو برتراند","تگوسیگالپا",600000,50000],
+["el_salvador","جمهوری السالوادور","کارلوس ملندز","سان سالوادور",1200000,70000],
+["nicaragua","جمهوری نیکاراگوئه","آدولفو دیاز","ماناگوا",600000,50000],
+["costa_rica","جمهوری کاستاریکا","ریکاردو خیمنس","سن‌خوزه",400000,60000],
+["nigeria","نیجریه‌ی بریتانیا","فرماندار بریتانیایی","لاگوس",17000000,180000],
+["ghana","ساحل طلایی بریتانیا","فرماندار بریتانیایی","آکرا",1500000,80000],
+["kenya","آفریقای شرقی بریتانیا","فرماندار بریتانیایی","نایروبی",4000000,70000],
+["uganda","اوگاندا تحت‌الحمایه‌ی بریتانیا","فرماندار بریتانیایی","انتبه",3000000,60000],
+["algeria","الجزایر فرانسه","فرماندار فرانسوی","الجزیره",5000000,180000],
+["tunisia","تونس تحت‌الحمایه‌ی فرانسه","محمد الناصر","تونس",2000000,100000],
+["madagascar","ماداگاسکار فرانسه","فرماندار فرانسوی","آنتاناناریوو",3000000,80000],
+["angola","آنگولای پرتغال","فرماندار پرتغالی","لوآندا",4000000,70000],
+["mozambique","موزامبیک پرتغال","فرماندار پرتغالی","لورنسو مارکز",4000000,70000],
+["congo","کنگوی بلژیک","فرماندار بلژیکی","لئوپولدویل",15000000,120000],
+["nepal","پادشاهی نپال","تریبووان","کاتماندو",5000000,100000],
+["bhutan","پادشاهی بوتان","اوگین وانگچوک","پارو",300000,30000],
+["oman","سلطنت عمان","فیصل بن ترکی","مسقط",500000,60000],
+["yemen","امام‌نشین یمن","یحیی حمیدالدین","صنعا",3000000,70000],
+["qatar","شیخ‌نشین قطر","عبدالله بن جاسم","دوحه",25000,20000],
+["kuwait","شیخ‌نشین کویت","مبارک الصباح","کویت",50000,30000],
+["bahrain","شیخ‌نشین بحرین","عیسی بن علی","منامه",100000,30000],
+["saudi","امارت نجد و حسا","عبدالعزیز آل سعود","ریاض",1000000,70000],
+["mongolia","مغولستان","بوگد خان","اورگا",600000,50000],
+["manchuria","منچوری","چانگ تسولین","موکدن",15000000,100000],
+["taiwan","تایوان ژاپن","فرماندار ژاپنی","تایپه",3500000,70000],
+["burma","برمه‌ی بریتانیا","فرماندار بریتانیایی","رانگون",12000000,100000],
+["malaya","مالایای بریتانیا","فرماندار بریتانیایی","کوالالامپور",2500000,100000],
+["cambodia","کامبوج تحت‌الحمایه‌ی فرانسه","سیسووات","پنوم‌پن",1500000,50000],
+["laos","لائوس تحت‌الحمایه‌ی فرانسه","فرماندار فرانسوی","وینتیان",600000,30000],
+["azerbaijan","آذربایجان در امپراتوری روسیه","نیکلای دوم","باکو",2500000,150000],
+["georgia","گرجستان در امپراتوری روسیه","نیکلای دوم","تفلیس",2500000,100000],
+["armenia","ارمنستان","فرمانروایان عثمانی و روسیه","ایروان",2000000,80000],
+["iceland","ایسلند تحت تاج دانمارک","کریستیان دهم","ریکیاویک",85000,30000],
+["malta","مالت بریتانیا","فرماندار بریتانیایی","والتا",200000,40000],
+["cyprus","قبرس بریتانیا","فرماندار بریتانیایی","نیکوزیا",250000,40000],
+["monaco","شاهزاده‌نشین موناکو","آلبرت یکم","موناکو",20000,20000],
+["liechtenstein","شاهزاده‌نشین لیختن‌اشتاین","یوهان دوم","فادوتس",10000,10000],
+["san_marino","جمهوری سان‌مارینو","کاپیتان‌های نایب","سان‌مارینو",12000,10000],
+["vatican","دولت پاپی","پاپ پیوس دهم","واتیکان",1000,10000],
+["tanzania","آفریقای شرقی آلمان","فرماندار آلمانی","دارالسلام",7500000,120000],
+["namibia","آفریقای جنوب غربی آلمان","فرماندار آلمانی","ویندهوک",800000,50000],
+["cameroon","کامِرون آلمان","فرماندار آلمانی","دوالا",2500000,70000],
+["togo","توگولند آلمان","فرماندار آلمانی","لومه",1000000,40000],
+["sudan","سودان انگلیس و مصر","فرماندار مشترک","خارطوم",3000000,80000],
+["senegal","سنگال فرانسه","فرماندار فرانسوی","سن‌لوئی",1000000,50000],
+["libya","طرابلس و برقه‌ی عثمانی","فرماندار عثمانی","طرابلس",1500000,80000],
+["iraq","ولایت‌های عثمانی در عراق","فرمانروای عثمانی","بغداد",5000000,150000],
+["syria","ولایت‌های عثمانی در شام","فرمانروای عثمانی","دمشق",4000000,130000],
+["lebanon","متصرفات لبنان عثمانی","متصرف عثمانی","بیروت",400000,50000],
+["palestine","ولایت فلسطین عثمانی","فرمانروای عثمانی","قدس",600000,70000],
+["kurdistan","سرزمین‌های کردنشین عثمانی و ایران","حاکمان محلی","موصل",3000000,80000]];
 const country=id=>countries.find(c=>c[0]===id), money=n=>Math.round(Number(n)||0).toLocaleString("fa-IR")+" تومان", fmt=n=>Math.round(Number(n)||0).toLocaleString("fa-IR");
 const K=rows=>new InlineKeyboard(rows), main=()=>K([[{text:"🏛️ دربار و کشور",callback_data:"m:n"}],[{text:"📜 تسویه‌ی نوبت",callback_data:"turn"}],[{text:"📚 راهنما",callback_data:"help"}]]);
 const nation=()=>K([[{text:"📊 وضعیت کشور",callback_data:"n:status"},{text:"💰 خزانه و دفتر حساب",callback_data:"n:money"}],[{text:"🧾 مالیات و تعرفه",callback_data:"n:tax"},{text:"🏭 تولید و منابع",callback_data:"n:industry"}],[{text:"👥 جمعیت و خدمات",callback_data:"n:people"},{text:"🛡️ ارتش و ناوگان",callback_data:"n:army"}],[{text:"🤝 دیپلماسی",callback_data:"n:diplomacy"},{text:"🛒 تجارت",callback_data:"n:trade"}],[{text:"⚙️ تنظیمات اداره",callback_data:"n:settings"}],[{text:"↩️ منوی اصلی",callback_data:"m:main"}]]);
@@ -79,12 +138,39 @@ async function edit(ctx,text,markup=main()){try{await ctx.editMessageText(text,{
 async function ready(ctx){const p=await get(ctx.from.id);if(!p?.approved){await say(ctx,"برای آغاز بازی از /start استفاده کنید.");return null;}return p;}
 function calc(p){const taxable=Math.max(10000,Number(p.population)/100),tax=taxable*p.tax_rate/100,production=p.industry*1200+p.agriculture*800,tariff=p.tariff*500,wages=p.population/1000*p.wage,army=p.army*900+p.navy*1400,services=Number(p.service_budget),roads=p.infrastructure*250,upkeep=p.industry*300+p.agriculture*150;return {income:tax+production+tariff,expense:wages+army+services+roads+upkeep,tax,production,tariff,wages,army,services,roads,upkeep};}
 async function status(p){const c=country(p.country_id),d=calc(p);return `<b>📊 وضعیت کشور — ${c?.[1]}</b>\n👑 ${p.ruler}\n\n<b>مالی</b>\n💰 خزانه: ${money(p.treasury)}\n📈 درآمد روزانه: ${money(d.income)}\n📉 هزینه‌ی روزانه: ${money(d.expense)}\n🧮 خالص روزانه: ${money(d.income-d.expense)}\n\n<b>کشور</b>\n👥 جمعیت: ${fmt(p.population)}\n🏛 ثبات: ${p.stability}٪ | مشروعیت: ${p.legitimacy}٪\n🏭 صنعت: ${p.industry} | 🌾 کشاورزی: ${p.agriculture}\n🌾 غله: ${fmt(p.grain)} | 🪨 زغال: ${fmt(p.coal)}\n⛓ آهن: ${fmt(p.iron)} | 🧵 پارچه: ${fmt(p.cloth)}\n🧠 فناوری: ${p.technology} | 🛤 زیرساخت: ${p.infrastructure}\n\n<b>نیروهای مسلح</b>\n🪖 ارتش: ${p.army} | ⚓ ناوگان: ${p.navy} | روحیه: ${p.morale}٪`;}
-async function chooseCountry(ctx){const rows=[];for(let i=0;i<countries.length;i+=2)rows.push([{text:countries[i][1],callback_data:"c:"+countries[i][0]},...(countries[i+1]?[{text:countries[i+1][1],callback_data:"c:"+countries[i+1][0]}]:[])]);rows.push([{text:"لغو",callback_data:"m:main"}]);await say(ctx,"<b>مرحله ۱ از ۳ — انتخاب کشور</b>\n\nسناریوی تاریخی سال ۱۹۱۴. کشور خود را انتخاب کنید:",K(rows));}
+const continentNames={europe:"🌍 اروپا",asia:"🌏 آسیا",africa:"🌍 آفریقا",north_america:"🌎 آمریکای شمالی",south_america:"🌎 آمریکای جنوبی",oceania:"🌏 اقیانوسیه"};
+const continentSets={
+europe:"ottoman germany russia austria britain france italy serbia bulgaria romania belgium netherlands portugal greece montenegro albania denmark sweden norway switzerland luxembourg ireland finland poland ukraine croatia czech slovakia hungary ireland_home iceland malta cyprus monaco liechtenstein san_marino vatican",
+asia:"persia japan china siam afghanistan korea vietnam philippines indonesia india russia_caucasus azerbaijan georgia armenia nepal bhutan oman yemen qatar kuwait bahrain uae saudi mongolia manchuria taiwan burma malaya cambodia laos persian_gulf libya iraq syria lebanon palestine kurdistan",
+africa:"ethiopia liberia egypt morocco south_africa tanzania namibia cameroon togo ghana nigeria kenya uganda sudan senegal algeria tunisia madagascar angola mozambique congo",
+north_america:"usa canada mexico cuba haiti dominican guatemala honduras el_salvador nicaragua costa_rica panama",
+south_america:"brazil argentina chile bolivia uruguay venezuela peru paraguay ecuador colombia",
+oceania:"australia new_zealand"};
+const continentOf=id=>Object.keys(continentSets).find(k=>continentSets[k].split(" ").includes(id))||"asia";
+const countryMenu=async(ctx,continent="all",page=0,editMode=false)=>{
+ const filtered=countries.filter(c=>continent==="all"||continentOf(c[0])===continent).sort((a,b)=>a[1].localeCompare(b[1],"fa"));
+ const size=8,total=Math.max(1,Math.ceil(filtered.length/size)),p=Math.max(0,Math.min(page,total-1)),items=filtered.slice(p*size,(p+1)*size);
+ const rows=items.map(c=>[{text:c[1],callback_data:"c:"+c[0]}]);
+ const nav=[];if(p>0)nav.push({text:"⬅️ قبلی",callback_data:"cp:"+continent+":"+(p-1)});nav.push({text:"صفحه "+(p+1)+"/"+total,callback_data:"noop"});if(p<total-1)nav.push({text:"بعدی ➡️",callback_data:"cp:"+continent+":"+(p+1)});rows.push(nav);
+ rows.push([{text:"🔎 جستجوی کشور",callback_data:"cs"}]);
+ rows.push([{text:"↩️ قاره‌ها",callback_data:"start"}],[{text:"لغو",callback_data:"m:main"}]);
+ const title=continent==="all"?"همه‌ی کشورها":continentNames[continent];
+ const text="<b>مرحله ۱ از ۳ — انتخاب کشور</b>\n\nسناریو: سال ۱۹۱۴\nقاره: "+title+"\nکشورها: "+filtered.length+"\n\nکشور مورد نظر را انتخاب کنید:";
+ if(editMode)await edit(ctx,text,K(rows));else await say(ctx,text,K(rows));
+};
+async function chooseCountry(ctx){await say(ctx,"<b>مرحله ۱ از ۳ — انتخاب کشور</b>\n\nسناریوی تاریخی سال ۱۹۱۴. ابتدا قاره را انتخاب کنید یا در میان همه‌ی کشورها جستجو کنید:",K([[{text:continentNames.europe,callback_data:"cc:europe"},{text:continentNames.asia,callback_data:"cc:asia"}],[{text:continentNames.africa,callback_data:"cc:africa"},{text:continentNames.north_america,callback_data:"cc:north_america"}],[{text:continentNames.south_america,callback_data:"cc:south_america"},{text:continentNames.oceania,callback_data:"cc:oceania"}],[{text:"🌐 همه‌ی کشورها",callback_data:"cc:all"}],[{text:"🔎 جستجوی کشور",callback_data:"cs"}],[{text:"لغو",callback_data:"m:main"}]]));}
+const pendingCountrySearch=new Set();
 bot.command("start",async ctx=>{const p=await ensure(ctx);if(p.approved){await say(ctx,"به شاه شاهان بازگشتید. از دربار کشور را اداره کنید.",nation());return;}await say(ctx,"<b>شاه شاهان</b>\n\nبازی راهبرد و اداره‌ی کشور در جهان تاریخی سال ۱۹۱۴.\n\nبرای آغاز حکومت، کشور خود را انتخاب کنید.",K([[{text:"📜 آغاز بازی",callback_data:"start"}],[{text:"🏛️ منوی بازی",callback_data:"m:main"}]]));});
 bot.command("menu",async ctx=>{await ensure(ctx);await say(ctx,"منوی اصلی شاه شاهان",main());});
 bot.command("status",async ctx=>{const p=await ready(ctx);if(p)await say(ctx,await status(p),nation());});
 bot.command("help",async ctx=>{await say(ctx,"<b>راهنمای بازی</b>\n۱) کشور را انتخاب و تأسیس کنید.\n۲) مالیات، تولید، خدمات و ارتش را از دربار اداره کنید.\n۳) هر سه ساعت یک نوبت مالی تسویه می‌شود.\n۴) با دیگر فرمانروایان تجارت و پیمان برقرار کنید.",main());});
 bot.callbackQuery(/^start$/,async ctx=>{await ctx.answerCallbackQuery();await chooseCountry(ctx);});
+bot.callbackQuery(/^cc:(all|europe|asia|africa|north_america|south_america|oceania)$/,async ctx=>{await ctx.answerCallbackQuery();await countryMenu(ctx,ctx.match[1],0,true);});
+bot.callbackQuery(/^cp:(all|europe|asia|africa|north_america|south_america|oceania):(\d+)$/,async ctx=>{await ctx.answerCallbackQuery();await countryMenu(ctx,ctx.match[1],Number(ctx.match[2]),true);});
+bot.callbackQuery(/^cs$/,async ctx=>{await ctx.answerCallbackQuery();pendingCountrySearch.add(ctx.from.id);await ctx.reply("🔎 <b>جستجوی کشور</b>\n\nنام کشور یا بخشی از نام آن را ارسال کنید. برای لغو، /cancel را بفرستید.",{parse_mode:"HTML",reply_markup:{force_reply:true,selective:true}});});
+bot.callbackQuery(/^noop$/,async ctx=>{await ctx.answerCallbackQuery();});
+bot.command("cancel",async ctx=>{pendingCountrySearch.delete(ctx.from.id);await say(ctx,"جستجو لغو شد.",main());});
+bot.on("message:text",async ctx=>{if(!pendingCountrySearch.has(ctx.from.id)||ctx.message.text.startsWith("/"))return;pendingCountrySearch.delete(ctx.from.id);const q=ctx.message.text.trim().toLocaleLowerCase("fa");const matches=countries.filter(c=>(c[1]+" "+c[0]+" "+c[2]).toLocaleLowerCase("fa").includes(q)).sort((a,b)=>a[1].localeCompare(b[1],"fa")).slice(0,20);if(!matches.length){await say(ctx,"کشوری با این عبارت پیدا نشد. دوباره جستجو کنید.",K([[{text:"🔎 جستجوی دوباره",callback_data:"cs"}],[{text:"↩️ قاره‌ها",callback_data:"start"}]]));return;}const rows=matches.map(c=>[{text:c[1],callback_data:"c:"+c[0]}]);rows.push([{text:"🔎 جستجوی دوباره",callback_data:"cs"}],[{text:"↩️ قاره‌ها",callback_data:"start"}]);await say(ctx,"<b>نتایج جستجو</b>\n\nنتایج: "+matches.length,K(rows));});
 bot.callbackQuery(/^c:(.+)$/,async ctx=>{await ctx.answerCallbackQuery();const c=country(ctx.match[1]);if(!c)return;await pool.query("UPDATE game_players SET country_id=$2,ruler=$3,government=$4,population=$5,treasury=$6 WHERE telegram_id=$1",[ctx.from.id,c[0],c[2],c[1],c[4],c[5]]);await say(ctx,`<b>مرحله ۲ از ۳ — تأیید کشور</b>\n\n🏳️ ${c[1]}\n👑 فرمانروا: ${c[2]}\n🏙 پایتخت: ${c[3]}\n👥 جمعیت: ${fmt(c[4])}\n💰 خزانه: ${money(c[5])}\n\nتأیید می‌کنید؟`,K([[{text:"✅ تأسیس حکومت",callback_data:"found"}],[{text:"🔄 انتخاب دوباره",callback_data:"start"}]]));});
 bot.callbackQuery(/^found$/,async ctx=>{await ctx.answerCallbackQuery();await pool.query("UPDATE game_players SET approved=TRUE,last_settlement=NOW() WHERE telegram_id=$1",[ctx.from.id]);const p=await get(ctx.from.id);await pool.query("INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,'خزانه‌ی آغاز حکومت',$2,$2)",[ctx.from.id,p.treasury]);await say(ctx,"<b>مرحله ۳ از ۳ — حکومت تأسیس شد</b>\n\nنخستین نشست دربار آغاز شد. اداره‌ی کشور را از دکمه‌های زیر پیش ببرید.",nation());});
 bot.callbackQuery(/^m:(main|n)$/,async ctx=>{await ctx.answerCallbackQuery();await edit(ctx,ctx.match[1]==="n"?"<b>🏛️ دربار و کشور</b>\nبخش مورد نظر را انتخاب کنید.":"منوی اصلی شاه شاهان",ctx.match[1]==="n"?nation():main());});
