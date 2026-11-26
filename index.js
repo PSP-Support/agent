@@ -1021,6 +1021,8 @@ server.listen(port, () => console.log(`Open Many health server listening on ${po
 await initDb();
 await initRealism(pool);
 await registerRealism(bot,pool);
+await initStatecraft(pool);
+await registerStatecraft(bot,pool);
 // Telegram's command menu (the slash button beside the message field).
 const publicCommands = [
   { command: "start", description: "شروع بازی و داشبورد" },
