@@ -2,6 +2,7 @@ import { Bot, InlineKeyboard, Keyboard } from "grammy";
 import pg from "pg";
 import http from "node:http";
 import { initRealism, registerRealism, netHourlyForPlayer, getEconomyReport } from "./realism.js";
+import { HISTORICAL_SCENARIO, HISTORICAL_COUNTRIES, getHistoricalCountry } from "./historical.js";
 
 const { Pool } = pg;
 const token = process.env.BOT_TOKEN;
@@ -208,6 +209,12 @@ async function initDb() {
     );
     ALTER TABLE company_requests ADD COLUMN IF NOT EXISTS is_registration BOOLEAN NOT NULL DEFAULT false;
     ALTER TABLE company_requests ADD COLUMN IF NOT EXISTS source_tag TEXT;
+    ALTER TABLE players ADD COLUMN IF NOT EXISTS historical_country_id TEXT;
+    ALTER TABLE players ADD COLUMN IF NOT EXISTS historical_ruler TEXT;
+    ALTER TABLE players ADD COLUMN IF NOT EXISTS historical_scenario TEXT;
+    ALTER TABLE company_requests ADD COLUMN IF NOT EXISTS country_id TEXT;
+    ALTER TABLE company_requests ADD COLUMN IF NOT EXISTS ruler_name TEXT;
+    ALTER TABLE company_requests ADD COLUMN IF NOT EXISTS scenario_id TEXT;
   `);
 }
 
@@ -356,7 +363,7 @@ async function detailedStatusText(id) {
 }
 
 function homeText() {
-  return `🏙️ *OPEN MANY*\n\nبه امپراتوری اقتصادی خودت خوش اومدی!\nشرکت بخر، درآمد جمع کن و در رتبه‌بندی بالا برو.`;
+  return `👑 *شاه شاهان*\n\nبه دربار خود خوش آمدی، فرمانروا.\nسرزمینت را آباد کن، خزانه را سامان بده و جایگاه حکومتت را در تاریخ رقم بزن.`;
 }
 
 bot.command("start", async (ctx) => {
@@ -369,7 +376,7 @@ bot.command("start", async (ctx) => {
   if(status==="rejected")return ctx.reply("❌ درخواست قبلی شما رد شده است. برای بررسی دوباره با مدیر کل تماس بگیر.");
   const pending=await pool.query("SELECT id,company_name FROM company_requests WHERE telegram_id=$1 AND request_status='pending' ORDER BY id DESC LIMIT 1",[uid]);
   if(pending.rows.length)return ctx.reply("🕓 درخواست شما برای شرکت «"+pending.rows[0].company_name+"» ثبت شده و منتظر بررسی مدیر کل است. پس از تأیید، پیام دریافت می‌کنی.");
-  return ctx.reply("🏙️ به Open Many خوش آمدی!\n\nبرای ثبت‌نام، ابتدا نوع شرکت شروع خودت را انتخاب کن. بعد نام شرکت را می‌گذاری و درخواست را تأیید می‌کنی. تا زمان تأیید مدیر، وارد بازی نمی‌شوی.",{reply_markup:registrationKeyboard()});
+  return ctx.reply("👑 به شاه شاهان خوش آمدی!\n\nسناریو: "+HISTORICAL_SCENARIO.title+"\n\nابتدا کشور تاریخی خود را برگزین. فرمانروای آن کشور برای سناریوی انتخابی تعیین شده است؛ سپس درخواست حکومت را می‌فرستی.",{reply_markup:registrationKeyboard()});
 });
 bot.hears("🧰 دسترسی آسان", async ctx => {
   const userCommands = "برای بازی نیازی به تایپ دستور نیست.\n\n۱. از منوی پایین بخش را انتخاب کن.\n۲. عملیات را با دکمه‌ها انجام بده.\n۳. راهنمای مرحله‌ای قدم‌به‌قدم راهنمایی می‌کند.\n\n🌐 بازار و اقتصاد — گزارش بازار\n🏦 امور مالی — درآمد، بانک و دفتر مالی\n🏢 کسب‌وکارها — خرید و مدیریت شرکت\n🏆 رقابت و پیشرفت — مأموریت، جایزه و رتبه‌بندی";
@@ -441,6 +448,20 @@ bot.callbackQuery("buy_menu", async ctx => {
   await ctx.editMessageText("🏗️ *فرصت‌های تأسیس شرکت*\n\nنوع شرکت را انتخاب کن؛ نام اختصاصی می‌گذاری و پیش از ارسال، درخواست را تأیید می‌کنی.",{parse_mode:"Markdown",reply_markup:kb});
   await ctx.answerCallbackQuery();
 });
+bot.callbackQuery(/^reg:country:([a-z_]+)$/,async ctx=>{
+  const country=getHistoricalCountry(ctx.match[1]);
+  if(!country)return ctx.answerCallbackQuery({text:"کشور تاریخی معتبر نیست.",show_alert:true});
+  const uid=String(ctx.from.id);
+  const status=await pool.query("SELECT approval_status,registration_source FROM players WHERE telegram_id=$1",[uid]);
+  if(!status.rows.length)return ctx.answerCallbackQuery({text:"ابتدا /start را بزن.",show_alert:true});
+  if(status.rows[0].approval_status==="banned"||status.rows[0].approval_status==="rejected")return ctx.answerCallbackQuery({text:"این حساب اجازه ثبت‌نام ندارد.",show_alert:true});
+  const existing=await pool.query("SELECT id FROM company_requests WHERE telegram_id=$1 AND request_status='pending' LIMIT 1",[uid]);
+  if(existing.rows.length)return ctx.answerCallbackQuery({text:"درخواست قبلی هنوز در انتظار بررسی است.",show_alert:true});
+  historicalCountryPending.set(uid,country.id);
+  companyNamePending.set(uid,{typeId:"manufacturing",registration:true,countryId:country.id,sourceTag:status.rows[0].registration_source||"direct"});
+  await ctx.answerCallbackQuery();
+  return ctx.reply("👑 کشور برگزیده: "+country.name+"\n\nفرمانروای تاریخی: "+country.title+" "+country.ruler+" ("+country.rulerLatin+")\n\nاکنون نام رسمی یا عنوان دلخواه حکومت خود را بنویس. کشور و فرمانروا برای این سناریو تاریخی باقی می‌مانند.\n\nنام ۲ تا ۴۰ حرف باشد. برای لغو /cancel را بزن.");
+});
 bot.callbackQuery(/^reg:company:([a-z_]+)$/,async ctx=>{
   const type=COMPANY_TYPES.find(x=>x.id===ctx.match[1]&&!x.special);
   if(!type)return ctx.answerCallbackQuery({text:"نوع شرکت برای ثبت‌نام معتبر نیست.",show_alert:true});
@@ -479,11 +500,11 @@ bot.callbackQuery(/^corp:(approve|reject):(\d+)$/,async ctx=>{
     await client.query("BEGIN");
     const q=await client.query("SELECT * FROM company_requests WHERE id=$1 AND request_status='pending' FOR UPDATE",[id]);
     if(!q.rows.length){await client.query("ROLLBACK");return ctx.answerCallbackQuery({text:"درخواست قبلاً بررسی شده.",show_alert:true});}
-    const req=q.rows[0],type=COMPANY_TYPES.find(x=>x.id===req.company_type);
+    const req=q.rows[0],type=COMPANY_TYPES.find(x=>x.id===req.company_type),historic=getHistoricalCountry(req.country_id);
     if(action==="approve"){
       const p=await client.query("SELECT balance FROM players WHERE telegram_id=$1 FOR UPDATE",[String(req.telegram_id)]);
       if(!p.rows.length||Number(p.rows[0].balance)<type.price){await client.query("ROLLBACK");return ctx.answerCallbackQuery({text:"سرمایه بازیکن برای تأسیس کافی نیست.",show_alert:true});}
-      await client.query("UPDATE players SET balance=(CASE WHEN $3 THEN 100000 ELSE balance END)-$2,player_level=CASE WHEN $3 THEN 1 ELSE GREATEST(player_level,1) END,reputation=CASE WHEN $3 THEN 2 ELSE LEAST(100,reputation+2) END,season_points=CASE WHEN $3 THEN 0 ELSE season_points END,last_season_rank=CASE WHEN $3 THEN NULL ELSE last_season_rank END,last_collect=CASE WHEN $3 THEN NOW() ELSE last_collect END,approval_status=CASE WHEN $3 THEN 'approved' ELSE approval_status END,approved_at=CASE WHEN $3 THEN NOW() ELSE approved_at END,approved_by=CASE WHEN $3 THEN $4 ELSE approved_by END WHERE telegram_id=$1",[String(req.telegram_id),type.price,!!req.is_registration,ownerTelegramId]);
+      await client.query("UPDATE players SET balance=(CASE WHEN $3 THEN 100000 ELSE balance END)-$2,player_level=CASE WHEN $3 THEN 1 ELSE GREATEST(player_level,1) END,reputation=CASE WHEN $3 THEN 2 ELSE LEAST(100,reputation+2) END,season_points=CASE WHEN $3 THEN 0 ELSE season_points END,last_season_rank=CASE WHEN $3 THEN NULL ELSE last_season_rank END,last_collect=CASE WHEN $3 THEN NOW() ELSE last_collect END,approval_status=CASE WHEN $3 THEN 'approved' ELSE approval_status END,approved_at=CASE WHEN $3 THEN NOW() ELSE approved_at END,approved_by=CASE WHEN $3 THEN $4 ELSE approved_by END,historical_country_id=COALESCE($5,historical_country_id),historical_ruler=COALESCE($6,historical_ruler),historical_scenario=COALESCE($7,historical_scenario) WHERE telegram_id=$1",[String(req.telegram_id),type.price,!!req.is_registration,ownerTelegramId,req.country_id||null,req.ruler_name||null,req.scenario_id||null]);
       await client.query("INSERT INTO player_companies(telegram_id,company_type,company_name,brand_name,employee_count,approved_by,approval_status) VALUES($1,$2,$3,$4,$5,$6,'approved')",[String(req.telegram_id),req.company_type,req.company_name,req.brand_name,type.employees,ownerTelegramId]);
       await client.query("INSERT INTO finance_transactions(telegram_id,transaction_type,amount,description) VALUES($1,'company_foundation',$2,$3)",[String(req.telegram_id),-type.price,"هزینه تأسیس "+req.company_name]);
       await client.query("UPDATE company_requests SET request_status='approved',reviewed_at=NOW(),reviewed_by=$2 WHERE id=$1",[id,ownerTelegramId]);
@@ -491,7 +512,7 @@ bot.callbackQuery(/^corp:(approve|reject):(\d+)$/,async ctx=>{
     await client.query("COMMIT");
     await ctx.answerCallbackQuery({text:action==="approve"?"شرکت تأیید و تأسیس شد.":"درخواست رد شد."});
     if(action==="approve"){
-      await bot.api.sendMessage(String(req.telegram_id),"🎉 درخواست شرکت «"+req.company_name+"» تأیید شد و کسب‌وکار شما فعال شد!\n\nاکنون دسترسی بازی فعال است. برای ورود /start را بزن.",{reply_markup:mainKeyboard()}).catch(()=>{});
+      await bot.api.sendMessage(String(req.telegram_id),"👑 درخواست حکومت «"+req.company_name+"» تأیید شد!\n\nکشور: "+(historic?.name||"کشور تاریخی")+"\nفرمانروا: "+(historic?.title||"")+" "+(historic?.ruler||req.ruler_name||"")+"\n\nحکومت تو فعال شد. برای ورود به دربار /start را بزن.",{reply_markup:mainKeyboard()}).catch(()=>{});
     }else{
       await bot.api.sendMessage(String(req.telegram_id),"❌ درخواست شرکت «"+req.company_name+"» رد شد.").catch(()=>{});
     }
@@ -630,10 +651,11 @@ for (const [label, section, title] of menuSections) {
 // Economic message composer: choose another player's company, then send a private in-game business message.
 const companyNamePending = new Map();
 const companyConfirmPending = new Map();
+const historicalCountryPending = new Map();
 const economicCompose = new Map();
 const registrationKeyboard = () => {
   const kb=new InlineKeyboard();
-  for(const t of COMPANY_TYPES.filter(x=>!x.special)) kb.text(t.name,"reg:company:"+t.id).row();
+  for(const c of HISTORICAL_COUNTRIES) kb.text(c.name,"reg:country:"+c.id).row();
   kb.text("❌ انصراف","reg:cancel");
   return kb;
 };
@@ -677,10 +699,11 @@ bot.on("message:text",async (ctx,next)=>{
     const companyName=raw.replace(/[<>]/g,"").replace(/[\\*_]/g,"").trim();
     if(companyName.length<2||companyName.length>40)return ctx.reply("نام شرکت باید ۲ تا ۴۰ حرف باشد. دوباره بنویس یا /cancel بزن.");
     const type=COMPANY_TYPES.find(x=>x.id===naming.typeId);
+    const historic=getHistoricalCountry(naming.countryId);
     if(!type){companyNamePending.delete(uid);return ctx.reply("نوع شرکت نامعتبر شد؛ دوباره انتخاب کن.");}
     companyNamePending.delete(uid);
     companyConfirmPending.set(uid,{...naming,companyName});
-    return ctx.reply("📝 پیش‌نمایش درخواست شرکت\n\n🏢 نوع شرکت: "+type.name+"\n🏷️ نام انتخابی: "+companyName+"\n\nاطلاعات مالی و درآمدی در این مرحله نمایش داده نمی‌شود.\n\nآیا این شرکت را با همین نام درخواست می‌کنی؟",{reply_markup:new InlineKeyboard().text("✅ بله، ارسال درخواست","reg:confirm").text("✏️ تغییر نام","reg:rename").row().text("❌ انصراف","reg:cancel")});
+    return ctx.reply("📜 پیش‌نمایش درخواست حکومت\n\n🏛️ کشور: "+(historic?.name||"کشور تاریخی")+"\n👑 فرمانروا: "+(historic?.title||"")+" "+(historic?.ruler||"")+"\n🏷️ نام حکومت: "+companyName+"\n📅 سناریو: "+HISTORICAL_SCENARIO.year+"\n\nاطلاعات مالی در این مرحله نمایش داده نمی‌شود.\n\nآیا این درخواست را برای بررسی می‌فرستی؟",{reply_markup:new InlineKeyboard().text("📨 ارسال درخواست","reg:confirm").text("✏️ تغییر نام","reg:rename").row().text("❌ انصراف","reg:cancel")});
   }
   const pending=economicCompose.get(uid);
   if(!pending)return next();
@@ -717,13 +740,14 @@ bot.callbackQuery("reg:confirm",async ctx=>{
   const p=status.rows[0];
   if(p.approval_status==="banned"||p.approval_status==="rejected"){companyConfirmPending.delete(uid);return ctx.answerCallbackQuery({text:"این حساب اجازه ارسال درخواست ندارد.",show_alert:true});}
   const isRegistration=p.approval_status!=="approved"||!!pending.registration;
-  const q=await pool.query("INSERT INTO company_requests(telegram_id,company_type,company_name,brand_name,season_rank,player_level,reputation,is_registration,source_tag) VALUES($1,$2,$3,$3,$4,$5,$6,$7,$8) RETURNING id,created_at",
-    [uid,type.id,pending.companyName,pending.rank??null,pending.playerLevel||1,pending.reputation||0,isRegistration,pending.sourceTag||p.registration_source||"direct"]);
+  const q=await pool.query("INSERT INTO company_requests(telegram_id,company_type,company_name,brand_name,season_rank,player_level,reputation,is_registration,source_tag,country_id,ruler_name,scenario_id) VALUES($1,$2,$3,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id,created_at",
+    [uid,type.id,pending.companyName,pending.rank??null,pending.playerLevel||1,pending.reputation||0,isRegistration,pending.sourceTag||p.registration_source||"direct",pending.countryId||null,getHistoricalCountry(pending.countryId)?.ruler||null,HISTORICAL_SCENARIO.id]);
   companyConfirmPending.delete(uid);
   await ctx.answerCallbackQuery({text:"درخواست ارسال شد."});
   await ctx.reply("📨 درخواست شما برای شرکت «"+pending.companyName+"» ارسال شد.\n\nدر انتظار بررسی مدیر کل هستی. پس از تأیید، پیام دریافت می‌کنی و دسترسی بازی فعال می‌شود.",{reply_markup:new Keyboard().text("🔄 بررسی وضعیت").resized().persistent()});
   if(ownerTelegramId){
-    const details="🆕 درخواست تأسیس شرکت #"+q.rows[0].id+"\n\n👤 نام بازیکن: "+p.display_name+"\n🔖 نام کاربری: "+(p.username?"@"+p.username:"ندارد")+"\n🆔 شناسه تلگرام: "+uid+"\n🏢 شرکت: "+pending.companyName+"\n🏭 نوع: "+type.name+"\\n🏷️ بخش: "+type.sector+"\\n👥 کارکنان اولیه: "+type.employees+" نفر\\n💵 هزینه تأسیس (مدیر): "+money(type.price)+"\\n📈 درآمد پایه (مدیر): "+money(type.income)+" / ساعت\\n🧾 نوع درخواست: "+(isRegistration?"ثبت‌نام اولیه + شرکت شروع":"شرکت جدید بازیکن فعال")+"\n🔗 منبع ورود / دعوت: "+(p.registration_source||pending.sourceTag||"direct")+"\n📅 زمان ثبت‌نام: "+new Date(p.created_at).toLocaleString("fa-IR")+"\n💰 موجودی فعلی (فقط مدیر): "+money(p.balance)+"\n📌 وضعیت حساب: "+p.approval_status;
+    const historic=getHistoricalCountry(pending.countryId);
+    const details="👑 درخواست حکومت تاریخی #"+q.rows[0].id+"\n\n🏛️ کشور: "+(historic?.name||"نامشخص")+"\n👑 فرمانروا: "+(historic?.title||"")+" "+(historic?.ruler||"")+"\n📜 سناریو: "+HISTORICAL_SCENARIO.title+"\n\n👤 نام بازیکن: "+p.display_name+"\n🔖 نام کاربری: "+(p.username?"@"+p.username:"ندارد")+"\n🆔 شناسه تلگرام: "+uid+"\n🏢 شرکت: "+pending.companyName+"\n🏭 نوع: "+type.name+"\\n🏷️ بخش: "+type.sector+"\\n👥 کارکنان اولیه: "+type.employees+" نفر\\n💵 هزینه تأسیس (مدیر): "+money(type.price)+"\\n📈 درآمد پایه (مدیر): "+money(type.income)+" / ساعت\\n🧾 نوع درخواست: "+(isRegistration?"ثبت‌نام اولیه + شرکت شروع":"شرکت جدید بازیکن فعال")+"\n🔗 منبع ورود / دعوت: "+(p.registration_source||pending.sourceTag||"direct")+"\n📅 زمان ثبت‌نام: "+new Date(p.created_at).toLocaleString("fa-IR")+"\n💰 موجودی فعلی (فقط مدیر): "+money(p.balance)+"\n📌 وضعیت حساب: "+p.approval_status;
     await bot.api.sendMessage(ownerTelegramId,details,{reply_markup:new InlineKeyboard().text("✅ تأیید و فعال‌سازی","corp:approve:"+q.rows[0].id).text("❌ رد درخواست","corp:reject:"+q.rows[0].id)});
   }
 });
