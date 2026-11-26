@@ -482,11 +482,11 @@ bot.callbackQuery(/^corp:(approve|reject):(\d+)$/,async ctx=>{
     if(action==="approve"){
       const p=await client.query("SELECT balance FROM players WHERE telegram_id=$1 FOR UPDATE",[String(req.telegram_id)]);
       if(!p.rows.length||Number(p.rows[0].balance)<type.price){await client.query("ROLLBACK");return ctx.answerCallbackQuery({text:"سرمایه بازیکن برای تأسیس کافی نیست.",show_alert:true});}
-      await client.query("UPDATE players SET balance=balance-$2,player_level=GREATEST(player_level,1),reputation=LEAST(100,reputation+2) WHERE telegram_id=$1",[String(req.telegram_id),type.price]);
+      await client.query("UPDATE players SET balance=balance-$2,player_level=GREATEST(player_level,1),reputation=LEAST(100,reputation+2),approval_status=CASE WHEN $3 THEN 'approved' ELSE approval_status END,approved_at=CASE WHEN $3 THEN NOW() ELSE approved_at END,approved_by=CASE WHEN $3 THEN $4 ELSE approved_by END WHERE telegram_id=$1",[String(req.telegram_id),type.price,!!req.is_registration,ownerTelegramId]);
       await client.query("INSERT INTO player_companies(telegram_id,company_type,company_name,brand_name,employee_count,approved_by,approval_status) VALUES($1,$2,$3,$4,$5,$6,'approved')",[String(req.telegram_id),req.company_type,req.company_name,req.brand_name,type.employees,ownerTelegramId]);
       await client.query("INSERT INTO finance_transactions(telegram_id,transaction_type,amount,description) VALUES($1,'company_foundation',$2,$3)",[String(req.telegram_id),-type.price,"هزینه تأسیس "+req.company_name]);
       await client.query("UPDATE company_requests SET request_status='approved',reviewed_at=NOW(),reviewed_by=$2 WHERE id=$1",[id,ownerTelegramId]);
-    }else await client.query("UPDATE company_requests SET request_status='rejected',reviewed_at=NOW(),reviewed_by=$2 WHERE id=$1",[id,ownerTelegramId]);
+    }else { await client.query("UPDATE company_requests SET request_status='rejected',reviewed_at=NOW(),reviewed_by=$2 WHERE id=$1",[id,ownerTelegramId]); if(req.is_registration)await client.query("UPDATE players SET approval_status='rejected' WHERE telegram_id=$1",[String(req.telegram_id)]); }
     await client.query("COMMIT");
     await ctx.answerCallbackQuery({text:action==="approve"?"شرکت تأیید و تأسیس شد.":"درخواست رد شد."});
     await bot.api.sendMessage(String(req.telegram_id),action==="approve"?"🎉 درخواست شرکت «"+req.company_name+"» تأیید شد و کسب‌وکار شما فعال شد!":"❌ درخواست شرکت «"+req.company_name+"» رد شد.").catch(()=>{});
