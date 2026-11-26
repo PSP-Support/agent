@@ -64,7 +64,34 @@ bot.callbackQuery(/^sell:(grain|coal|iron|cloth)$/,async ctx=>{await ctx.answerC
 bot.callbackQuery(/^buy:(\d+)$/,async ctx=>{await ctx.answerCallbackQuery();const p=await ready(ctx);if(!p)return;const client=await pool.connect();try{await client.query("BEGIN");const t=(await client.query("SELECT * FROM game_trade WHERE id=$1 AND status='open' FOR UPDATE",[Number(ctx.match[1])])).rows[0];if(!t||Number(t.seller_id)===Number(ctx.from.id)){await client.query("ROLLBACK");await say(ctx,"پیشنهاد دیگر موجود نیست.",nation());return;}const total=t.quantity*t.unit_price;if(p.treasury<total){await client.query("ROLLBACK");await say(ctx,"خزانه برای خرید کافی نیست.",nation());return;}await client.query("UPDATE game_players SET treasury=treasury-$2,"+t.resource+"="+t.resource+"+$3 WHERE telegram_id=$1",[ctx.from.id,total,t.quantity]);await client.query("UPDATE game_players SET treasury=treasury+$2 WHERE telegram_id=$1",[t.seller_id,total]);await client.query("UPDATE game_trade SET status='sold',buyer_id=$2 WHERE id=$1",[t.id,ctx.from.id]);await client.query("COMMIT");await say(ctx,"معامله انجام شد.",nation());}catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}});
 bot.callbackQuery(/^dip:(\d+)$/,async ctx=>{await ctx.answerCallbackQuery();const other=Number(ctx.match[1]);await pool.query("INSERT INTO game_relations(player_id,other_id,relation) VALUES($1,$2,'proposal') ON CONFLICT(player_id,other_id) DO UPDATE SET relation='proposal'",[ctx.from.id,other]);try{await bot.api.sendMessage(other,"🤝 پیشنهاد پیمان همکاری دریافت کردید.",{reply_markup:K([[{text:"✅ پذیرش",callback_data:"dipaccept:"+ctx.from.id}],[{text:"❌ رد",callback_data:"dipreject:"+ctx.from.id}]])});}catch{}await say(ctx,"پیشنهاد پیمان ارسال شد.",nation());});
 bot.callbackQuery(/^dip(accept|reject):(\d+)$/,async ctx=>{await ctx.answerCallbackQuery();const ok=ctx.match[1]==="accept",other=Number(ctx.match[2]),rel=ok?"alliance":"neutral";for(const [a,b] of [[ctx.from.id,other],[other,ctx.from.id]])await pool.query("INSERT INTO game_relations(player_id,other_id,relation,trust) VALUES($1,$2,$3,$4) ON CONFLICT(player_id,other_id) DO UPDATE SET relation=EXCLUDED.relation,trust=EXCLUDED.trust",[a,b,rel,ok?20:0]);try{await bot.api.sendMessage(other,ok?"🤝 پیمان پذیرفته شد.":"پیشنهاد پیمان رد شد.");}catch{}await say(ctx,ok?"پیمان برقرار شد.":"پیشنهاد رد شد.",nation());});
-bot.callbackQuery(/^turn$/,async ctx=>{await ctx.answerCallbackQuery();const p=await ready(ctx);if(!p)return;const client=await pool.connect();try{await client.query("BEGIN");const row=(await client.query("SELECT * FROM game_players WHERE telegram_id=$1 FOR UPDATE",[ctx.from.id])).rows[0],ticks=Math.min(8,Math.floor((Date.now()-new Date(row.last_settlement).getTime())/period));if(ticks<1){await client.query("COMMIT");await edit(ctx,"هنوز زمان تسویه‌ی سه‌ساعته نرسیده است.",nation());return;}const d=calc(row),net=Math.round((d.income-d.expense)*ticks/8),balance=Number(row.treasury)+net;await client.query("UPDATE game_players SET treasury=$2,last_settlement=NOW() WHERE telegram_id=$1",[ctx.from.id,balance]);await client.query("INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,$3,$4)",[ctx.from.id,"تسویه‌ی "+ticks+" نوبت سه‌ساعته",net,balance]);await client.query("COMMIT");await edit(ctx,`<b>📜 تسویه‌ی دوره‌ای</b>\nتعداد نوبت: ${ticks}\nتغییر خزانه: ${money(net)}\nمانده: ${money(balance)}`,nation());}catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}});
+async function settleOne(id){
+ const client=await pool.connect();
+ try{
+  await client.query("BEGIN");
+  const row=(await client.query("SELECT * FROM game_players WHERE telegram_id=$1 FOR UPDATE",[id])).rows[0];
+  if(!row?.approved){await client.query("COMMIT");return null;}
+  const ticks=Math.min(8,Math.floor((Date.now()-new Date(row.last_settlement).getTime())/period));
+  if(ticks<1){await client.query("COMMIT");return null;}
+  const d=calc(row),net=Math.round((d.income-d.expense)*ticks/8),balance=Number(row.treasury)+net;
+  await client.query("UPDATE game_players SET treasury=$2,last_settlement=NOW() WHERE telegram_id=$1",[id,balance]);
+  await client.query("INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,$3,$4)",[id,"تسویه‌ی "+ticks+" نوبت سه‌ساعته",net,balance]);
+  await client.query("COMMIT");return {ticks,net,balance};
+ }catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
+}
+bot.callbackQuery(/^turn$/,async ctx=>{
+ await ctx.answerCallbackQuery();const p=await ready(ctx);if(!p)return;
+ const result=await settleOne(ctx.from.id);
+ await edit(ctx,result?`<b>📜 تسویه‌ی دوره‌ای</b>\nتعداد نوبت: ${result.ticks}\nتغییر خزانه: ${money(result.net)}\nمانده: ${money(result.balance)}`:"هنوز زمان تسویه‌ی سه‌ساعته نرسیده است.",nation());
+});
+setInterval(async()=>{
+ try{
+  const ids=(await pool.query("SELECT telegram_id FROM game_players WHERE approved=TRUE")).rows;
+  for(const row of ids){
+   const result=await settleOne(row.telegram_id);
+   if(result)try{await bot.api.sendMessage(row.telegram_id,`📜 تسویه‌ی خودکار شاه شاهان\nتعداد نوبت: ${result.ticks}\nتغییر خزانه: ${money(result.net)}\nمانده‌ی خزانه: ${money(result.balance)}`);}catch{}
+  }
+ }catch(e){console.error("Automatic settlement error:",e);}
+},60000).unref();
 bot.catch(e=>console.error("Bot error",e));
 const server=http.createServer((req,res)=>{res.writeHead(200,{"content-type":"application/json"});res.end(JSON.stringify({status:"ok",game:"shah-shahanshah"}));});
 await db();server.listen(PORT,()=>console.log("Shah Shahanshah health server on",PORT));await bot.start({onStart:info=>console.log("Bot started:",info.username)});
