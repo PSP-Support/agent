@@ -1026,15 +1026,9 @@ await initStatecraft(pool);
 await registerStatecraft(bot,pool);
 // Telegram's command menu (the slash button beside the message field).
 const publicCommands = [
-  { command: "start", description: "شروع بازی و داشبورد" },
-  { command: "guide", description: "راهنمای مرحله‌ای بازی" },
-  { command: "menu", description: "نمایش منوی بازی" },
-  { command: "startup", description: "ثبت نام و مشخصات استارتاپ" },
-  { command: "buycompany", description: "درخواست تأسیس کسب‌وکار" },
-  { command: "companies", description: "شرکت‌ها و کارکنان من" },
-  { command: "economy", description: "گزارش بازار و اقتصاد" },
-  { command: "bank", description: "بانک و امور مالی" },
-  { command: "progress", description: "رتبه، مأموریت و دستاوردها" },
+  { command: "start", description: "ورود به دربار و گزارش کشور" },
+  { command: "realm", description: "گزارش حکومت و خزانه ملی" },
+  { command: "guide", description: "راهنمای مرحله‌ای شاه شاهان" },
   { command: "myid", description: "نمایش شناسه تلگرام" }
 ];
 await bot.api.setMyCommands(publicCommands, { scope: { type: "default" }, language_code: "fa" }).catch(err => console.error("Set public commands failed:", err));
