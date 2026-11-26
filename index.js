@@ -163,7 +163,7 @@ async function status(p){
  const c=country(p.country_id),d=calc(p),net=d.income-d.expense;
  const percent=(n,max)=>Math.max(0,Math.min(100,Math.round(Number(n||0)/Math.max(1,Number(max||1))*100)));
  const mood=p.stability>=75?"آرام و باثبات":p.stability>=50?"قابل کنترل":p.stability>=30?"پر تنش":"در آستانه‌ی بحران";
- const budget=net>=0?"مازاد بودجه": "کسری بودجه";
+ const budget="درآمد قابل وصول";
  const oilStock=Number(p.oil_stock||0),oilNeed=Math.max(1,d.oilConsumption);
  const oilDays=Math.floor(oilStock/oilNeed);
  const foodDays=Math.floor(Number(p.grain||0)/Math.max(1,Number(p.population||0)/1000));
@@ -183,7 +183,7 @@ async function status(p){
   ├ خدمات عمومی: ${money(d.services)}
   ├ زیرساخت: ${money(d.roads)}
   └ نگهداری صنایع: ${money(d.upkeep)}
-🧮 ${budget} روزانه: ${money(Math.abs(net))}
+🧮 ${budget} روزانه: ${money(Math.max(0,net))}
 
 <b>👥 مردم و ثبات</b>
 جمعیت: ${fmt(p.population)}
@@ -207,7 +207,7 @@ async function status(p){
 روحیه: ${p.morale}٪
 
 <b>📌 هشدارهای مدیریتی</b>
-${net<0?"⚠️ بودجه منفی است؛ مالیات، هزینه‌ها یا تولید را بازبینی کنید.":"✅ بودجه‌ی روزانه مثبت است."}
+${"هزینه‌ها فقط از موجودی قابل پرداخت کسر می‌شوند و خزانه منفی نمی‌شود."}
 ${oilStock<oilNeed*3?"⚠️ ذخیره‌ی نفت کمتر از سه روز است؛ واردات یا افزایش تولید را بررسی کنید.":"✅ ذخیره‌ی نفت فعلاً مناسب است."}
 ${p.stability<40?"⚠️ ثبات پایین است؛ کشور در معرض ناآرامی قرار دارد.":""}`;
 }
