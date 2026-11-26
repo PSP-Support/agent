@@ -20,6 +20,20 @@ export async function initRealism(pool) {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
     INSERT INTO market_conditions(id) VALUES(1) ON CONFLICT(id) DO NOTHING;
+    CREATE TABLE IF NOT EXISTS telecom_subscriptions (
+      id BIGSERIAL PRIMARY KEY,
+      provider_company_id BIGINT NOT NULL REFERENCES player_companies(id) ON DELETE CASCADE,
+      buyer_company_id BIGINT NOT NULL REFERENCES player_companies(id) ON DELETE CASCADE,
+      service_key TEXT NOT NULL,
+      price_per_period BIGINT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'active',
+      last_billed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(buyer_company_id,service_key),
+      CHECK(provider_company_id<>buyer_company_id),
+      CHECK(price_per_period>0)
+    );
+    CREATE INDEX IF NOT EXISTS telecom_due_idx ON telecom_subscriptions(status,last_billed_at);
     CREATE TABLE IF NOT EXISTS finance_transactions (
       id BIGSERIAL PRIMARY KEY,
       telegram_id BIGINT NOT NULL REFERENCES players(telegram_id) ON DELETE CASCADE,
@@ -42,6 +56,14 @@ export async function initRealism(pool) {
     );
   `);
 }
+
+const TELECOM_SERVICES = {
+  mobile: {name:'📱 بسته اینترنت موبایل',price:1800,description:'اینترنت موبایل و خط ارتباطی'},
+  fiber: {name:'🌐 اینترنت پرسرعت فیبر',price:4200,description:'اینترنت ثابت پرسرعت'},
+  cloud: {name:'☁️ سرور و فضای ابری',price:6500,description:'فضای ابری و سرور برای کسب‌وکار'},
+  enterprise: {name:'🏢 ارتباطات سازمانی',price:9000,description:'شبکه اختصاصی و ارتباط شعب'},
+  security: {name:'🛡️ امنیت شبکه',price:5200,description:'فایروال و محافظت از شبکه'}
+};
 
 async function market(pool) {
   const q = await pool.query("SELECT * FROM market_conditions WHERE id=1");
