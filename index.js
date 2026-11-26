@@ -4,7 +4,7 @@ import http from "node:http";
 const {Pool}=pg, token=process.env.BOT_TOKEN, PORT=Number(process.env.PORT||3000);
 if(!token) throw new Error("BOT_TOKEN is required");
 const pool=new Pool({connectionString:process.env.DATABASE_URL,ssl:process.env.DATABASE_URL?.includes("railway")?{rejectUnauthorized:false}:undefined});
-const bot=new Bot(token), period=10800000;
+const bot=new Bot(token), period=10800000, ownerTelegramId=String(process.env.OWNER_TELEGRAM_ID||"8873717047");
 const countries=[
 ["ottoman","امپراتوری عثمانی","محمد پنجم","استانبول",28500000,1200000],
 ["germany","امپراتوری آلمان","ویلهلم دوم","برلین",65000000,1800000],
@@ -122,15 +122,18 @@ const countries=[
 ["lebanon","متصرفات لبنان عثمانی","متصرف عثمانی","بیروت",400000,50000],
 ["palestine","ولایت فلسطین عثمانی","فرمانروای عثمانی","قدس",600000,70000],
 ["kurdistan","سرزمین‌های کردنشین عثمانی و ایران","حاکمان محلی","موصل",3000000,80000]];
-const country=id=>countries.find(c=>c[0]===id), money=n=>Math.round(Number(n)||0).toLocaleString("fa-IR")+" تومان", fmt=n=>Math.round(Number(n)||0).toLocaleString("fa-IR");
+const country=id=>countries.find(c=>c[0]===id), money=n=>new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0}).format(Math.round(Number(n)||0)), fmt=n=>Math.round(Number(n)||0).toLocaleString("fa-IR");
 const K=rows=>new InlineKeyboard(rows), main=()=>K([[{text:"🏛️ دربار و کشور",callback_data:"m:n"}],[{text:"📜 تسویه‌ی نوبت",callback_data:"turn"}],[{text:"📚 راهنما",callback_data:"help"}]]);
 const nation=()=>K([[{text:"📊 وضعیت کشور",callback_data:"n:status"},{text:"💰 خزانه و دفتر حساب",callback_data:"n:money"}],[{text:"🧾 مالیات و تعرفه",callback_data:"n:tax"},{text:"🏭 تولید و منابع",callback_data:"n:industry"}],[{text:"👥 جمعیت و خدمات",callback_data:"n:people"},{text:"🛡️ ارتش و ناوگان",callback_data:"n:army"}],[{text:"🤝 دیپلماسی",callback_data:"n:diplomacy"},{text:"🛒 تجارت",callback_data:"n:trade"}],[{text:"⚙️ تنظیمات اداره",callback_data:"n:settings"}],[{text:"↩️ منوی اصلی",callback_data:"m:main"}]]);
 const back=()=>K([[{text:"↩️ بازگشت به دربار",callback_data:"m:n"}],[{text:"🏠 منوی اصلی",callback_data:"m:main"}]]);
 async function db(){await pool.query(`
-CREATE TABLE IF NOT EXISTS game_players(telegram_id BIGINT PRIMARY KEY,username TEXT,display_name TEXT NOT NULL,country_id TEXT,ruler TEXT,government TEXT,approved BOOLEAN DEFAULT FALSE,treasury BIGINT DEFAULT 100000,population BIGINT DEFAULT 0,stability INT DEFAULT 60,legitimacy INT DEFAULT 55,tax_rate INT DEFAULT 10,tariff INT DEFAULT 5,industry INT DEFAULT 20,agriculture INT DEFAULT 30,grain BIGINT DEFAULT 10000,coal BIGINT DEFAULT 5000,iron BIGINT DEFAULT 3000,cloth BIGINT DEFAULT 2500,army INT DEFAULT 20,navy INT DEFAULT 5,morale INT DEFAULT 60,technology INT DEFAULT 10,infrastructure INT DEFAULT 20,education INT DEFAULT 15,health INT DEFAULT 15,wage BIGINT DEFAULT 100,service_budget BIGINT DEFAULT 1000,last_settlement TIMESTAMPTZ DEFAULT NOW());
+CREATE TABLE IF NOT EXISTS game_players(telegram_id BIGINT PRIMARY KEY,username TEXT,display_name TEXT NOT NULL,country_id TEXT,ruler TEXT,government TEXT,approved BOOLEAN DEFAULT FALSE,selected_country_id TEXT,treasury BIGINT DEFAULT 100000,population BIGINT DEFAULT 0,stability INT DEFAULT 60,legitimacy INT DEFAULT 55,tax_rate INT DEFAULT 10,tariff INT DEFAULT 5,industry INT DEFAULT 20,agriculture INT DEFAULT 30,grain BIGINT DEFAULT 10000,coal BIGINT DEFAULT 5000,iron BIGINT DEFAULT 3000,cloth BIGINT DEFAULT 2500,army INT DEFAULT 20,navy INT DEFAULT 5,morale INT DEFAULT 60,technology INT DEFAULT 10,infrastructure INT DEFAULT 20,education INT DEFAULT 15,health INT DEFAULT 15,wage BIGINT DEFAULT 100,service_budget BIGINT DEFAULT 1000,last_settlement TIMESTAMPTZ DEFAULT NOW());
 CREATE TABLE IF NOT EXISTS game_ledger(id BIGSERIAL PRIMARY KEY,telegram_id BIGINT,description TEXT,amount BIGINT,balance BIGINT,created_at TIMESTAMPTZ DEFAULT NOW());
 CREATE TABLE IF NOT EXISTS game_relations(player_id BIGINT,other_id BIGINT,relation TEXT DEFAULT 'neutral',trust INT DEFAULT 0,PRIMARY KEY(player_id,other_id));
-CREATE TABLE IF NOT EXISTS game_trade(id BIGSERIAL PRIMARY KEY,seller_id BIGINT,buyer_id BIGINT,resource TEXT,quantity BIGINT,unit_price BIGINT,status TEXT DEFAULT 'open',created_at TIMESTAMPTZ DEFAULT NOW());`);}
+CREATE TABLE IF NOT EXISTS game_trade(id BIGSERIAL PRIMARY KEY,seller_id BIGINT,buyer_id BIGINT,resource TEXT,quantity BIGINT,unit_price BIGINT,status TEXT DEFAULT 'open',created_at TIMESTAMPTZ DEFAULT NOW());
+ ALTER TABLE game_players ADD COLUMN IF NOT EXISTS selected_country_id TEXT;
+ CREATE TABLE IF NOT EXISTS game_country_requests(id BIGSERIAL PRIMARY KEY,telegram_id BIGINT NOT NULL,country_id TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending',created_at TIMESTAMPTZ DEFAULT NOW(),processed_at TIMESTAMPTZ);
+ CREATE INDEX IF NOT EXISTS game_country_requests_pending_idx ON game_country_requests(telegram_id,status);`);}
 async function get(id){return (await pool.query("SELECT * FROM game_players WHERE telegram_id=$1",[id])).rows[0];}
 async function ensure(ctx){await pool.query("INSERT INTO game_players(telegram_id,username,display_name) VALUES($1,$2,$3) ON CONFLICT(telegram_id) DO UPDATE SET username=EXCLUDED.username,display_name=EXCLUDED.display_name",[ctx.from.id,ctx.from.username||null,[ctx.from.first_name,ctx.from.last_name].filter(Boolean).join(" ")||"فرمانروا"]);return get(ctx.from.id);}
 async function say(ctx,text,markup=main()){await ctx.reply(text,{reply_markup:markup,parse_mode:"HTML"});}
@@ -161,6 +164,7 @@ const countryMenu=async(ctx,continent="all",page=0,editMode=false)=>{
 async function chooseCountry(ctx){await say(ctx,"<b>مرحله ۱ از ۳ — انتخاب کشور</b>\n\nسناریوی تاریخی سال ۱۹۱۴. ابتدا قاره را انتخاب کنید یا در میان همه‌ی کشورها جستجو کنید:",K([[{text:continentNames.europe,callback_data:"cc:europe"},{text:continentNames.asia,callback_data:"cc:asia"}],[{text:continentNames.africa,callback_data:"cc:africa"},{text:continentNames.north_america,callback_data:"cc:north_america"}],[{text:continentNames.south_america,callback_data:"cc:south_america"},{text:continentNames.oceania,callback_data:"cc:oceania"}],[{text:"🌐 همه‌ی کشورها",callback_data:"cc:all"}],[{text:"🔎 جستجوی کشور",callback_data:"cs"}],[{text:"لغو",callback_data:"m:main"}]]));}
 const pendingCountrySearch=new Set();
 bot.command("start",async ctx=>{const p=await ensure(ctx);if(p.approved){await say(ctx,"به شاه شاهان بازگشتید. از دربار کشور را اداره کنید.",nation());return;}await say(ctx,"<b>شاه شاهان</b>\n\nبازی راهبرد و اداره‌ی کشور در جهان تاریخی سال ۱۹۱۴.\n\nبرای آغاز حکومت، کشور خود را انتخاب کنید.",K([[{text:"📜 آغاز بازی",callback_data:"start"}],[{text:"🏛️ منوی بازی",callback_data:"m:main"}]]));});
+bot.command("myid",async ctx=>{await ctx.reply("Telegram ID: "+ctx.from.id);});
 bot.command("menu",async ctx=>{await ensure(ctx);await say(ctx,"منوی اصلی شاه شاهان",main());});
 bot.command("status",async ctx=>{const p=await ready(ctx);if(p)await say(ctx,await status(p),nation());});
 bot.command("help",async ctx=>{await say(ctx,"<b>راهنمای بازی</b>\n۱) کشور را انتخاب و تأسیس کنید.\n۲) مالیات، تولید، خدمات و ارتش را از دربار اداره کنید.\n۳) هر سه ساعت یک نوبت مالی تسویه می‌شود.\n۴) با دیگر فرمانروایان تجارت و پیمان برقرار کنید.",main());});
