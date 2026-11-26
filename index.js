@@ -447,6 +447,7 @@ bot.callbackQuery(/^reg:company:([a-z_]+)$/,async ctx=>{
   const uid=String(ctx.from.id);
   const status=await pool.query("SELECT approval_status,registration_source FROM players WHERE telegram_id=$1",[uid]);
   if(!status.rows.length)return ctx.answerCallbackQuery({text:"ابتدا /start را بزن.",show_alert:true});
+  if(status.rows[0].approval_status==="banned"||status.rows[0].approval_status==="rejected")return ctx.answerCallbackQuery({text:"این حساب اجازه ثبت‌نام ندارد؛ با مدیر کل تماس بگیر.",show_alert:true});
   const existing=await pool.query("SELECT id FROM company_requests WHERE telegram_id=$1 AND request_status='pending' LIMIT 1",[uid]);
   if(existing.rows.length)return ctx.answerCallbackQuery({text:"درخواست قبلی هنوز در انتظار بررسی است.",show_alert:true});
   companyNamePending.set(uid,{typeId:type.id,registration:true,sourceTag:status.rows[0].registration_source||"direct"});
@@ -713,7 +714,9 @@ bot.callbackQuery("reg:confirm",async ctx=>{
   if(!status.rows.length)return ctx.answerCallbackQuery({text:"پروفایل پیدا نشد.",show_alert:true});
   const duplicate=await pool.query("SELECT id FROM company_requests WHERE telegram_id=$1 AND request_status='pending' LIMIT 1",[uid]);
   if(duplicate.rows.length){companyConfirmPending.delete(uid);return ctx.answerCallbackQuery({text:"درخواست قبلی هنوز در انتظار بررسی است.",show_alert:true});}
-  const p=status.rows[0],isRegistration=p.approval_status!=="approved"||!!pending.registration;
+  const p=status.rows[0];
+  if(p.approval_status==="banned"||p.approval_status==="rejected"){companyConfirmPending.delete(uid);return ctx.answerCallbackQuery({text:"این حساب اجازه ارسال درخواست ندارد.",show_alert:true});}
+  const isRegistration=p.approval_status!=="approved"||!!pending.registration;
   const q=await pool.query("INSERT INTO company_requests(telegram_id,company_type,company_name,brand_name,season_rank,player_level,reputation,is_registration,source_tag) VALUES($1,$2,$3,$3,$4,$5,$6,$7,$8) RETURNING id,created_at",
     [uid,type.id,pending.companyName,pending.rank??null,pending.playerLevel||1,pending.reputation||0,isRegistration,pending.sourceTag||p.registration_source||"direct"]);
   companyConfirmPending.delete(uid);
