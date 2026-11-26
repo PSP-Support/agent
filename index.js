@@ -632,11 +632,11 @@ bot.callbackQuery(/^econ:reply:(\d+)$/,async ctx=>{
   return ctx.reply("↩️ پاسخ به پیام درباره «"+m.company_name+"» را بنویس.\n\nبرای لغو /cancel را بفرست.");
 });
 bot.command("cancel",async ctx=>{if(economicCompose.delete(String(ctx.from.id)))return ctx.reply("ارسال پیام لغو شد.");return ctx.reply("در حال حاضر پیام اقتصادی در انتظار ارسال نداری.");});
-bot.on("message:text",async ctx=>{
+bot.on("message:text",async (ctx,next)=>{
   const pending=economicCompose.get(String(ctx.from.id));
-  if(!pending)return;
+  if(!pending)return next();
   const body=(ctx.message.text||"").trim();
-  if(body.startsWith("/"))return;
+  if(body.startsWith("/"))return next();
   if(!body||body.length>1000)return ctx.reply("متن باید بین ۱ تا ۱۰۰۰ حرف باشد. دوباره بنویس یا /cancel بزن.");
   const recipient=await pool.query("SELECT approval_status FROM players WHERE telegram_id=$1",[pending.recipientId]);
   if(!recipient.rows.length||recipient.rows[0].approval_status!=="approved"){economicCompose.delete(String(ctx.from.id));return ctx.reply("بازیکن مقصد دیگر فعال نیست؛ ارسال لغو شد.");}
