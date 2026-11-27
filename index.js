@@ -1114,13 +1114,13 @@ bot.callbackQuery(/^weaponinfo:([a-z0-9_]+)$/, async (ctx) => {
     ctx,
     "<b>🛡️ " +
       weaponLabel(w) +
-      "</b>\n\n💵 <b>قیمت هر واحد:</b> " +
+      "</b>\n\n🏷️ <b>ارزش مرجع بازار:</b> " +
       money(w[2]) +
       "\n📌 <b>کاربرد:</b> " +
       use +
       "\n🏭 <b>پیش‌نیاز:</b> کارخانه تسلیحات فعال\n📦 <b>محل تحویل:</b> انبار تسلیحات کشور\n🔧 <b>نگهداری:</b> تجهیزات مصرف‌شده در نیروها هزینه نگهداری دارند؛ موجودی انبار به‌تنهایی نیروی فعال محسوب نمی‌شود.\n\nبرای تولید یک واحد، تأیید کنید.",
     K([
-      [{ text: "✅ تأیید تولید · " + money(w[2]), callback_data: "weaponbuy:" + w[0] }],
+      [{ text: "✅ تولید با مصرف منابع", callback_data: "weaponbuy:" + w[0] }],
       [{ text: "↩️ فهرست تسلیحات", callback_data: "shopweapons" }],
     ]),
   );
@@ -1134,13 +1134,15 @@ bot.callbackQuery(/^weaponbuy:([a-z0-9_]+)$/, async (ctx) => {
     await say(ctx, "این سلاح برای کشور شما تعریف نشده است.", nation());
     return;
   }
-  const client = await pool.connect();
+  const costs = weaponResourceCosts(w),
+    client = await pool.connect();
   try {
     await client.query("BEGIN");
     const row = (
-        await client.query("SELECT treasury FROM game_players WHERE telegram_id=$1 FOR UPDATE", [
-          ctx.from.id,
-        ])
+        await client.query(
+          "SELECT treasury,iron,coal,cloth,fuel_stock FROM game_players WHERE telegram_id=$1 FOR UPDATE",
+          [ctx.from.id],
+        )
       ).rows[0],
       factory = (
         await client.query(
@@ -1160,32 +1162,33 @@ bot.callbackQuery(/^weaponbuy:([a-z0-9_]+)$/, async (ctx) => {
       );
       return;
     }
-    if (Number(row.treasury) < w[2]) {
+    const shortage = resourceShortages(row, costs);
+    if (shortage.length) {
       await client.query("ROLLBACK");
-      await say(ctx, "خزانه برای تولید این سلاح کافی نیست.", nation());
+      await say(ctx, "مواد اولیه برای تولید کافی نیست: " + resourceCostDescription(Object.fromEntries(shortage)) + ".", nation());
       return;
     }
-    await client.query("UPDATE game_players SET treasury=treasury-$2 WHERE telegram_id=$1", [
-      ctx.from.id,
-      w[2],
-    ]);
+    await client.query(
+      "UPDATE game_players SET " + resourceCostAssignments(costs).join(",") + " WHERE telegram_id=$1",
+      [ctx.from.id, ...resourceCostValues(costs)],
+    );
     await client.query(
       "INSERT INTO game_weapon_stock(telegram_id,weapon_key,quantity) VALUES($1,$2,1) ON CONFLICT(telegram_id,weapon_key) DO UPDATE SET quantity=game_weapon_stock.quantity+1",
       [ctx.from.id, w[0]],
     );
     await client.query(
       "INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,$3,$4)",
-      [ctx.from.id, "تولید " + w[1], -w[2], Number(row.treasury) - w[2]],
+      [ctx.from.id, "تولید " + w[1] + " (هزینه منابع)", 0, Number(row.treasury)],
     );
     await client.query("COMMIT");
     await edit(
       ctx,
       "🛡️ یک واحد " +
         weaponLabel(w) +
-        " به انبار تسلیحات افزوده شد.\nهزینه: " +
-        money(w[2]) +
-        "\nخزانه: " +
-        money(Number(row.treasury) - w[2]),
+        " به انبار تسلیحات افزوده شد.\nمواد مصرف‌شده: " +
+        resourceCostDescription(costs) +
+        "\nخزانه تغییر نکرد: " +
+        money(Number(row.treasury)),
       K([
         [{ text: "🛡️ ادامه تسلیحات", callback_data: "shopweapons" }],
         [{ text: "🏛️ دربار", callback_data: "m:n" }],
