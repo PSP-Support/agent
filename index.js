@@ -42,13 +42,14 @@ if (isTest && !process.env.TEST_OWNER_TELEGRAM_ID)
   throw new Error("TEST_OWNER_TELEGRAM_ID is required in test mode");
 const pool = new Pool({
   connectionString: databaseUrl,
-  ssl: databaseUrl.includes("railway") ? { rejectUnauthorized: false } : undefined,
+  ssl: /railway|rlwy\\.net/i.test(new URL(databaseUrl).hostname)
+    ? { rejectUnauthorized: false }
+    : undefined,
 });
 const bot = new Bot(token),
   period = 10800000,
-  ownerTelegramId = String(
-    isTest ? process.env.TEST_OWNER_TELEGRAM_ID : process.env.OWNER_TELEGRAM_ID || "8873717047",
-  );
+  ownerTelegramId = isTest ? process.env.TEST_OWNER_TELEGRAM_ID : process.env.OWNER_TELEGRAM_ID;
+if (!ownerTelegramId) throw new Error("OWNER_TELEGRAM_ID is required");
 bot.use(createCallbackGuard());
 bot.use(async (ctx, next) => {
   if (!ctx.from || String(ctx.from.id) === ownerTelegramId) return next();
@@ -4261,9 +4262,9 @@ async function settleOne(id) {
       dailyBuildingIncome,
     } = calculateSettlementResources(row, buildings, ticks);
     const d = calcEconomy(row),
-      earned = Math.max(0, Math.round((d.income + dailyBuildingIncome) * scale));
-    const balance = Number(row.treasury) + earned,
-      net = earned;
+      netChange = Math.round((d.net + dailyBuildingIncome) * scale),
+      balance = Math.max(0, Number(row.treasury) + netChange),
+      net = balance - Number(row.treasury);
     const shortages =
       (grainUsed < grainNeed ? 1 : 0) +
       (coalUsed < coalNeed ? 1 : 0) +
@@ -4286,7 +4287,7 @@ async function settleOne(id) {
         ? -Math.ceil(population * 0.00001 * scale)
         : Math.round(lv("housing") * 5 * scale);
     await client.query(
-      "UPDATE game_players SET treasury=$2,oil_stock=$3,oil_reserves=GREATEST(0,oil_reserves-$4),gold_stock=gold_stock+$5,iron=GREATEST(0,iron-$6)+$7,coal=GREATEST(0,coal-$8)+$9,grain=GREATEST(0,grain-$10)+$11,cloth=GREATEST(0,cloth-$12),electricity_stock=GREATEST(0,electricity_stock+$14-$13),fuel_stock=$15,population=GREATEST(1000,population+$16),stability=$17,last_settlement=$19 WHERE telegram_id=$1",
+      "UPDATE game_players SET treasury=GREATEST(0,$2),oil_stock=$3,oil_reserves=GREATEST(0,oil_reserves-$4),gold_stock=gold_stock+$5,iron=GREATEST(0,iron-$6)+$7,coal=GREATEST(0,coal-$8)+$9,grain=GREATEST(0,grain-$10)+$11,cloth=GREATEST(0,cloth-$12),electricity_stock=GREATEST(0,electricity_stock+$14-$13),fuel_stock=$15,population=GREATEST(1000,population+$16),stability=$17,last_settlement=$19 WHERE telegram_id=$1",
       [
         id,
         balance,
@@ -4311,7 +4312,7 @@ async function settleOne(id) {
     );
     await client.query(
       "INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,$3,$4)",
-      [id, "درآمد و مصرف منابع در " + ticks + " نوبت", net, balance],
+      [id, "درآمد، حقوق، نگهداری و مصرف منابع در " + ticks + " نوبت", net, balance],
     );
     await client.query("COMMIT");
     return {
@@ -4319,6 +4320,11 @@ async function settleOne(id) {
       net,
       balance,
       buildingIncome: Math.round(dailyBuildingIncome * scale),
+      income: Math.round(d.income * scale),
+      expense: Math.round(d.expense * scale),
+      wages: Math.round(d.wages * scale),
+      armyExpense: Math.round(d.army * scale),
+      serviceExpense: Math.round(d.services * scale),
       grainNeed,
       grainUsed,
       coalNeed,
@@ -4356,7 +4362,15 @@ function settlementReport(result, p) {
     line("درآمد تعرفه‌ها", d.tariff) +
     "\n• درآمد سازه‌ها: " +
     money(result.buildingIncome) +
-    "\n\n<b>💰 خزانه</b>\n• واریز واقعی این نوبت: " +
+    "\n\n<b>💸 هزینه‌های خزانه</b>\n" +
+    line("حقوق و دستمزد", d.wages) +
+    "\n" +
+    line("نگهداری نیروهای مسلح", d.army) +
+    "\n" +
+    line("بودجه خدمات عمومی", d.services) +
+    "\n• جمع هزینه‌ها: " +
+    money(result.expense) +
+    "\n\n<b>💰 خزانه</b>\n• تغییر واقعی خزانه: " +
     money(result.net) +
     "\n• موجودی خزانه: " +
     money(result.balance) +
@@ -4400,7 +4414,7 @@ function settlementReport(result, p) {
     (result.shortages
       ? "⚠️ کمبود منابع ثبت شد؛ ثبات کشور کاهش یافت."
       : "✅ منابع موردنیاز تأمین شد.") +
-    "\nℹ️ درآمد به خزانه افزوده می‌شود؛ تسویه‌ی دوره‌ای هزینه‌ی نقدی از خزانه کم نمی‌کند."
+    "\nℹ️ درآمد، حقوق، نگهداری نیروها و بودجه خدمات عمومی در تسویه محاسبه می‌شوند. خزانه زیر صفر نمی‌رود."
   );
 }
 
