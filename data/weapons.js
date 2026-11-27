@@ -160,20 +160,20 @@ xport function weaponResourceCosts(weapon) {
   const referenceValue = Math.max(0, Number(weapon?.[2] || 0));
   if (/ناو|زیردریایی|کشتی|دریایی/.test(name)) {
     return {
-      iron: Math.ceil(referenceValue / 1000000000),
+      iron: Math.ceil(referenceValue / 1000000),
       coal: Math.ceil(referenceValue / 2000000),
-      fuel_stock: Math.ceil(referenceValue / 10000000000),
+      fuel_stock: Math.ceil(referenceValue / 10000000),
     };
   }
   if (/هواپیما|جنگنده|بالون|هوایی|هواگرد/.test(name)) {
     return {
-      iron: Math.ceil(referenceValue / 1000000000),
+      iron: Math.ceil(referenceValue / 1000000),
       cloth: Math.ceil(referenceValue / 2000000),
-      fuel_stock: Math.ceil(referenceValue / 10000000000),
+      fuel_stock: Math.ceil(referenceValue / 10000000),
     };
   }
   return {
     iron: Math.max(1, Math.ceil(referenceValue / 200000)),
-    coal: Math.max(1, Math.ceil(referenceValue / 1000000000)),
+    coal: Math.max(1, Math.ceil(referenceValue / 1000000)),
   };
 }
