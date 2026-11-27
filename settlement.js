@@ -1,3 +1,5 @@
+import { storeIncomeDaily } from "./data/buildings.js";
+
 export const MAX_SETTLEMENT_TICKS = 56;
 export const SETTLEMENT_PERIOD_MS = 3 * 60 * 60 * 1000;
 
@@ -127,27 +129,10 @@ const oilConsumed = Math.min(fuelAvailable, oilNeed),
   oilShortage = oilNeed - oilConsumed;
 const oilStock = oilAvailable;
 const fuelStock = fuelAvailable - oilConsumed;
-const dailyBuildingIncome =
-  lv("gold_mine") * 9000 +
-  lv("iron_mine") * 6500 +
-  lv("coal_mine") * 5000 +
-  lv("oil_refinery") * 8500 +
-  lv("housing") * 1800 +
-  lv("admin") * 2500 +
-  lv("commercial") * 4000 +
-  lv("hotel") * 6000 +
-  lv("highway") * 1200 +
-  lv("railway") * 2500 +
-  lv("station") * 2000 +
-  lv("airport") * 12000 +
-  lv("port") * 9000 +
-  lv("wheat_farm") * 1800 +
-  lv("plateau_farm") * 1200 +
-  lv("grain_silo") * 700 +
-  lv("coal_power") * 4000 +
-  lv("hydro_power") * 5000 +
-  lv("oil_power") * 3800 +
-  lv("arms_factory") * 6500;
+const dailyBuildingIncome = Object.entries(storeIncomeDaily).reduce(
+  (sum, [key, amount]) => sum + lv(key) * amount,
+  0,
+);
 
   return {
     lv,

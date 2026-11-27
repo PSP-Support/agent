@@ -26,3 +26,4 @@ jobs:
       - run: node --check economy.js
       - run: node --check scripts/simulate.js
       - run: node scripts/simulate.js
+      - run: node --check data/buildings.js
