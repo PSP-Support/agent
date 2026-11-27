@@ -5760,79 +5760,73 @@ bot.callbackQuery(
         strategicMenu(),
       );
     }
-    const cfg = {
-      exercise: [
-        "رزمایش نظامی",
-        20000,
-        100,
-        0,
-        "UPDATE game_players SET treasury=treasury-$2,fuel_stock=fuel_stock-$3,morale=LEAST(100,morale+6),stability=LEAST(100,stability+2) WHERE telegram_id=$1",
-        "روحیه +6 و ثبات +2",
-      ],
-      intel: [
-        "اطلاعات و امنیت ملی",
-        30000,
-        0,
-        100,
-        "UPDATE game_players SET treasury=treasury-$2,iron=iron-$3,technology=LEAST(100,technology+2) WHERE telegram_id=$1",
-        "فناوری +2",
-      ],
-      command: [
-        "فرماندهی کل قوا",
-        40000,
-        0,
-        150,
-        "UPDATE game_players SET treasury=treasury-$2,iron=iron-$3,morale=LEAST(100,morale+3),legitimacy=LEAST(100,legitimacy+2) WHERE telegram_id=$1",
-        "روحیه +3 و مشروعیت +2",
-      ],
-      nuclear: [
-        "برنامه توسعه هسته‌ای",
-        250000,
-        0,
-        500,
-        "UPDATE game_players SET treasury=treasury-$2,iron=iron-$3,coal=coal-1000,technology=LEAST(100,technology+3) WHERE telegram_id=$1",
-        "فناوری +3",
-      ],
+    const action = {
+      exercise: {
+        title: "رزمایش نظامی",
+        costs: strategicResourceCosts.exercise,
+        updates: ["morale=LEAST(100,morale+6)", "stability=LEAST(100,stability+2)"],
+        effect: "روحیه +6 و ثبات +2",
+      },
+      intel: {
+        title: "اطلاعات و امنیت ملی",
+        costs: strategicResourceCosts.intelligence,
+        updates: ["technology=LEAST(100,technology+2)"],
+        effect: "فناوری +2",
+      },
+      command: {
+        title: "فرماندهی کل قوا",
+        costs: strategicResourceCosts.command,
+        updates: ["morale=LEAST(100,morale+3)", "legitimacy=LEAST(100,legitimacy+2)"],
+        effect: "روحیه +3 و مشروعیت +2",
+      },
+      nuclear: {
+        title: "برنامه توسعه هسته‌ای",
+        costs: strategicResourceCosts.nuclear,
+        updates: ["technology=LEAST(100,technology+3)"],
+        effect: "فناوری +3",
+      },
     }[d.split(":")[1]];
-    if (!cfg) {
+    if (!action) {
       await say(ctx, "اقدام نامعتبر است.");
       return;
     }
-    const [title, cost, oil, iron, sql, effect] = cfg,
+    const { title, costs, updates, effect } = action,
       me = (
         await pool.query(
           "SELECT treasury,fuel_stock,iron,coal,technology FROM game_players WHERE telegram_id=$1",
           [ctx.from.id],
         )
-      ).rows[0];
-    if (
-      !me ||
-      Number(me.treasury) < cost ||
-      Number(me.fuel_stock) < oil ||
-      Number(me.iron) < iron ||
-      (d === "str:nuclear" && (Number(me.coal) < 1000 || Number(me.technology) < 20))
-    ) {
+      ).rows[0],
+      shortage = resourceShortages(me, costs);
+    if (!me || shortage.length || (d === "str:nuclear" && Number(me.technology) < 20)) {
       await say(
         ctx,
-        "منابع یا فناوری کافی نیست. نیاز: " +
-          money(cost) +
-          ", سوخت " +
-          fmt(oil) +
-          ", آهن " +
-          fmt(iron) +
-          (d === "str:nuclear" ? "، زغال 1000 و فناوری 20" : ""),
+        "منابع یا فناوری کافی نیست: " +
+          resourceCostDescription(Object.fromEntries(shortage)) +
+          (d === "str:nuclear" ? "، فناوری موردنیاز 20" : ""),
       );
       return;
     }
-    if (d === "str:exercise") await pool.query(sql, [ctx.from.id, cost, oil]);
-    else await pool.query(sql, [ctx.from.id, cost, iron]);
+    const assignments = [...resourceCostAssignments(costs), ...updates];
     await pool.query(
-      "INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,$3,$4)",
-      [ctx.from.id, "اقدام راهبردی: " + title, -cost, Number(me.treasury) - cost],
+      "UPDATE game_players SET " + assignments.join(",") + " WHERE telegram_id=$1",
+      [ctx.from.id, ...resourceCostValues(costs)],
     );
+    await pool.query(
+      "INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,0,$3)",
+      [ctx.from.id, "اقدام راهبردی: " + title + " (هزینه منابع)", Number(me.treasury)],
+    );
+
     return say(
       ctx,
-      "✅ " + title + " انجام شد.\nاثر: " + effect + "\nهزینه: " + money(cost),
+      "✅ " +
+        title +
+        " انجام شد.\nاثر: " +
+        effect +
+        "\n🧱 منابع مصرف‌شده: " +
+        resourceCostDescription(costs) +
+        "\n💰 خزانه تغییر نکرد: " +
+        money(Number(me.treasury)),
       strategicMenu(),
     );
   },
