@@ -46,7 +46,7 @@ test("cash deductions in gameplay code remain limited to trade and markets", asy
   const deductions = [...source.matchAll(/treasury\s*=\s*treasury\s*-\s*(?:\$[0-9]+|[0-9]+)/g)];
   assert.equal(deductions.length, 6);
   for (const match of deductions) {
-    const context = source.slice(Math.max(0, match.index - 300), match.index + 350);
+    const context = gameplaySource.slice(Math.max(0, match.index - 300), match.index + 350);
     assert.match(context, /offer|stock|trade|transit|resource|commodity/i);
   }
 });
