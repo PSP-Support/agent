@@ -12,7 +12,9 @@ if (!["production", "test"].includes(appEnv))
 if (!token)
   throw new Error(isTest ? "TEST_BOT_TOKEN is required in test mode" : "BOT_TOKEN is required");
 if (!databaseUrl)
-  throw new Error(isTest ? "TEST_DATABASE_URL is required in test mode" : "DATABASE_URL is required");
+  throw new Error(
+    isTest ? "TEST_DATABASE_URL is required in test mode" : "DATABASE_URL is required",
+  );
 if (isTest && process.env.DATABASE_URL && databaseUrl === process.env.DATABASE_URL)
   throw new Error("Test mode must use a separate TEST_DATABASE_URL");
 if (isTest && !process.env.TEST_OWNER_TELEGRAM_ID)
