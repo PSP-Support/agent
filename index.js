@@ -9,9 +9,12 @@ const { Pool } = pg,
   PORT = Number(process.env.PORT || 3000);
 if (!["production", "test"].includes(appEnv))
   throw new Error("APP_ENV must be either production or test");
-if (!token) throw new Error(isTest ? "TEST_BOT_TOKEN is required in test mode" : "BOT_TOKEN is required");
+if (!token)
+  throw new Error(isTest ? "TEST_BOT_TOKEN is required in test mode" : "BOT_TOKEN is required");
 if (!databaseUrl)
-  throw new Error(isTest ? "TEST_DATABASE_URL is required in test mode" : "DATABASE_URL is required");
+  throw new Error(
+    isTest ? "TEST_DATABASE_URL is required in test mode" : "DATABASE_URL is required",
+  );
 if (isTest && process.env.DATABASE_URL && databaseUrl === process.env.DATABASE_URL)
   throw new Error("Test mode must use a separate TEST_DATABASE_URL");
 if (isTest && !process.env.TEST_OWNER_TELEGRAM_ID)
