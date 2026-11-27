@@ -4236,18 +4236,20 @@ bot.callbackQuery(/^battleattack:(\d+):([a-z0-9_]+)$/, async (ctx) => {
       await say(ctx, "کشور یا تسلیحات آماده‌ی حمله موجود نیست.");
       return;
     }
-    if (Number(attacker.treasury) < 15000 || Number(attacker.fuel_stock) < 100) {
+    const attackCosts = strategicResourceCosts.attack,
+      attackShortage = resourceShortages(attacker, attackCosts);
+    if (attackShortage.length) {
       await client.query("ROLLBACK");
-      await say(ctx, "برای حمله به $15,000 خزانه و 100 واحد سوخت نیاز دارید.");
+      await say(ctx, "سوخت کافی برای حمله ندارید: " + resourceCostDescription(Object.fromEntries(attackShortage)) + ".");
       return;
     }
     await client.query(
-      "UPDATE game_players SET treasury=treasury-15000,fuel_stock=fuel_stock-100 WHERE telegram_id=$1",
-      [ctx.from.id],
+      "UPDATE game_players SET " + resourceCostAssignments(attackCosts).join(",") + " WHERE telegram_id=$1",
+      [ctx.from.id, ...resourceCostValues(attackCosts)],
     );
     await client.query(
-      "INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,$3,$4)",
-      [ctx.from.id, "هزینه عملیات نظامی", -15000, Number(attacker.treasury) - 15000],
+      "INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,0,$3)",
+      [ctx.from.id, "عملیات نظامی (هزینه منابع)", Number(attacker.treasury)],
     );
     const enemy = (
       await client.query(
@@ -4391,7 +4393,7 @@ bot.callbackQuery(/^weaponrepair:([a-z0-9_]+)$/, async (ctx) => {
     await say(ctx, "سلاح نامعتبر است.");
     return;
   }
-  const cost = Math.max(1000, Math.round(w[2] * 0.2)),
+  const costs = strategicResourceCosts.repair,
     client = await pool.connect();
   try {
     await client.query("BEGIN");
@@ -4409,35 +4411,34 @@ bot.callbackQuery(/^weaponrepair:([a-z0-9_]+)$/, async (ctx) => {
       ).rows[0];
     if (
       !player ||
-      Number(player.treasury) < cost ||
-      Number(player.iron) < 50 ||
+      resourceShortages(player, costs).length ||
       !stock ||
       Number(stock.damaged) < 1
     ) {
       await client.query("ROLLBACK");
-      await say(ctx, "برای تعمیر یک واحد، خزانه‌ی کافی، 50 آهن و یک واحد آسیب‌دیده لازم است.");
+      await say(ctx, "برای تعمیر یک واحد، 50 آهن و یک واحد آسیب‌دیده لازم است.");
       return;
     }
     await client.query(
-      "UPDATE game_players SET treasury=treasury-$2,iron=iron-50 WHERE telegram_id=$1",
-      [ctx.from.id, cost],
+      "UPDATE game_players SET " + resourceCostAssignments(costs).join(",") + " WHERE telegram_id=$1",
+      [ctx.from.id, ...resourceCostValues(costs)],
     );
     await client.query(
       "UPDATE game_weapon_stock SET damaged=GREATEST(0,damaged-1) WHERE telegram_id=$1 AND weapon_key=$2",
       [ctx.from.id, key],
     );
     await client.query(
-      "INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,$3,$4)",
-      [ctx.from.id, "تعمیر " + w[1], -cost, Number(player.treasury) - cost],
+      "INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,0,$3)",
+      [ctx.from.id, "تعمیر " + w[1] + " (هزینه منابع)", Number(player.treasury)],
     );
     await client.query("COMMIT");
     await edit(
       ctx,
       "✅ یک واحد " +
         weaponLabel(w) +
-        " تعمیر شد و به وضعیت آماده برگشت.\n💵 هزینه: " +
-        money(cost) +
-        "\n⛓ آهن مصرف‌شده: 50",
+        " تعمیر شد و به وضعیت آماده برگشت.\n🧱 منابع مصرف‌شده: " +
+        resourceCostDescription(costs) +
+        "\n💰 خزانه تغییر نکرد.",
       K([
         [{ text: "🔧 تعمیر واحد دیگر", callback_data: "weaponrepair" }],
         [{ text: "⚔️ دیپلماسی", callback_data: "n:diplomacy" }],
@@ -5533,13 +5534,15 @@ bot.callbackQuery(
           [ctx.from.id],
         )
       ).rows[0];
-      if (!me || Number(me.treasury) < 1000000 || Number(me.fuel_stock) < 100) {
-        await say(ctx, "منابع کافی نیست. نیاز: $1,000,000 و 100 واحد سوخت.");
+      const exerciseCosts = strategicResourceCosts.exercise,
+        exerciseShortage = resourceShortages(me, exerciseCosts);
+      if (!me || exerciseShortage.length) {
+        await say(ctx, "منابع کافی نیست: " + resourceCostDescription(Object.fromEntries(exerciseShortage)) + ".");
         return;
       }
       await pool.query(
-        "UPDATE game_players SET treasury=treasury-1000000,fuel_stock=fuel_stock-100,morale=LEAST(100,morale+4),stability=LEAST(100,stability+2),legitimacy=LEAST(100,legitimacy+1) WHERE telegram_id=$1",
-        [ctx.from.id],
+        "UPDATE game_players SET fuel_stock=GREATEST(0,fuel_stock-$2),morale=LEAST(100,morale+4),stability=LEAST(100,stability+2),legitimacy=LEAST(100,legitimacy+1) WHERE telegram_id=$1",
+        [ctx.from.id, exerciseCosts.fuel_stock],
       );
       await pool.query(
         "UPDATE game_maneuver_stats SET readiness=LEAST(100,readiness+5),maneuvers_today=CASE WHEN last_maneuver_date=CURRENT_DATE THEN maneuvers_today+1 ELSE 1 END,last_maneuver_date=CURRENT_DATE WHERE owner_id=$1",
@@ -5550,12 +5553,12 @@ bot.callbackQuery(
         p.country_id,
       ]);
       await pool.query(
-        "INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,-1000000,$3)",
-        [ctx.from.id, "اجرای مانور رزمی", Number(me.treasury) - 1000000],
+        "INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,0,$3)",
+        [ctx.from.id, "اجرای مانور رزمی (هزینه منابع)", Number(me.treasury)],
       );
       return say(
         ctx,
-        "✅ مانور رزمی با موفقیت برگزار شد.\nآمادگی رزمی +5٪، روحیه +4، ثبات +2، مشروعیت +1.\nهزینه: $1,000,000 و 100 واحد سوخت.",
+        "✅ مانور رزمی با موفقیت برگزار شد.\nآمادگی رزمی +5٪، روحیه +4، ثبات +2، مشروعیت +1.\nمصرف منابع: " + resourceCostDescription(exerciseCosts) + "؛ خزانه تغییر نکرد.",
         strategicMenu(),
       );
     }
