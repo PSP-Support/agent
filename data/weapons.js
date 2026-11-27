@@ -1,4 +1,4 @@
-export const countryWeapons = {
+const countryWeaponsBase = {
   germany: [
     ["mauser98", "تفنگ ماوزر ۹۸", 180],
     ["mg08", "مسلسل ام‌گه ۰۸", 2200],
@@ -148,25 +148,32 @@ export const countryWeapons = {
   ],
 };
 
-export function weaponResourceCosts(weapon) {
+e
+export const countryWeapons = Object.fromEntries(
+  Object.entries(countryWeaponsBase).map(([countryId, items]) => [
+    countryId,
+    items.map(([key, name, referencePrice]) => [key, name, referencePrice * 1000]),
+  ]),
+);
+xport function weaponResourceCosts(weapon) {
   const name = String(weapon?.[1] || "");
   const referenceValue = Math.max(0, Number(weapon?.[2] || 0));
   if (/ناو|زیردریایی|کشتی|دریایی/.test(name)) {
     return {
-      iron: Math.ceil(referenceValue / 1000),
-      coal: Math.ceil(referenceValue / 2000),
-      fuel_stock: Math.ceil(referenceValue / 10000),
+      iron: Math.ceil(referenceValue / 1000000000),
+      coal: Math.ceil(referenceValue / 2000000),
+      fuel_stock: Math.ceil(referenceValue / 10000000000),
     };
   }
   if (/هواپیما|جنگنده|بالون|هوایی|هواگرد/.test(name)) {
     return {
-      iron: Math.ceil(referenceValue / 1000),
-      cloth: Math.ceil(referenceValue / 2000),
-      fuel_stock: Math.ceil(referenceValue / 10000),
+      iron: Math.ceil(referenceValue / 1000000000),
+      cloth: Math.ceil(referenceValue / 2000000),
+      fuel_stock: Math.ceil(referenceValue / 10000000000),
     };
   }
   return {
-    iron: Math.max(1, Math.ceil(referenceValue / 200)),
-    coal: Math.max(1, Math.ceil(referenceValue / 1000)),
+    iron: Math.max(1, Math.ceil(referenceValue / 200000)),
+    coal: Math.max(1, Math.ceil(referenceValue / 1000000000)),
   };
 }
