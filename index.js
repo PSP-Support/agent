@@ -515,6 +515,8 @@ const resourceCostAssignments = (costs, firstParameter = 2) =>
       resource + "=GREATEST(0," + resource + "-$" + (firstParameter + index) + ")",
   );
 const resourceCostValues = (costs) => Object.values(costs);
+const formatTradeQuantity = (resource, quantity) =>
+  resource === "cash" ? money(quantity) : fmt(quantity);
 const resourceCostDescription = (costs) =>
   Object.entries(costs)
     .map(([resource, amount]) => resourceLabel(resource) + " " + fmt(amount))
@@ -1553,7 +1555,8 @@ bot.on("message:text", async (ctx) => {
       return;
     }
     if (tradeState.step === "price") {
-      if (val > 100000000) {
+      const price = val * 1000;
+      if (!Number.isSafeInteger(price) || val > 100000000) {
         await ctx.reply("قیمت واحد خیلی بالاست؛ مبلغ پایین‌تری وارد کنید.");
         return;
       }
@@ -1598,7 +1601,7 @@ bot.on("message:text", async (ctx) => {
         const o = (
           await client.query(
             "INSERT INTO game_exchange_orders(seller_id,asset_type,symbol,quantity,unit_price) VALUES($1,$2,$3,$4,$5) RETURNING id",
-            [ctx.from.id, tradeState.assetType, tradeState.symbol, tradeState.quantity, val],
+            [ctx.from.id, tradeState.assetType, tradeState.symbol, tradeState.quantity, price],
           )
         ).rows[0];
         await client.query("COMMIT");
@@ -1609,9 +1612,9 @@ bot.on("message:text", async (ctx) => {
             "\nمقدار: " +
             fmt(tradeState.quantity) +
             "\nقیمت واحد: " +
-            money(val) +
+            money(price) +
             "\nارزش کل: " +
-            money(tradeState.quantity * val) +
+            money(tradeState.quantity * price) +
             "\n\nدارایی تا فروش یا لغو سفارش در امانت بازار است.",
           {
             reply_markup: K([
@@ -1641,18 +1644,19 @@ bot.on("message:text", async (ctx) => {
       return;
     }
     if (tradeState.step === "contract_offer_qty") {
-      if (
-        val >
-        Number(tradeState.offer_resource === "cash" ? p.treasury : p[tradeState.offer_resource])
-      ) {
+      const offerAmount = tradeState.offer_resource === "cash" ? val * 1000 : val,
+        available = Number(
+          tradeState.offer_resource === "cash" ? p.treasury : p[tradeState.offer_resource],
+        );
+      if (!Number.isSafeInteger(offerAmount) || offerAmount > available) {
         await ctx.reply(
           "موجودی کافی نیست؛ حداکثر " +
-            fmt(tradeState.offer_resource === "cash" ? p.treasury : p[tradeState.offer_resource]) +
+            formatTradeQuantity(tradeState.offer_resource, available) +
             " وارد کنید.",
         );
         return;
       }
-      tradeState.offer_quantity = val;
+      tradeState.offer_quantity = offerAmount;
       tradeState.step = "contract_choose_want";
       pendingTradeInput.set(ctx.from.id, tradeState);
       await edit(
@@ -1677,12 +1681,17 @@ bot.on("message:text", async (ctx) => {
       return;
     }
     if (tradeState.step === "contract_want_qty") {
-      tradeState.want_quantity = val;
+      const wantAmount = tradeState.want_resource === "cash" ? val * 1000 : val;
+      if (!Number.isSafeInteger(wantAmount)) {
+        await ctx.reply("مبلغ نقدی بیش از حد بزرگ است؛ عدد پایین‌تری وارد کنید.");
+        return;
+      }
+      tradeState.want_quantity = wantAmount;
       tradeState.step = "contract_choose_route";
       pendingTradeInput.set(ctx.from.id, tradeState);
       await edit(
         ctx,
-        "مرحله ۳: مسیر انتقال را انتخاب کنید.\n\n🚢 دریایی: ارزان‌ترین (۱ دلار به‌ازای هر واحد)\n🚆 زمینی: متوسط (۲ دلار به‌ازای هر واحد)\n✈️ هوایی: سریع‌ترین و گران‌ترین (۴ دلار به‌ازای هر واحد)",
+        "مرحله ۳: مسیر انتقال را انتخاب کنید.\n\n🚢 دریایی: ۱٬۰۰۰ دلار به‌ازای هر واحد حمل\n🚆 زمینی: ۲٬۰۰۰ دلار به‌ازای هر واحد حمل\n✈️ هوایی: ۴٬۰۰۰ دلار به‌ازای هر واحد حمل",
         K([
           [{ text: "🚢 دریایی", callback_data: "tc:route:sea" }],
           [{ text: "🚆 زمینی", callback_data: "tc:route:land" }],
@@ -1767,9 +1776,9 @@ bot.on("message:text", async (ctx) => {
             "\nمقدار: " +
             fmt(tradeState.quantity) +
             "\nقیمت واحد: " +
-            money(val) +
+            money(price) +
             "\nارزش کل: " +
-            money(tradeState.quantity * val) +
+            money(tradeState.quantity * price) +
             "\n\nمنابع تا زمان فروش در امانت بازار نگه داشته می‌شوند.",
           {
             reply_markup: K([
@@ -3224,7 +3233,7 @@ bot.callbackQuery(/^tc:route:(sea|land|air)$/, async (ctx) => {
   const st = pendingTradeInput.get(ctx.from.id);
   if (!st?.partner || !st.want_quantity) return;
   st.transport = ctx.match[1];
-  st.transit_cost = st.want_quantity * { sea: 1, land: 2, air: 4 }[st.transport];
+  st.transit_cost = Math.round((st.want_resource === "cash" ? st.want_quantity / 1000 : st.want_quantity) * { sea: 1, land: 2, air: 4 }[st.transport] * 1000);
   st.step = "contract_payer";
   pendingTradeInput.set(ctx.from.id, st);
   await edit(
@@ -3255,11 +3264,11 @@ bot.callbackQuery(/^tc:payer:(seller|buyer)$/, async (ctx) => {
     "<b>📋 پیش‌نمایش قرارداد</b>\n\nشما می‌فرستید: " +
       resourceNames[st.offer_resource] +
       " × " +
-      fmt(st.offer_quantity) +
+      formatTradeQuantity(st.offer_resource, st.offer_quantity) +
       "\nدر مقابل دریافت: " +
       resourceNames[st.want_resource] +
       " × " +
-      fmt(st.want_quantity) +
+      formatTradeQuantity(st.want_resource, st.want_quantity) +
       "\nمسیر: " +
       { sea: "دریایی", land: "زمینی", air: "هوایی" }[st.transport] +
       "\nترانزیت: " +
@@ -3391,11 +3400,11 @@ bot.callbackQuery(/^tc:view:(\d+)$/, async (ctx) => {
       "\nارسال: " +
       resourceLabel(x.offer_resource) +
       " × " +
-      fmt(x.offer_quantity) +
+      formatTradeQuantity(x.offer_resource, x.offer_quantity) +
       "\nدرخواست در مقابل: " +
       resourceLabel(x.want_resource) +
       " × " +
-      fmt(x.want_quantity) +
+      formatTradeQuantity(x.want_resource, x.want_quantity) +
       "\nمسیر: " +
       { sea: "🚢 دریایی", land: "🚆 زمینی", air: "✈️ هوایی" }[x.transport] +
       "\nهزینه‌ی ترانزیت: " +
@@ -3563,11 +3572,11 @@ bot.callbackQuery(/^tc:accept:(\d+)$/, async (ctx) => {
       "✅ قرارداد اجرا شد!\n\nدریافت شما: " +
         resourceLabel(x.offer_resource) +
         " × " +
-        fmt(x.offer_quantity) +
+        formatTradeQuantity(x.offer_resource, x.offer_quantity) +
         "\nارسال شما: " +
         resourceLabel(x.want_resource) +
         " × " +
-        fmt(x.want_quantity) +
+        formatTradeQuantity(x.want_resource, x.want_quantity) +
         "\nترانزیت پرداخت‌شده: " +
         money(x.transit_cost),
       K([
@@ -5139,7 +5148,7 @@ bot.callbackQuery(/^intlloan:(\d+):(\d+)$/, async (ctx) => {
   await ctx.answerCallbackQuery();
   if (!(await internationalAllowed(ctx))) return;
   const id = ctx.match[1],
-    amount = Number(ctx.match[2]),
+    amount = Number(ctx.match[2]) * 1000,
     client = await pool.connect();
   try {
     await client.query("BEGIN");
