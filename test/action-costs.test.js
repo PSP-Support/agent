@@ -25,7 +25,7 @@ test("non-market action costs are resources, never treasury", () => {
 });
 
 test("weapon production consumes class-appropriate resources", () => {
-  assert.deepEqual(weaponResourceCosts(["rifle", "تفنگ ماوزر", 180]), {
+  assert.deepEqual(weaponResourceCosts(["rifle", "تفنگ ماوزر", 180000]), {
     iron: 1,
     coal: 1,
   });
