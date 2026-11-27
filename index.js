@@ -2,10 +2,16 @@ import { Bot, InlineKeyboard, Keyboard } from "grammy";
 import pg from "pg";
 import http from "node:http";
 import { countries } from "./data/countries.js";
-import { countryWeapons } from "./data/weapons.js";
+import { countryWeapons, weaponResourceCosts } from "./data/weapons.js";
 import { initDb } from "./db.js";
 import { calcEconomy } from "./economy.js";
 import { storeCats, storeDetails, storeIncomeDaily } from "./data/buildings.js";
+import {
+  developmentResourceCosts,
+  diplomacyResourceCosts,
+  militaryUnitResourceCosts,
+  strategicResourceCosts,
+} from "./data/action-costs.js";
 import {
   advanceSettlementTimestamp,
   calculateSettlementResources,
@@ -501,6 +507,18 @@ const keyLabel = (value) => {
     .join(" ");
 };
 const resourceLabel = (value) => resourceNames[value] || keyLabel(value);
+const resourceShortages = (row, costs) =>
+  Object.entries(costs).filter(([resource, amount]) => Number(row?.[resource] || 0) < amount);
+const resourceCostAssignments = (costs, firstParameter = 2) =>
+  Object.keys(costs).map(
+    (resource, index) =>
+      resource + "=GREATEST(0," + resource + "-$" + (firstParameter + index) + ")",
+  );
+const resourceCostValues = (costs) => Object.values(costs);
+const resourceCostDescription = (costs) =>
+  Object.entries(costs)
+    .map(([resource, amount]) => resourceLabel(resource) + " " + fmt(amount))
+    .join("، ") || "بدون مصرف منابع";
 const buildingLabel = (value) => {
   const item = storeItems().find((i) => i[0] === value);
   return item
@@ -747,7 +765,7 @@ bot.callbackQuery(/^shopdetail:([a-z_]+)$/, async (ctx) => {
     ctx,
     "<b>🏗️ " +
       storeLabel(item) +
-      "</b>\n\n💵 <b>قیمت:</b> " +
+      "</b>\n\n🏷️ <b>ارزش مرجع:</b> " +
       money(item[2]) +
       "\n📖 <b>کاربرد:</b> " +
       storeItemDetail(item) +
@@ -757,7 +775,7 @@ bot.callbackQuery(/^shopdetail:([a-z_]+)$/, async (ctx) => {
       materials +
       "\n🔧 <b>هزینه‌های دوره‌ای:</b> پس از ساخت در گزارش مالی و وضعیت کشور محاسبه می‌شود.\n\nبا زدن دکمه‌ی تأیید، هزینه از خزانه و مواد از انبار کم شده و پروژه ساخته می‌شود.",
     K([
-      [{ text: "✅ تأیید ساخت · " + money(item[2]), callback_data: "shopbuy:" + item[0] }],
+      [{ text: "✅ تأیید ساخت · بدون پرداخت نقدی", callback_data: "shopbuy:" + item[0] }],
       [{ text: "↩️ بازگشت به فهرست", callback_data: "shopcat:" + (cat?.id || "buildings") }],
       [{ text: "🏪 فروشگاه", callback_data: "shop" }],
     ]),
@@ -781,14 +799,12 @@ bot.callbackQuery(/^shopbuy:([a-z_]+)$/, async (ctx) => {
         [ctx.from.id],
       )
     ).rows[0];
-    const shortage = Object.entries(item[3]).filter(([r, n]) => Number(row[r] || 0) < n);
-    if (Number(row.treasury) < item[2] || shortage.length) {
+    const shortage = resourceShortages(row, item[3]);
+    if (shortage.length) {
       await client.query("ROLLBACK");
       await say(
         ctx,
-        "خزانه یا مواد اولیه برای ساخت کافی نیست.\nقیمت: " +
-          money(item[2]) +
-          "\n" +
+        "مواد اولیه برای ساخت کافی نیست.\n" +
           (shortage.length
             ? "کمبود: " +
               shortage
@@ -802,9 +818,9 @@ bot.callbackQuery(/^shopbuy:([a-z_]+)$/, async (ctx) => {
       );
       return;
     }
-    const sets = ["treasury=treasury-$2"],
-      args = [ctx.from.id, item[2]];
-    let idx = 3;
+    const sets = [],
+      args = [ctx.from.id];
+    let idx = 2;
     for (const [r, n] of Object.entries(item[3])) {
       sets.push(r + "=" + r + "-$" + idx);
       args.push(n);
@@ -825,7 +841,7 @@ bot.callbackQuery(/^shopbuy:([a-z_]+)$/, async (ctx) => {
     );
     await client.query(
       "INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,$3,$4)",
-      [ctx.from.id, "ساخت " + item[1], -item[2], Number(row.treasury) - item[2]],
+      [ctx.from.id, "ساخت " + item[1] + " (هزینه منابع)", 0, Number(row.treasury)],
     );
     await client.query("COMMIT");
     await edit(
@@ -836,14 +852,13 @@ bot.callbackQuery(/^shopbuy:([a-z_]+)$/, async (ctx) => {
         storeItemDetail(item) +
         "\n\n📈 اثر ثبت‌شده: " +
         item[4] +
-        "\n💵 هزینه ساخت پرداخت‌شده: " +
-        money(item[2]) +
+        "\n💵 پرداخت نقدی: صفر (طبق قواعد اقتصاد بازی)" +
         "\n🧱 مواد مصرف‌شده: " +
         (Object.entries(item[3])
           .map(([r, n]) => resourceNames[r] + ": " + fmt(n))
           .join("، ") || "مواد اضافی ندارد") +
-        "\n💰 خزانه پس از پرداخت: " +
-        money(Number(row.treasury) - item[2]) +
+        "\n💰 خزانه تغییر نکرد: " +
+        money(Number(row.treasury)) +
         "\n\n🔧 هزینه‌های نگهداری/درآمد دوره‌ای در بخش وضعیت کشور و گزارش مالی قابل مشاهده است.",
       K([
         [
