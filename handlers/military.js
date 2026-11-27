@@ -8,6 +8,7 @@ export function registerMilitaryHandlers({
   edit,
   K,
   nation,
+  money,
   getCountryWeapons,
   countryWeapons,
   weaponLabel,
