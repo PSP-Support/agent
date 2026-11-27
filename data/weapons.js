@@ -147,3 +147,26 @@ export const countryWeapons = {
     ["mexico75", "توپ صحرایی", 13000],
   ],
 };
+
+export function weaponResourceCosts(weapon) {
+  const name = String(weapon?.[1] || "");
+  const referenceValue = Math.max(0, Number(weapon?.[2] || 0));
+  if (/ناو|زیردریایی|کشتی|دریایی/.test(name)) {
+    return {
+      iron: Math.ceil(referenceValue / 1000),
+      coal: Math.ceil(referenceValue / 2000),
+      fuel_stock: Math.ceil(referenceValue / 10000),
+    };
+  }
+  if (/هواپیما|جنگنده|بالون|هوایی|هواگرد/.test(name)) {
+    return {
+      iron: Math.ceil(referenceValue / 1000),
+      cloth: Math.ceil(referenceValue / 2000),
+      fuel_stock: Math.ceil(referenceValue / 10000),
+    };
+  }
+  return {
+    iron: Math.max(1, Math.ceil(referenceValue / 200)),
+    coal: Math.max(1, Math.ceil(referenceValue / 1000)),
+  };
+}
