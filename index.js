@@ -2883,8 +2883,14 @@ bot.callbackQuery(/^adj:(tax|tariff|wage|service_budget):(-?\d+)$/, async (ctx) 
   const p = await ready(ctx);
   if (!p) return;
   const f = ctx.match[1],
-    delta = Number(ctx.match[2]),
-    lim = { tax: [0, 60], tariff: [0, 50], wage: [10, 10000], service_budget: [0, 10000000] }[f],
+    rawDelta = Number(ctx.match[2]),
+    delta = f === "wage" || f === "service_budget" ? rawDelta * 1000 : rawDelta,
+    lim = {
+      tax: [0, 60],
+      tariff: [0, 50],
+      wage: [10000, 10000000],
+      service_budget: [0, 10000000000],
+    }[f],
     v = Math.max(lim[0], Math.min(lim[1], Number(p[f]) + delta));
   const q =
     f === "tax" && delta > 0
