@@ -2,16 +2,32 @@ import { Bot, InlineKeyboard, Keyboard } from "grammy";
 import pg from "pg";
 import http from "node:http";
 const { Pool } = pg,
-  token = process.env.BOT_TOKEN,
+  appEnv = process.env.APP_ENV || "production",
+  isTest = appEnv === "test",
+  token = isTest ? process.env.TEST_BOT_TOKEN : process.env.BOT_TOKEN,
+  databaseUrl = isTest ? process.env.TEST_DATABASE_URL : process.env.DATABASE_URL,
   PORT = Number(process.env.PORT || 3000);
-if (!token) throw new Error("BOT_TOKEN is required");
+if (!["production", "test"].includes(appEnv))
+  throw new Error("APP_ENV must be either production or test");
+if (!token)
+  throw new Error(isTest ? "TEST_BOT_TOKEN is required in test mode" : "BOT_TOKEN is required");
+if (!databaseUrl)
+  throw new Error(
+    isTest ? "TEST_DATABASE_URL is required in test mode" : "DATABASE_URL is required",
+  );
+if (isTest && process.env.DATABASE_URL && databaseUrl === process.env.DATABASE_URL)
+  throw new Error("Test mode must use a separate TEST_DATABASE_URL");
+if (isTest && !process.env.TEST_OWNER_TELEGRAM_ID)
+  throw new Error("TEST_OWNER_TELEGRAM_ID is required in test mode");
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.DATABASE_URL?.includes("railway") ? { rejectUnauthorized: false } : undefined,
+  connectionString: databaseUrl,
+  ssl: databaseUrl.includes("railway") ? { rejectUnauthorized: false } : undefined,
 });
 const bot = new Bot(token),
   period = 10800000,
-  ownerTelegramId = String(process.env.OWNER_TELEGRAM_ID || "8873717047");
+  ownerTelegramId = String(
+    isTest ? process.env.TEST_OWNER_TELEGRAM_ID : process.env.OWNER_TELEGRAM_ID || "8873717047",
+  );
 bot.use(async (ctx, next) => {
   if (!ctx.from || String(ctx.from.id) === ownerTelegramId) return next();
   try {
