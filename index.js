@@ -4636,7 +4636,7 @@ bot.callbackQuery(/^battlechoose:(\d+)$/, async (ctx) => {
   rows.push([{ text: "↩️ پرونده دیپلماتیک", callback_data: "dip:" + target }]);
   await edit(
     ctx,
-    "<b>⚔️ انتخاب نیروی حمله</b>\n\nحمله جنگ را آغاز می‌کند و ممکن است انبار تسلیحات هر دو کشور آسیب ببیند. هزینه‌ی عملیات: $15,000 و 100 بشکه نفت.",
+    "<b>⚔️ انتخاب نیروی حمله</b>\n\nحمله جنگ را آغاز می‌کند و ممکن است انبار تسلیحات هر دو کشور آسیب ببیند. هزینه‌ی عملیات: $15,000 و 100 واحد سوخت.",
     K(rows),
   );
 });
@@ -4667,7 +4667,7 @@ bot.callbackQuery(/^battleattack:(\d+):([a-z0-9_]+)$/, async (ctx) => {
       ]);
     const attacker = (
         await client.query(
-          "SELECT treasury,oil_stock,iron FROM game_players WHERE telegram_id=$1 AND approved=TRUE",
+          "SELECT treasury,fuel_stock,iron FROM game_players WHERE telegram_id=$1 AND approved=TRUE",
           [ctx.from.id],
         )
       ).rows[0],
@@ -4688,13 +4688,13 @@ bot.callbackQuery(/^battleattack:(\d+):([a-z0-9_]+)$/, async (ctx) => {
       await say(ctx, "کشور یا تسلیحات آماده‌ی حمله موجود نیست.");
       return;
     }
-    if (Number(attacker.treasury) < 15000 || Number(attacker.oil_stock) < 100) {
+    if (Number(attacker.treasury) < 15000 || Number(attacker.fuel_stock) < 100) {
       await client.query("ROLLBACK");
-      await say(ctx, "برای حمله به $15,000 خزانه و 100 بشکه نفت نیاز دارید.");
+      await say(ctx, "برای حمله به $15,000 خزانه و 100 واحد سوخت نیاز دارید.");
       return;
     }
     await client.query(
-      "UPDATE game_players SET treasury=treasury-15000,oil_stock=oil_stock-100 WHERE telegram_id=$1",
+      "UPDATE game_players SET treasury=treasury-15000,fuel_stock=fuel_stock-100 WHERE telegram_id=$1",
       [ctx.from.id],
     );
     await client.query(
@@ -5187,7 +5187,6 @@ async function settleOne(id) {
     const rawOil = Math.max(0, Number(row.oil_stock || 0)) + oilProduced;
     const refineryOil = Math.min(rawOil, Math.round(lv("oil_refinery") * 55 * scale));
     const fuelMade = Math.round(refineryOil * 1.7);
-    const coalPowerDemand = Math.round(lv("coal_power") * 120 * scale);
     const population = Number(row.population || 0);
     const coldGeo = [
       "russia",
@@ -5249,12 +5248,6 @@ async function settleOne(id) {
         ? 1.1
         : 1;
     const grainNeed = Math.ceil((population / 100000) * foodFactor * scale);
-    const coalNeed = Math.ceil(
-      (Number(row.industry || 0) * 20 +
-        (population / 1000000) * 12 * coldFactor +
-        lv("coal_power") * 120) *
-        scale,
-    );
     const ironNeed = Math.ceil(
       (Number(row.industry || 0) * 8 + lv("arms_factory") * 35 + lv("railway") * 10) * scale,
     );
@@ -5270,24 +5263,33 @@ async function settleOne(id) {
         fuelFactor *
         scale,
     );
+    const coalBaseNeed = Math.ceil(
+      (Number(row.industry || 0) * 20 + (population / 1000000) * 12 * coldFactor) * scale,
+    );
+    const coalPowerDemand = Math.ceil(lv("coal_power") * 120 * scale);
+    const coalNeed = coalBaseNeed + coalPowerDemand;
     const grainMade = Math.round((lv("wheat_farm") * 250 + lv("plateau_farm") * 160) * scale);
     const goldMade = Math.round(lv("gold_mine") * 35 * scale);
     const ironMade = Math.round(lv("iron_mine") * 180 * scale);
     const coalMade = Math.round(lv("coal_mine") * 220 * scale);
     const coalUsed = Math.min(Number(row.coal || 0), coalNeed);
-    const ironUsed = Math.min(Number(row.iron || 0), ironNeed);
-    const grainUsed = Math.min(Number(row.grain || 0), grainNeed);
-    const clothUsed = Math.min(Number(row.cloth || 0), clothNeed);
-    const electricityUsed = Math.min(Number(row.electricity_stock || 0), electricityNeed);
-    const oilAvailable = Math.max(0, rawOil - refineryOil),
-      oilConsumed = Math.min(oilAvailable, oilNeed),
-      oilShortage = oilNeed - oilConsumed;
-    const oilStock = oilAvailable - oilConsumed;
-    const coalPowerRatio = coalPowerDemand ? Math.min(1, coalUsed / coalPowerDemand) : 1;
+    const coalForPower = Math.min(coalPowerDemand, Math.max(0, coalUsed - coalBaseNeed));
+    const coalPowerRatio = coalPowerDemand ? coalForPower / coalPowerDemand : 1;
     const electricityMade = Math.round(
       (lv("coal_power") * 500 * coalPowerRatio + lv("hydro_power") * 650 + lv("oil_power") * 420) *
         scale,
     );
+    const ironUsed = Math.min(Number(row.iron || 0), ironNeed);
+    const grainUsed = Math.min(Number(row.grain || 0), grainNeed);
+    const clothUsed = Math.min(Number(row.cloth || 0), clothNeed);
+    const electricityAvailable = Math.max(0, Number(row.electricity_stock || 0) + electricityMade);
+    const electricityUsed = Math.min(electricityAvailable, electricityNeed);
+    const oilAvailable = Math.max(0, rawOil - refineryOil);
+    const fuelAvailable = Math.max(0, Number(row.fuel_stock || 0) + fuelMade);
+    const oilConsumed = Math.min(fuelAvailable, oilNeed),
+      oilShortage = oilNeed - oilConsumed;
+    const oilStock = oilAvailable;
+    const fuelStock = fuelAvailable - oilConsumed;
     const dailyBuildingIncome =
       lv("gold_mine") * 9000 +
       lv("iron_mine") * 6500 +
@@ -5335,7 +5337,7 @@ async function settleOne(id) {
         ? -Math.ceil(population * 0.00001 * scale)
         : Math.round(lv("housing") * 5 * scale);
     await client.query(
-      "UPDATE game_players SET treasury=$2,oil_stock=$3,oil_reserves=GREATEST(0,oil_reserves-$4),gold_stock=gold_stock+$5,iron=GREATEST(0,iron-$6)+$7,coal=GREATEST(0,coal-$8)+$9,grain=GREATEST(0,grain-$10)+$11,cloth=GREATEST(0,cloth-$12),electricity_stock=GREATEST(0,electricity_stock-$13)+$14,fuel_stock=fuel_stock+$15,population=GREATEST(1000,population+$16),stability=$17,last_settlement=last_settlement+make_interval(hours => $18::int * 3) WHERE telegram_id=$1",
+      "UPDATE game_players SET treasury=$2,oil_stock=$3,oil_reserves=GREATEST(0,oil_reserves-$4),gold_stock=gold_stock+$5,iron=GREATEST(0,iron-$6)+$7,coal=GREATEST(0,coal-$8)+$9,grain=GREATEST(0,grain-$10)+$11,cloth=GREATEST(0,cloth-$12),electricity_stock=GREATEST(0,electricity_stock+$14-$13),fuel_stock=$15,population=GREATEST(1000,population+$16),stability=$17,last_settlement=last_settlement+make_interval(hours => $18::int * 3) WHERE telegram_id=$1",
       [
         id,
         balance,
@@ -5351,7 +5353,7 @@ async function settleOne(id) {
         clothUsed,
         electricityUsed,
         electricityMade,
-        fuelMade,
+        fuelStock,
         populationChange,
         stability,
         ticks,
@@ -5438,12 +5440,12 @@ function settlementReport(result, p) {
     resourceAmount("electricity_stock", result.electricityNeed) +
     " | موجودی " +
     resourceAmount("electricity_stock", p.electricity_stock) +
-    "\n• نفت خام (بشکه): مصرف " +
-    resourceAmount("oil_stock", result.oilConsumed) +
+    "\n• سوخت پالایش‌شده (تن): مصرف " +
+    resourceAmount("fuel_stock", result.oilConsumed) +
     " / " +
-    resourceAmount("oil_stock", result.oilNeed) +
+    resourceAmount("fuel_stock", result.oilNeed) +
     " | موجودی " +
-    resourceAmount("oil_stock", p.oil_stock) +
+    resourceAmount("fuel_stock", p.fuel_stock) +
     "\n\n" +
     (result.shortages
       ? "⚠️ کمبود منابع ثبت شد؛ ثبات کشور کاهش یافت."
@@ -6054,7 +6056,7 @@ bot.callbackQuery(
           done +
           " (باقی‌مانده: " +
           Math.max(0, 1 - done) +
-          ")\n\n⚠️ هزینه پشتیبانی و لجستیک: $1,000,000\n🛢️ سوخت مصرفی: 100 بشکه نفت\n\n🏆 دستاوردهای مانور:\n• افزایش آمادگی رزمی نیروها +5٪\n• افزایش روحیه و ثبات کشور\n\nسقف مجاز: یک مانور در هر روز\n\nآیا مایل به آغاز مانور رزمی هستید؟",
+          ")\n\n⚠️ هزینه پشتیبانی و لجستیک: $1,000,000\n🛢️ سوخت مصرفی: 100 واحد سوخت\n\n🏆 دستاوردهای مانور:\n• افزایش آمادگی رزمی نیروها +5٪\n• افزایش روحیه و ثبات کشور\n\nسقف مجاز: یک مانور در هر روز\n\nآیا مایل به آغاز مانور رزمی هستید؟",
         K([
           [{ text: "✅ آغاز و اجرای مانور رزمی", callback_data: "str:exercise:begin" }],
           [{ text: "↩️ بازگشت به ستاد توسعه", callback_data: "n:strategy" }],
@@ -6084,16 +6086,16 @@ bot.callbackQuery(
       }
       const me = (
         await pool.query(
-          "SELECT treasury,oil_stock,morale,stability FROM game_players WHERE telegram_id=$1",
+          "SELECT treasury,fuel_stock,morale,stability FROM game_players WHERE telegram_id=$1",
           [ctx.from.id],
         )
       ).rows[0];
-      if (!me || Number(me.treasury) < 1000000 || Number(me.oil_stock) < 100) {
-        await say(ctx, "منابع کافی نیست. نیاز: $1,000,000 و 100 بشکه نفت.");
+      if (!me || Number(me.treasury) < 1000000 || Number(me.fuel_stock) < 100) {
+        await say(ctx, "منابع کافی نیست. نیاز: $1,000,000 و 100 واحد سوخت.");
         return;
       }
       await pool.query(
-        "UPDATE game_players SET treasury=treasury-1000000,oil_stock=oil_stock-100,morale=LEAST(100,morale+4),stability=LEAST(100,stability+2),legitimacy=LEAST(100,legitimacy+1) WHERE telegram_id=$1",
+        "UPDATE game_players SET treasury=treasury-1000000,fuel_stock=fuel_stock-100,morale=LEAST(100,morale+4),stability=LEAST(100,stability+2),legitimacy=LEAST(100,legitimacy+1) WHERE telegram_id=$1",
         [ctx.from.id],
       );
       await pool.query(
@@ -6110,7 +6112,7 @@ bot.callbackQuery(
       );
       return say(
         ctx,
-        "✅ مانور رزمی با موفقیت برگزار شد.\nآمادگی رزمی +5٪، روحیه +4، ثبات +2، مشروعیت +1.\nهزینه: $1,000,000 و 100 بشکه نفت.",
+        "✅ مانور رزمی با موفقیت برگزار شد.\nآمادگی رزمی +5٪، روحیه +4، ثبات +2، مشروعیت +1.\nهزینه: $1,000,000 و 100 واحد سوخت.",
         strategicMenu(),
       );
     }
@@ -6193,7 +6195,7 @@ bot.callbackQuery(
     if (d === "str:navy")
       return edit(
         ctx,
-        "<b>⚓ گشت و استقرار ناوگان</b>\nهزینه هر واحد: $15,000 و 200 بشکه نفت.",
+        "<b>⚓ گشت و استقرار ناوگان</b>\nهزینه هر واحد: $15,000 و 200 واحد سوخت.",
         K([
           [
             { text: "دریای شمال", callback_data: "str:sea:north" },
@@ -6286,7 +6288,7 @@ bot.callbackQuery(
         ),
         me = (
           await pool.query(
-            "SELECT treasury,oil_stock,navy FROM game_players WHERE telegram_id=$1",
+            "SELECT treasury,fuel_stock,navy FROM game_players WHERE telegram_id=$1",
             [ctx.from.id],
           )
         ).rows[0];
@@ -6294,13 +6296,13 @@ bot.callbackQuery(
         !me ||
         Number(me.navy) - active < 1 ||
         Number(me.treasury) < 15000 ||
-        Number(me.oil_stock) < 200
+        Number(me.fuel_stock) < 200
       ) {
-        await say(ctx, "نیاز: یک واحد ناوگان، $15,000 و 200 بشکه نفت.");
+        await say(ctx, "نیاز: یک واحد ناوگان، $15,000 و 200 واحد سوخت.");
         return;
       }
       await pool.query(
-        "UPDATE game_players SET treasury=treasury-15000,oil_stock=oil_stock-200 WHERE telegram_id=$1",
+        "UPDATE game_players SET treasury=treasury-15000,fuel_stock=fuel_stock-200 WHERE telegram_id=$1",
         [ctx.from.id],
       );
       await pool.query("INSERT INTO game_naval_deployments(owner_id,zone,units) VALUES($1,$2,1)", [
@@ -6323,7 +6325,7 @@ bot.callbackQuery(
         20000,
         100,
         0,
-        "UPDATE game_players SET treasury=treasury-$2,oil_stock=oil_stock-$3,morale=LEAST(100,morale+6),stability=LEAST(100,stability+2) WHERE telegram_id=$1",
+        "UPDATE game_players SET treasury=treasury-$2,fuel_stock=fuel_stock-$3,morale=LEAST(100,morale+6),stability=LEAST(100,stability+2) WHERE telegram_id=$1",
         "روحیه +6 و ثبات +2",
       ],
       intel: [
@@ -6358,14 +6360,14 @@ bot.callbackQuery(
     const [title, cost, oil, iron, sql, effect] = cfg,
       me = (
         await pool.query(
-          "SELECT treasury,oil_stock,iron,coal,technology FROM game_players WHERE telegram_id=$1",
+          "SELECT treasury,fuel_stock,iron,coal,technology FROM game_players WHERE telegram_id=$1",
           [ctx.from.id],
         )
       ).rows[0];
     if (
       !me ||
       Number(me.treasury) < cost ||
-      Number(me.oil_stock) < oil ||
+      Number(me.fuel_stock) < oil ||
       Number(me.iron) < iron ||
       (d === "str:nuclear" && (Number(me.coal) < 1000 || Number(me.technology) < 20))
     ) {
@@ -6373,7 +6375,7 @@ bot.callbackQuery(
         ctx,
         "منابع یا فناوری کافی نیست. نیاز: " +
           money(cost) +
-          ", نفت " +
+          ", سوخت " +
           fmt(oil) +
           ", آهن " +
           fmt(iron) +
