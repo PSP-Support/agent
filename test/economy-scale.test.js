@@ -46,7 +46,7 @@ test("economy migration is numbered and down migration stays outside auto-run di
   const sql = await readFile(new URL("../migrations/002_economy_scale_1000.sql", import.meta.url), "utf8");
   const down = await readFile(new URL("../migrations/down/002_economy_scale_1000.sql", import.meta.url), "utf8");
   assert.match(sql, /UPDATE game_players/);
-  assert.match(sql, /COALESCE\\(treasury,100000\\)::numeric\\*1000/);
+  assert.match(sql, /COALESCE\(treasury,100000\)::numeric\*1000/);
   assert.match(sql, /ALTER COLUMN treasury SET DEFAULT 100000000/);
   assert.match(down, /Cannot reverse economy scale exactly/);
 });
