@@ -4,6 +4,7 @@ import http from "node:http";
 import { countries } from "./data/countries.js";
 import { countryWeapons, weaponResourceCosts } from "./data/weapons.js";
 import { initDb } from "./db.js";
+import { createCallbackGuard } from "./handlers/callback-guard.js";
 import { registerAdminHandlers } from "./handlers/admin.js";
 import { registerMarketHandlers } from "./handlers/market.js";
 import { registerMilitaryHandlers } from "./handlers/military.js";
@@ -48,6 +49,7 @@ const bot = new Bot(token),
   ownerTelegramId = String(
     isTest ? process.env.TEST_OWNER_TELEGRAM_ID : process.env.OWNER_TELEGRAM_ID || "8873717047",
   );
+bot.use(createCallbackGuard());
 bot.use(async (ctx, next) => {
   if (!ctx.from || String(ctx.from.id) === ownerTelegramId) return next();
   try {
@@ -4732,27 +4734,41 @@ bot.callbackQuery(
       );
     }
     if (d === "str:command") {
-      const roles = [
-        "رئیس ستاد مشترک نیروهای مسلح",
-        "مدیر اطلاعات و عملیات (CIC)",
-        "فرمانده نیروی هوایی",
-        "فرمانده نیروی دریایی",
-        "فرمانده پدافند یکپارچه هوایی",
-      ];
-      const body = roles
-        .map((x, i) => "<b>" + (i + 1) + ". " + x + "</b>\n🟢 وضعیت: فعال و در حال خدمت")
-        .join("\n\n");
+      const costs = strategicResourceCosts.command,
+        me = (
+          await pool.query("SELECT treasury,iron FROM game_players WHERE telegram_id=$1", [
+            ctx.from.id,
+          ])
+        ).rows[0],
+        shortage = resourceShortages(me, costs);
+      if (!me || shortage.length) {
+        await say(
+          ctx,
+          "مواد اولیه برای فعال‌سازی کادر فرماندهی کافی نیست: " +
+            resourceCostDescription(Object.fromEntries(shortage)) +
+            ".",
+          strategicMenu(),
+        );
+        return;
+      }
+      await pool.query(
+        "UPDATE game_players SET " +
+          resourceCostAssignments(costs).join(",") +
+          ",morale=LEAST(100,morale+3),legitimacy=LEAST(100,legitimacy+2) WHERE telegram_id=$1",
+        [ctx.from.id, ...resourceCostValues(costs)],
+      );
+      await pool.query(
+        "INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,0,$3)",
+        [ctx.from.id, "فعال‌سازی کادر فرماندهی (هزینه منابع)", Number(me.treasury)],
+      );
       return edit(
         ctx,
-        "<b>🏅 کادر فرماندهی و ستاد نظامی — " +
+        "<b>🏅 کادر فرماندهی و ستاد نظامی فعال شد</b>\n\n" +
           (country(p.country_id)?.[1] || p.country_id) +
-          "</b>\n━━━━━━━━━━━━━━━━━━\n\n" +
-          body +
-          "\n\n✅ زنجیره فرماندهی کشور فعال است؛ تمام جایگاه‌های ستادی در وضعیت آماده‌به‌خدمت قرار دارند.",
-        K([
-          [{ text: "↩️ بازگشت به سازمان اطلاعات", callback_data: "str:intel" }],
-          [{ text: "↩️ بازگشت به ستاد راهبردی", callback_data: "n:strategy" }],
-        ]),
+          "\n🧱 منابع مصرف‌شده: " +
+          resourceCostDescription(costs) +
+          "\n📈 روحیه +3، مشروعیت +2\n💰 خزانه تغییر نکرد.",
+        strategicMenu(),
       );
     }
 
@@ -5122,7 +5138,21 @@ setInterval(async () => {
     settlementLoopRunning = false;
   }
 }, 60000).unref();
-bot.catch((e) => console.error("Bot error", e));
+bot.catch(async (err) => {
+  console.error("Unhandled bot update error:", err.error, {
+    updateId: err.ctx?.update?.update_id,
+  });
+  try {
+    if (err.ctx?.callbackQuery)
+      await err.ctx.answerCallbackQuery({
+        text: "در اجرای این گزینه خطایی رخ داد؛ دوباره تلاش کنید.",
+      });
+    else if (err.ctx?.message)
+      await err.ctx.reply("در اجرای درخواست خطایی رخ داد؛ دوباره تلاش کنید.");
+  } catch (replyError) {
+    console.error("Could not send user-facing error:", replyError);
+  }
+});
 const server = http.createServer((req, res) => {
   res.writeHead(200, { "content-type": "application/json" });
   res.end(JSON.stringify({ status: "ok", game: "shah-shahanshah" }));
