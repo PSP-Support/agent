@@ -15,7 +15,7 @@ const ssl =
     ? { rejectUnauthorized: false }
     : undefined;
 const pool = new Pool({ connectionString: databaseUrl, ssl });
-const safeMax = 9223372036854775;
+const safeMax = 9223372036854775n;
 
 const checks = [
   ["game_players", ["treasury", "wage", "service_budget"]],
@@ -42,10 +42,11 @@ try {
     const row = result.rows[0];
     const report = { table, rows: Number(row.rows), columns: {} };
     for (const column of columns) {
-      const max = row[column + "_max"] == null ? 0 : Number(row[column + "_max"]);
+      const max = row[column + "_max"] == null ? 0n : BigInt(row[column + "_max"]);
+      const projected = max * 1000n;
       report.columns[column] = {
-        currentMax: max,
-        projectedMax: max * 1000,
+        currentMax: max.toString(),
+        projectedMax: projected.toString(),
         safe: max <= safeMax,
       };
       if (max > safeMax) throw new Error(table + "." + column + " exceeds BIGINT scale limit");
@@ -55,7 +56,13 @@ try {
   const cashContracts = await pool.query(
     "SELECT COUNT(*) AS rows, MAX(ABS(offer_quantity::numeric)) FILTER (WHERE offer_resource='cash') AS offer_cash_max, MAX(ABS(want_quantity::numeric)) FILTER (WHERE want_resource='cash') AS want_cash_max FROM game_trade_contracts",
   );
-  console.log("cash contract quantities:", JSON.stringify(cashContracts.rows[0]));
+  const cashRow = cashContracts.rows[0];
+  for (const column of ["offer_cash_max", "want_cash_max"]) {
+    const max = cashRow[column] == null ? 0n : BigInt(cashRow[column]);
+    if (max > safeMax) throw new Error("game_trade_contracts." + column + " exceeds BIGINT scale limit");
+    cashRow[column] = max.toString();
+  }
+  console.log("cash contract quantities:", JSON.stringify(cashRow));
   console.log("Preflight completed. No rows were modified.");
 } finally {
   await pool.end();
