@@ -605,7 +605,10 @@ async function openStoreCategory(ctx, id) {
   const c = storeCats.find((x) => x.id === id);
   if (!c) return openStore(ctx);
   const rows = c.items.map((x) => [
-    { text: "🏷️ " + storeLabel(x) + " · ارزش مرجع " + money(x[2]), callback_data: "shopdetail:" + x[0] },
+    {
+      text: "🏷️ " + storeLabel(x) + " · ارزش مرجع " + money(x[2]),
+      callback_data: "shopdetail:" + x[0],
+    },
   ]);
   rows.push([
     { text: "↩️ دسته‌ها", callback_data: "shop" },
@@ -1165,11 +1168,19 @@ bot.callbackQuery(/^weaponbuy:([a-z0-9_]+)$/, async (ctx) => {
     const shortage = resourceShortages(row, costs);
     if (shortage.length) {
       await client.query("ROLLBACK");
-      await say(ctx, "مواد اولیه برای تولید کافی نیست: " + resourceCostDescription(Object.fromEntries(shortage)) + ".", nation());
+      await say(
+        ctx,
+        "مواد اولیه برای تولید کافی نیست: " +
+          resourceCostDescription(Object.fromEntries(shortage)) +
+          ".",
+        nation(),
+      );
       return;
     }
     await client.query(
-      "UPDATE game_players SET " + resourceCostAssignments(costs).join(",") + " WHERE telegram_id=$1",
+      "UPDATE game_players SET " +
+        resourceCostAssignments(costs).join(",") +
+        " WHERE telegram_id=$1",
       [ctx.from.id, ...resourceCostValues(costs)],
     );
     await client.query(
@@ -2880,7 +2891,13 @@ bot.callbackQuery(/^build:(industry|agriculture|infrastructure)$/, async (ctx) =
     need = developmentResourceCosts[f],
     shortage = resourceShortages(p, need);
   if (shortage.length) {
-    await say(ctx, "مواد اولیه برای توسعه کافی نیست: " + resourceCostDescription(Object.fromEntries(shortage)) + ".", nation());
+    await say(
+      ctx,
+      "مواد اولیه برای توسعه کافی نیست: " +
+        resourceCostDescription(Object.fromEntries(shortage)) +
+        ".",
+      nation(),
+    );
     return;
   }
   const changes = [
@@ -2894,7 +2911,11 @@ bot.callbackQuery(/^build:(industry|agriculture|infrastructure)$/, async (ctx) =
     "INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,$3,$4)",
     [ctx.from.id, "پروژه‌ی توسعه‌ی " + f + " (هزینه منابع)", 0, p.treasury],
   );
-  await say(ctx, "پروژه تکمیل شد؛ منابع مصرف‌شده: " + resourceCostDescription(need) + ". خزانه تغییر نکرد.", nation());
+  await say(
+    ctx,
+    "پروژه تکمیل شد؛ منابع مصرف‌شده: " + resourceCostDescription(need) + ". خزانه تغییر نکرد.",
+    nation(),
+  );
 });
 bot.callbackQuery(/^mil:(army|navy|air|defense)$/, async (ctx) => {
   await ctx.answerCallbackQuery();
@@ -2911,17 +2932,20 @@ bot.callbackQuery(/^mil:(army|navy|air|defense)$/, async (ctx) => {
     costs = militaryUnitResourceCosts[type],
     shortage = resourceShortages(p, costs);
   if (shortage.length) {
-    await say(ctx, "مواد اولیه برای تجهیز نیرو کافی نیست: " + resourceCostDescription(Object.fromEntries(shortage)) + ".", nation());
+    await say(
+      ctx,
+      "مواد اولیه برای تجهیز نیرو کافی نیست: " +
+        resourceCostDescription(Object.fromEntries(shortage)) +
+        ".",
+      nation(),
+    );
     return;
   }
-  const assignments = [
-    field + "=" + field + "+1",
-    ...resourceCostAssignments(costs),
-  ];
-  await pool.query(
-    "UPDATE game_players SET " + assignments.join(",") + " WHERE telegram_id=$1",
-    [ctx.from.id, ...resourceCostValues(costs)],
-  );
+  const assignments = [field + "=" + field + "+1", ...resourceCostAssignments(costs)];
+  await pool.query("UPDATE game_players SET " + assignments.join(",") + " WHERE telegram_id=$1", [
+    ctx.from.id,
+    ...resourceCostValues(costs),
+  ]);
   await pool.query(
     "INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,$3,$4)",
     [ctx.from.id, "تجهیز نیرو: " + cfg[1] + " (هزینه منابع)", 0, Number(p.treasury)],
@@ -3967,19 +3991,27 @@ bot.callbackQuery(/^dipmission:(\d+)$/, async (ctx) => {
   try {
     await client.query("BEGIN");
     const me = (
-      await client.query("SELECT treasury,cloth,grain FROM game_players WHERE telegram_id=$1 FOR UPDATE", [
-        ctx.from.id,
-      ])
+      await client.query(
+        "SELECT treasury,cloth,grain FROM game_players WHERE telegram_id=$1 FOR UPDATE",
+        [ctx.from.id],
+      )
     ).rows[0];
     const missionCosts = diplomacyResourceCosts.mission,
       shortage = resourceShortages(me, missionCosts);
     if (!me || shortage.length) {
       await client.query("ROLLBACK");
-      await say(ctx, "مواد اولیه برای اعزام هیئت کافی نیست: " + resourceCostDescription(Object.fromEntries(shortage)) + ".");
+      await say(
+        ctx,
+        "مواد اولیه برای اعزام هیئت کافی نیست: " +
+          resourceCostDescription(Object.fromEntries(shortage)) +
+          ".",
+      );
       return;
     }
     await client.query(
-      "UPDATE game_players SET " + resourceCostAssignments(missionCosts).join(",") + " WHERE telegram_id=$1",
+      "UPDATE game_players SET " +
+        resourceCostAssignments(missionCosts).join(",") +
+        " WHERE telegram_id=$1",
       [ctx.from.id, ...resourceCostValues(missionCosts)],
     );
     for (const [a, b] of [
@@ -4009,7 +4041,9 @@ bot.callbackQuery(/^dipmission:(\d+)$/, async (ctx) => {
     } catch {}
     await edit(
       ctx,
-      "🕊️ هیئت دیپلماتیک اعزام شد.\n🧱 منابع مصرف‌شده: " + resourceCostDescription(missionCosts) + "\n💰 خزانه تغییر نکرد.\n💗 اعتماد دوطرفه: +5",
+      "🕊️ هیئت دیپلماتیک اعزام شد.\n🧱 منابع مصرف‌شده: " +
+        resourceCostDescription(missionCosts) +
+        "\n💰 خزانه تغییر نکرد.\n💗 اعتماد دوطرفه: +5",
       K([
         [{ text: "↩️ پرونده‌ی دیپلماتیک", callback_data: "dip:" + other }],
         [{ text: "📜 دفتر روابط", callback_data: "diprelations" }],
@@ -4056,11 +4090,18 @@ bot.callbackQuery(/^dipembassy:(\d+)$/, async (ctx) => {
       embassyShortage = resourceShortages(me, embassyCosts);
     if (!me || embassyShortage.length) {
       await client.query("ROLLBACK");
-      await say(ctx, "مواد اولیه برای سفارت کافی نیست: " + resourceCostDescription(Object.fromEntries(embassyShortage)) + ".");
+      await say(
+        ctx,
+        "مواد اولیه برای سفارت کافی نیست: " +
+          resourceCostDescription(Object.fromEntries(embassyShortage)) +
+          ".",
+      );
       return;
     }
     await client.query(
-      "UPDATE game_players SET " + resourceCostAssignments(embassyCosts).join(",") + " WHERE telegram_id=$1",
+      "UPDATE game_players SET " +
+        resourceCostAssignments(embassyCosts).join(",") +
+        " WHERE telegram_id=$1",
       [ctx.from.id, ...resourceCostValues(embassyCosts)],
     );
     await client.query(
@@ -4084,7 +4125,9 @@ bot.callbackQuery(/^dipembassy:(\d+)$/, async (ctx) => {
       ctx,
       "🏛️ سفارت ساخته/ارتقا یافت.\n📈 سطح: " +
         (level + 1) +
-        "/3\n🧱 منابع مصرف‌شده: " + resourceCostDescription(embassyCosts) + "\n💰 خزانه تغییر نکرد.\n💗 اعتماد: +8",
+        "/3\n🧱 منابع مصرف‌شده: " +
+        resourceCostDescription(embassyCosts) +
+        "\n💰 خزانه تغییر نکرد.\n💗 اعتماد: +8",
       K([[{ text: "↩️ پرونده‌ی دیپلماتیک", callback_data: "dip:" + other }]]),
     );
   } catch (e) {
@@ -4240,11 +4283,18 @@ bot.callbackQuery(/^battleattack:(\d+):([a-z0-9_]+)$/, async (ctx) => {
       attackShortage = resourceShortages(attacker, attackCosts);
     if (attackShortage.length) {
       await client.query("ROLLBACK");
-      await say(ctx, "سوخت کافی برای حمله ندارید: " + resourceCostDescription(Object.fromEntries(attackShortage)) + ".");
+      await say(
+        ctx,
+        "سوخت کافی برای حمله ندارید: " +
+          resourceCostDescription(Object.fromEntries(attackShortage)) +
+          ".",
+      );
       return;
     }
     await client.query(
-      "UPDATE game_players SET " + resourceCostAssignments(attackCosts).join(",") + " WHERE telegram_id=$1",
+      "UPDATE game_players SET " +
+        resourceCostAssignments(attackCosts).join(",") +
+        " WHERE telegram_id=$1",
       [ctx.from.id, ...resourceCostValues(attackCosts)],
     );
     await client.query(
@@ -4409,18 +4459,15 @@ bot.callbackQuery(/^weaponrepair:([a-z0-9_]+)$/, async (ctx) => {
           [ctx.from.id, key],
         )
       ).rows[0];
-    if (
-      !player ||
-      resourceShortages(player, costs).length ||
-      !stock ||
-      Number(stock.damaged) < 1
-    ) {
+    if (!player || resourceShortages(player, costs).length || !stock || Number(stock.damaged) < 1) {
       await client.query("ROLLBACK");
       await say(ctx, "برای تعمیر یک واحد، 50 آهن و یک واحد آسیب‌دیده لازم است.");
       return;
     }
     await client.query(
-      "UPDATE game_players SET " + resourceCostAssignments(costs).join(",") + " WHERE telegram_id=$1",
+      "UPDATE game_players SET " +
+        resourceCostAssignments(costs).join(",") +
+        " WHERE telegram_id=$1",
       [ctx.from.id, ...resourceCostValues(costs)],
     );
     await client.query(
@@ -5288,9 +5335,10 @@ async function finalizeForeignBase(ownerId, hostCountryId) {
   try {
     await client.query("BEGIN");
     const me = (
-      await client.query("SELECT treasury,iron,coal FROM game_players WHERE telegram_id=$1 FOR UPDATE", [
-        ownerId,
-      ])
+      await client.query(
+        "SELECT treasury,iron,coal FROM game_players WHERE telegram_id=$1 FOR UPDATE",
+        [ownerId],
+      )
     ).rows[0];
     const costs = strategicResourceCosts.foreignBase,
       shortage = resourceShortages(me, costs);
@@ -5299,7 +5347,9 @@ async function finalizeForeignBase(ownerId, hostCountryId) {
       return false;
     }
     await client.query(
-      "UPDATE game_players SET " + resourceCostAssignments(costs).join(",") + " WHERE telegram_id=$1",
+      "UPDATE game_players SET " +
+        resourceCostAssignments(costs).join(",") +
+        " WHERE telegram_id=$1",
       [ownerId, ...resourceCostValues(costs)],
     );
     await client.query(
@@ -5407,7 +5457,9 @@ bot.callbackQuery(/^str:basecountry:([a-z0-9_]+)$/, async (ctx) => {
   return say(
     ctx,
     ok
-      ? "✅ پایگاه عملیاتی در " + c[1] + " ساخته شد.\nمصرف منابع: 300 آهن و 200 زغال؛ خزانه تغییر نکرد."
+      ? "✅ پایگاه عملیاتی در " +
+          c[1] +
+          " ساخته شد.\nمصرف منابع: 300 آهن و 200 زغال؛ خزانه تغییر نکرد."
       : "مواد اولیه کافی نیست؛ نیاز: 300 آهن و 200 زغال.",
     strategicMenu(),
   );
@@ -5537,7 +5589,10 @@ bot.callbackQuery(
       const exerciseCosts = strategicResourceCosts.exercise,
         exerciseShortage = resourceShortages(me, exerciseCosts);
       if (!me || exerciseShortage.length) {
-        await say(ctx, "منابع کافی نیست: " + resourceCostDescription(Object.fromEntries(exerciseShortage)) + ".");
+        await say(
+          ctx,
+          "منابع کافی نیست: " + resourceCostDescription(Object.fromEntries(exerciseShortage)) + ".",
+        );
         return;
       }
       await pool.query(
@@ -5558,7 +5613,9 @@ bot.callbackQuery(
       );
       return say(
         ctx,
-        "✅ مانور رزمی با موفقیت برگزار شد.\nآمادگی رزمی +5٪، روحیه +4، ثبات +2، مشروعیت +1.\nمصرف منابع: " + resourceCostDescription(exerciseCosts) + "؛ خزانه تغییر نکرد.",
+        "✅ مانور رزمی با موفقیت برگزار شد.\nآمادگی رزمی +5٪، روحیه +4، ثبات +2، مشروعیت +1.\nمصرف منابع: " +
+          resourceCostDescription(exerciseCosts) +
+          "؛ خزانه تغییر نکرد.",
         strategicMenu(),
       );
     }
@@ -5636,7 +5693,11 @@ bot.callbackQuery(
       if (!rows.length)
         rows.push([{ text: "ابتدا اتحاد فعال برقرار کنید", callback_data: "n:diplomacy" }]);
       rows.push([{ text: "↩️ ستاد راهبردی", callback_data: "n:strategy" }]);
-      return edit(ctx, "<b>پایگاه در کشور متحد</b>\nمصرف منابع: 250 آهن و 150 زغال؛ خزانه کسر نمی‌شود.", K(rows));
+      return edit(
+        ctx,
+        "<b>پایگاه در کشور متحد</b>\nمصرف منابع: 250 آهن و 150 زغال؛ خزانه کسر نمی‌شود.",
+        K(rows),
+      );
     }
     if (d === "str:navy")
       return edit(
@@ -5683,17 +5744,23 @@ bot.callbackQuery(
         return;
       }
       const costs = ally ? strategicResourceCosts.alliedBase : strategicResourceCosts.foreignBase,
-        me = await pool.query(
-          "SELECT treasury,iron,coal FROM game_players WHERE telegram_id=$1",
-          [ctx.from.id],
-        ).then((result) => result.rows[0]),
+        me = await pool
+          .query("SELECT treasury,iron,coal FROM game_players WHERE telegram_id=$1", [ctx.from.id])
+          .then((result) => result.rows[0]),
         shortage = resourceShortages(me, costs);
       if (!me || shortage.length) {
-        await say(ctx, "مواد اولیه برای پایگاه کافی نیست: " + resourceCostDescription(Object.fromEntries(shortage)) + ".");
+        await say(
+          ctx,
+          "مواد اولیه برای پایگاه کافی نیست: " +
+            resourceCostDescription(Object.fromEntries(shortage)) +
+            ".",
+        );
         return;
       }
       await pool.query(
-        "UPDATE game_players SET " + resourceCostAssignments(costs).join(",") + " WHERE telegram_id=$1",
+        "UPDATE game_players SET " +
+          resourceCostAssignments(costs).join(",") +
+          " WHERE telegram_id=$1",
         [ctx.from.id, ...resourceCostValues(costs)],
       );
       await pool.query(
@@ -5742,7 +5809,12 @@ bot.callbackQuery(
         Number(me.navy) - active < 1 ||
         Number(me.fuel_stock) < strategicResourceCosts.navalPatrol.fuel_stock
       ) {
-        await say(ctx, "نیاز: یک واحد ناوگان و " + resourceCostDescription(strategicResourceCosts.navalPatrol) + ".");
+        await say(
+          ctx,
+          "نیاز: یک واحد ناوگان و " +
+            resourceCostDescription(strategicResourceCosts.navalPatrol) +
+            ".",
+        );
         return;
       }
       await pool.query(
@@ -5811,10 +5883,10 @@ bot.callbackQuery(
       return;
     }
     const assignments = [...resourceCostAssignments(costs), ...updates];
-    await pool.query(
-      "UPDATE game_players SET " + assignments.join(",") + " WHERE telegram_id=$1",
-      [ctx.from.id, ...resourceCostValues(costs)],
-    );
+    await pool.query("UPDATE game_players SET " + assignments.join(",") + " WHERE telegram_id=$1", [
+      ctx.from.id,
+      ...resourceCostValues(costs),
+    ]);
     await pool.query(
       "INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,0,$3)",
       [ctx.from.id, "اقدام راهبردی: " + title + " (هزینه منابع)", Number(me.treasury)],
