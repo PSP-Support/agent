@@ -219,12 +219,12 @@ ${statusMark} <b>ثبات:</b> ${fmt(p.stability)}٪ | 👑 مشروعیت: ${fm
 
 <b>🏭 تولید و ذخایر کشور</b>
 🏭 صنعت: ${fmt(p.industry)} | 🌾 کشاورزی: ${fmt(p.agriculture)}
-🌾 غله: ${fmtAsset(p.grain)} — حدود ${fmt(foodDays)} روز مصرف
-🪨 زغال‌سنگ: ${fmtAsset(p.coal)} | ⛓️ آهن: ${fmtAsset(p.iron)} | 🧵 پارچه: ${fmtAsset(p.cloth)}
-🪙 طلا: ${fmtAsset(p.gold_stock||0)} | ⚡ برق: ${fmtAsset(p.electricity_stock||0)}
-⛽ سوخت: ${fmtAsset(p.fuel_stock||0)} | 🛢️ نفت: ${fmtAsset(oilStock)}
-   ├ تولید نفت: ${fmtAsset(d.oilProduction)} در روز
-   ├ مصرف نفت: ${fmtAsset(d.oilConsumption)} بشکه در روز
+🌾 غله: ${resourceAmount("grain",p.grain)} — حدود ${fmt(foodDays)} روز مصرف
+🪨 زغال‌سنگ: ${resourceAmount("coal",p.coal)} | ⛓️ آهن: ${resourceAmount("iron",p.iron)} | 🧵 پارچه: ${resourceAmount("cloth",p.cloth)}
+🪙 طلا: ${resourceAmount("gold_stock",p.gold_stock||0)} | ⚡ برق: ${resourceAmount("electricity_stock",p.electricity_stock||0)}
+⛽ سوخت: ${resourceAmount("fuel_stock",p.fuel_stock||0)} | 🛢️ نفت خام: ${resourceAmount("oil_stock",oilStock)}
+   ├ تولید نفت خام: ${resourceAmount("oil_stock",d.oilProduction)} در روز
+   ├ مصرف نفت خام: ${resourceAmount("oil_stock",d.oilConsumption)} در روز
    └ ذخیره نفت: ${fmt(oilDays)} روز
 🧠 فناوری: ${fmt(p.technology)} | 🛤️ زیرساخت: ${fmt(p.infrastructure)}
 
@@ -275,6 +275,8 @@ async function chooseCountry(ctx){await say(ctx,"<b>مرحله ۱ از ۳ — ا
 const pendingCountrySearch=new Set();
 const pendingTradeInput=new Map();
 const resourceNames={grain:"غله",coal:"زغال‌سنگ",iron:"آهن",cloth:"پارچه",oil:"نفت خام",gold_stock:"طلا",cash:"دلار نقدی"};
+const resourceUnits={grain:"تن",coal:"تن",iron:"تن",cloth:"طاقه",gold_stock:"گرم",electricity_stock:"مگاوات‌ساعت",fuel_stock:"تن",oil_stock:"بشکه"};
+const resourceAmount=(key,value)=>fmtAsset(value)+" "+(resourceUnits[key]||"واحد");
 const keyWords={forward:"پیشرو",base:"پایگاه",foreign:"خارجی",operational:"عملیاتی",oil:"نفت",stock:"ذخیره",gold:"طلا",electricity:"برق",fuel:"سوخت",grain:"غله",coal:"زغال‌سنگ",iron:"آهن",cloth:"پارچه",cash:"وجه نقد",mine:"معدن",factory:"کارخانه",power:"نیروگاه",farm:"مزرعه",house:"مسکن",housing:"مسکونی",admin:"اداری",commercial:"تجاری",hotel:"هتل",highway:"بزرگراه",railway:"راه‌آهن",station:"ایستگاه",airport:"فرودگاه",port:"بندر",weapon:"تسلیحات",army:"ارتش",navy:"نیروی دریایی",air:"هوایی",repair:"تعمیر",alliance:"اتحاد",nonaggression:"عدم تعرض",trade:"تجاری",pact:"پیمان",ceasefire:"آتش‌بس",sanction:"تحریم",proposal:"پیشنهاد",neutral:"عادی"};
 const keyLabel=value=>{const raw=String(value??"");if(!raw)return"نامشخص";return raw.split("_").map(w=>keyWords[w]||w.replace(/\b[a-z]/g,c=>c.toUpperCase())).join(" ");};
 const resourceLabel=value=>resourceNames[value]||keyLabel(value);
