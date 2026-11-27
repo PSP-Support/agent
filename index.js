@@ -200,7 +200,7 @@ async function status(p){
  const buildingIncome=lv("gold_mine")*9000+lv("iron_mine")*6500+lv("coal_mine")*5000+lv("oil_refinery")*8500+lv("housing")*1800+lv("admin")*2500+lv("commercial")*4000+lv("hotel")*6000+lv("highway")*1200+lv("railway")*2500+lv("station")*2000+lv("airport")*12000+lv("port")*9000+lv("wheat_farm")*1800+lv("plateau_farm")*1200+lv("grain_silo")*700+lv("coal_power")*4000+lv("hydro_power")*5000+lv("oil_power")*3800+lv("arms_factory")*6500;
  const weapons=(await pool.query("SELECT weapon_key,quantity,damaged FROM game_weapon_stock WHERE telegram_id=$1 AND quantity>0",[p.telegram_id])).rows;
  const oilStock=Number(p.oil_stock||0),oilNeed=Math.max(1,d.oilConsumption),oilDays=Math.floor(oilStock/oilNeed),foodDays=Math.floor(Number(p.grain||0)/Math.max(1,Number(p.population||0)/1000));
- const buildingLines=owned.length?owned.map(x=>"🏗️ "+(storeItems().find(i=>i[0]===x.building_key)?.[1]||x.building_key)+" × "+fmt(x.level)).join("\\n"):"🏗️ هنوز ساختمانی ساخته نشده است.";
+ const buildingLines=owned.length?owned.map(x=>{const item=storeItems().find(i=>i[0]===x.building_key),label=item?storeLabel(item):({forward_base:"🌐 پایگاه عملیاتی خارجی"}[x.building_key]||"🏗️ "+x.building_key);return label+" × "+fmt(x.level)}).join("\\n"):"🏗️ هنوز ساختمانی ساخته نشده است.";
  const weaponLines=weapons.length?weapons.map(w=>{const found=getCountryWeapons(p.country_id).find(x=>x[0]===w.weapon_key);return "🛡️ "+(found?.[1]||w.weapon_key)+" × "+fmt(w.quantity)+" | سالم "+fmt(Number(w.quantity)-Number(w.damaged||0))+" | آسیب‌دیده "+fmt(w.damaged||0)}).join("\\n"):"🛡️ انبار تسلیحات خالی است.";
  const statusMark=p.stability>=75?"🟢 باثبات":p.stability>=50?"🟡 قابل کنترل":p.stability>=30?"🟠 پرتنش":"🔴 بحرانی";
  return `<b>📊 گزارش ملی — ${c?.[1]||"کشور"}</b>
