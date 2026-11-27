@@ -42,9 +42,9 @@ BEGIN
 END $$;
 
 UPDATE game_players
-SET treasury=(treasury::numeric*1000)::bigint,
-    wage=(wage::numeric*1000)::bigint,
-    service_budget=(service_budget::numeric*1000)::bigint;
+SET treasury=(COALESCE(treasury,100000)::numeric*1000)::bigint,
+    wage=(COALESCE(wage,100)::numeric*1000)::bigint,
+    service_budget=(COALESCE(service_budget,1000)::numeric*1000)::bigint;
 
 UPDATE game_ledger
 SET amount=(amount::numeric*1000)::bigint,
