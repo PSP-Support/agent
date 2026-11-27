@@ -17,4 +17,4 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - run: npx --yes prettier@3.5.3 --check index.js
+      - run: npx --yes prettier@3.5.3 --check index.js data/countries.js
