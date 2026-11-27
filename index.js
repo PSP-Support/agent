@@ -63,16 +63,16 @@ bot.use(async (ctx, next) => {
   }
   return next();
 });
-const ECONOMY_DISPLAY_SCALE = 1000;
+const MONEY_SCALE = 1, ASSET_DISPLAY_SCALE = 1000;
 const country = (id) => countries.find((c) => c[0] === id),
   money = (n) =>
     new Intl.NumberFormat("en-US", {
       style: "currency",
       currency: "USD",
       maximumFractionDigits: 0,
-    }).format(Math.round((Number(n) || 0) * ECONOMY_DISPLAY_SCALE)),
+    }).format(Math.round((Number(n) || 0) * MONEY_SCALE)),
   fmt = (n) => Math.round(Number(n) || 0).toLocaleString("fa-IR"),
-  fmtAsset = (n) => Math.round((Number(n) || 0) * ECONOMY_DISPLAY_SCALE).toLocaleString("fa-IR");
+  fmtAsset = (n) => Math.round((Number(n) || 0) * ASSET_DISPLAY_SCALE).toLocaleString("fa-IR");
 const mainReply = () =>
   new Keyboard().text("🏛️ دربار و کشور").row().text("📜 تسویه‌ی نوبت").text("📚 راهنما").resized();
 const adminReply = () =>
