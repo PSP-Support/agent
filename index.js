@@ -63,16 +63,17 @@ bot.use(async (ctx, next) => {
   }
   return next();
 });
-const ECONOMY_DISPLAY_SCALE = 1000;
+const MONEY_SCALE = 1,
+  ASSET_DISPLAY_SCALE = 1000;
 const country = (id) => countries.find((c) => c[0] === id),
   money = (n) =>
     new Intl.NumberFormat("en-US", {
       style: "currency",
       currency: "USD",
       maximumFractionDigits: 0,
-    }).format(Math.round((Number(n) || 0) * ECONOMY_DISPLAY_SCALE)),
+    }).format(Math.round((Number(n) || 0) * MONEY_SCALE)),
   fmt = (n) => Math.round(Number(n) || 0).toLocaleString("fa-IR"),
-  fmtAsset = (n) => Math.round((Number(n) || 0) * ECONOMY_DISPLAY_SCALE).toLocaleString("fa-IR");
+  fmtAsset = (n) => Math.round((Number(n) || 0) * ASSET_DISPLAY_SCALE).toLocaleString("fa-IR");
 const mainReply = () =>
   new Keyboard().text("🏛️ دربار و کشور").row().text("📜 تسویه‌ی نوبت").text("📚 راهنما").resized();
 const adminReply = () =>
@@ -149,12 +150,12 @@ const strategicMenu = () =>
   ]);
 async function refreshCommodities() {
   await pool.query(
-    "WITH due AS (SELECT symbol,price FROM game_commodities WHERE updated_at<NOW()-INTERVAL '15 minutes'), changed AS (SELECT symbol,price,GREATEST(1,ROUND(price*(1+(random()*0.06-0.03)))::bigint) AS new_price FROM due) UPDATE game_commodities c SET price=x.new_price,change_pct=ROUND(((x.new_price-x.price)::numeric/NULLIF(x.price,0))*100,2),updated_at=NOW() FROM changed x WHERE c.symbol=x.symbol",
+    "WITH due AS (SELECT symbol,price FROM game_commodities WHERE updated_at<NOW()-INTERVAL '15 minutes'), changed AS (SELECT symbol,price,GREATEST(1000,ROUND(price*(1+(random()*0.06-0.03))/1000)::bigint*1000) AS new_price FROM due) UPDATE game_commodities c SET price=x.new_price,change_pct=ROUND(((x.new_price-x.price)::numeric/NULLIF(x.price,0))*100,2),updated_at=NOW() FROM changed x WHERE c.symbol=x.symbol",
   );
 }
 async function refreshStocks() {
   await pool.query(
-    "WITH due AS (SELECT symbol,price FROM game_stocks WHERE updated_at<NOW()-INTERVAL '15 minutes'), changed AS (SELECT symbol,price,GREATEST(1,ROUND(price*(1+(random()*0.10-0.05)))::bigint) AS new_price FROM due) UPDATE game_stocks s SET price=c.new_price,change_pct=ROUND(((c.new_price-c.price)::numeric/NULLIF(c.price,0))*100,2),updated_at=NOW() FROM changed c WHERE s.symbol=c.symbol",
+    "WITH due AS (SELECT symbol,price FROM game_stocks WHERE updated_at<NOW()-INTERVAL '15 minutes'), changed AS (SELECT symbol,price,GREATEST(1000,ROUND(price*(1+(random()*0.10-0.05))/1000)::bigint*1000) AS new_price FROM due) UPDATE game_stocks s SET price=c.new_price,change_pct=ROUND(((c.new_price-c.price)::numeric/NULLIF(c.price,0))*100,2),updated_at=NOW() FROM changed c WHERE s.symbol=c.symbol",
   );
 }
 async function get(id) {
@@ -515,6 +516,8 @@ const resourceCostAssignments = (costs, firstParameter = 2) =>
       resource + "=GREATEST(0," + resource + "-$" + (firstParameter + index) + ")",
   );
 const resourceCostValues = (costs) => Object.values(costs);
+const formatTradeQuantity = (resource, quantity) =>
+  resource === "cash" ? money(quantity) : fmt(quantity);
 const resourceCostDescription = (costs) =>
   Object.entries(costs)
     .map(([resource, amount]) => resourceLabel(resource) + " " + fmt(amount))
@@ -571,11 +574,11 @@ const storeItemDetail = (x) =>
   money(storeIncomeDaily[x[0]] || 0) +
   " در هر روز بازی (هر نوبت سه‌ساعته یک‌هشتم این مبلغ؛ متناسب با سطح سازه).";
 const militaryDetails = {
-  army: "🪖 زمینی: واحد لشکر/تیپ برای دفاع و عملیات زمینی. هزینه هر واحد ۲۸٬۰۰۰ دلار؛ نگهداری ۹۰۰ دلار در هر نوبت. اعداد مقیاس بازی‌اند، نه شمار سرباز واقعی.",
-  air: "✈️ هوایی: گروه هوایی برای پشتیبانی و برتری هوایی. هزینه هر گروه ۱۴٬۰۰۰ دلار؛ نگهداری ۴۵۰ دلار در هر نوبت. یک گروه نماینده چند هواپیما در مقیاس بازی است.",
-  navy: "⚓ دریایی: واحد ناوگانی برای حفاظت مسیرهای آبراهی و قدرت دریایی. هزینه هر واحد ۱۸۰٬۰۰۰ دلار؛ نگهداری ۱٬۴۰۰ دلار در هر نوبت. تعدادها مقیاس بازی‌اند.",
+  army: "🪖 زمینی: واحد لشکر/تیپ برای دفاع و عملیات زمینی. مصرف ساخت: ۴۰ آهن، ۲۰ پارچه و ۵۰ غله؛ خزانه کسر نمی‌شود. نگهداری از بودجه محاسبه می‌شود. اعداد مقیاس بازی‌اند، نه شمار سرباز واقعی.",
+  air: "✈️ هوایی: گروه هوایی برای پشتیبانی و برتری هوایی. مصرف ساخت: ۱۲۰ آهن، ۶۰ پارچه و ۲۰ سوخت؛ خزانه کسر نمی‌شود. نگهداری از بودجه محاسبه می‌شود. یک گروه نماینده چند هواپیما در مقیاس بازی است.",
+  navy: "⚓ دریایی: واحد ناوگانی برای حفاظت مسیرهای آبراهی و قدرت دریایی. مصرف ساخت: ۶۰۰ آهن، ۳۰۰ زغال و ۱۰۰ سوخت؛ خزانه کسر نمی‌شود. نگهداری از بودجه محاسبه می‌شود. تعدادها مقیاس بازی‌اند.",
   defense:
-    "🛡️ پدافند: آتشبار دفاع هوایی برای حفاظت از شهرها و تأسیسات. هزینه هر آتشبار ۹٬۰۰۰ دلار؛ نگهداری ۳۰۰ دلار در هر نوبت.",
+    "🛡️ پدافند: آتشبار دفاع هوایی برای حفاظت از شهرها و تأسیسات. مصرف ساخت: ۸۰ آهن و ۵۰ زغال؛ خزانه کسر نمی‌شود. نگهداری از بودجه محاسبه می‌شود.",
 };
 const findStoreItem = (id) => storeItems().find((x) => x[0] === id);
 const getCountryWeapons = (id) => countryWeapons[id] || [];
@@ -593,7 +596,7 @@ const weaponCategoryInfo = {
 async function openStore(ctx) {
   await edit(
     ctx,
-    "<b>🏪 فروشگاه کشور</b>\nساخت پروژه نیازمند خزانه و مواد اولیه است. قیمت‌ها دلاری هستند.\nدسته را انتخاب کنید:",
+    "<b>🏪 فروشگاه کشور</b>\nساخت پروژه فقط مواد اولیه مصرف می‌کند؛ خزانه کسر نمی‌شود. ارزش مرجع برای مقایسه نمایش داده می‌شود.\nدسته را انتخاب کنید:",
     K([
       ...storeCats.map((c) => [{ text: c.name, callback_data: "shopcat:" + c.id }]),
       [{ text: "🛡️ تسلیحات مخصوص کشور", callback_data: "shopweapons" }],
@@ -1427,10 +1430,10 @@ bot.on("message:text", async (ctx) => {
         {
           parse_mode: "HTML",
           reply_markup: K([
-            [{ text: "🪖 واحد زمینی — $28,000", callback_data: "mil:army" }],
-            [{ text: "✈️ گروه هوایی — $14,000", callback_data: "mil:air" }],
-            [{ text: "⚓ واحد ناوگانی — $180,000", callback_data: "mil:navy" }],
-            [{ text: "🛡️ آتشبار پدافند — $9,000", callback_data: "mil:defense" }],
+            [{ text: "🪖 واحد زمینی — 40 آهن +20 پارچه +50 غله", callback_data: "mil:army" }],
+            [{ text: "✈️ گروه هوایی — 120 آهن +60 پارچه +20 سوخت", callback_data: "mil:air" }],
+            [{ text: "⚓ واحد ناوگانی — 600 آهن +300 زغال +100 سوخت", callback_data: "mil:navy" }],
+            [{ text: "🛡️ آتشبار پدافند — 80 آهن +50 زغال", callback_data: "mil:defense" }],
           ]),
         },
       );
@@ -1553,7 +1556,8 @@ bot.on("message:text", async (ctx) => {
       return;
     }
     if (tradeState.step === "price") {
-      if (val > 100000000) {
+      const price = val * 1000;
+      if (!Number.isSafeInteger(price) || val > 100000000) {
         await ctx.reply("قیمت واحد خیلی بالاست؛ مبلغ پایین‌تری وارد کنید.");
         return;
       }
@@ -1598,7 +1602,7 @@ bot.on("message:text", async (ctx) => {
         const o = (
           await client.query(
             "INSERT INTO game_exchange_orders(seller_id,asset_type,symbol,quantity,unit_price) VALUES($1,$2,$3,$4,$5) RETURNING id",
-            [ctx.from.id, tradeState.assetType, tradeState.symbol, tradeState.quantity, val],
+            [ctx.from.id, tradeState.assetType, tradeState.symbol, tradeState.quantity, price],
           )
         ).rows[0];
         await client.query("COMMIT");
@@ -1609,9 +1613,9 @@ bot.on("message:text", async (ctx) => {
             "\nمقدار: " +
             fmt(tradeState.quantity) +
             "\nقیمت واحد: " +
-            money(val) +
+            money(price) +
             "\nارزش کل: " +
-            money(tradeState.quantity * val) +
+            money(tradeState.quantity * price) +
             "\n\nدارایی تا فروش یا لغو سفارش در امانت بازار است.",
           {
             reply_markup: K([
@@ -1641,18 +1645,19 @@ bot.on("message:text", async (ctx) => {
       return;
     }
     if (tradeState.step === "contract_offer_qty") {
-      if (
-        val >
-        Number(tradeState.offer_resource === "cash" ? p.treasury : p[tradeState.offer_resource])
-      ) {
+      const offerAmount = tradeState.offer_resource === "cash" ? val * 1000 : val,
+        available = Number(
+          tradeState.offer_resource === "cash" ? p.treasury : p[tradeState.offer_resource],
+        );
+      if (!Number.isSafeInteger(offerAmount) || offerAmount > available) {
         await ctx.reply(
           "موجودی کافی نیست؛ حداکثر " +
-            fmt(tradeState.offer_resource === "cash" ? p.treasury : p[tradeState.offer_resource]) +
+            formatTradeQuantity(tradeState.offer_resource, available) +
             " وارد کنید.",
         );
         return;
       }
-      tradeState.offer_quantity = val;
+      tradeState.offer_quantity = offerAmount;
       tradeState.step = "contract_choose_want";
       pendingTradeInput.set(ctx.from.id, tradeState);
       await edit(
@@ -1677,12 +1682,17 @@ bot.on("message:text", async (ctx) => {
       return;
     }
     if (tradeState.step === "contract_want_qty") {
-      tradeState.want_quantity = val;
+      const wantAmount = tradeState.want_resource === "cash" ? val * 1000 : val;
+      if (!Number.isSafeInteger(wantAmount)) {
+        await ctx.reply("مبلغ نقدی بیش از حد بزرگ است؛ عدد پایین‌تری وارد کنید.");
+        return;
+      }
+      tradeState.want_quantity = wantAmount;
       tradeState.step = "contract_choose_route";
       pendingTradeInput.set(ctx.from.id, tradeState);
       await edit(
         ctx,
-        "مرحله ۳: مسیر انتقال را انتخاب کنید.\n\n🚢 دریایی: ارزان‌ترین (۱ دلار به‌ازای هر واحد)\n🚆 زمینی: متوسط (۲ دلار به‌ازای هر واحد)\n✈️ هوایی: سریع‌ترین و گران‌ترین (۴ دلار به‌ازای هر واحد)",
+        "مرحله ۳: مسیر انتقال را انتخاب کنید.\n\n🚢 دریایی: ۱٬۰۰۰ دلار به‌ازای هر واحد حمل\n🚆 زمینی: ۲٬۰۰۰ دلار به‌ازای هر واحد حمل\n✈️ هوایی: ۴٬۰۰۰ دلار به‌ازای هر واحد حمل",
         K([
           [{ text: "🚢 دریایی", callback_data: "tc:route:sea" }],
           [{ text: "🚆 زمینی", callback_data: "tc:route:land" }],
@@ -1724,7 +1734,8 @@ bot.on("message:text", async (ctx) => {
       return;
     }
     if (tradeState.step === "price") {
-      if (val > 100000000) {
+      const price = val * 1000;
+      if (!Number.isSafeInteger(price) || val > 100000000) {
         await ctx.reply("قیمت واحد بیش از حد بزرگ است؛ مبلغ کمتری وارد کنید.");
         return;
       }
@@ -1756,7 +1767,7 @@ bot.on("message:text", async (ctx) => {
         const offer = (
           await client.query(
             "INSERT INTO game_trade(seller_id,resource,quantity,unit_price) VALUES($1,$2,$3,$4) RETURNING id",
-            [ctx.from.id, tradeState.resource, tradeState.quantity, val],
+            [ctx.from.id, tradeState.resource, tradeState.quantity, price],
           )
         ).rows[0];
         await client.query("COMMIT");
@@ -1767,9 +1778,9 @@ bot.on("message:text", async (ctx) => {
             "\nمقدار: " +
             fmt(tradeState.quantity) +
             "\nقیمت واحد: " +
-            money(val) +
+            money(price) +
             "\nارزش کل: " +
-            money(tradeState.quantity * val) +
+            money(tradeState.quantity * price) +
             "\n\nمنابع تا زمان فروش در امانت بازار نگه داشته می‌شوند.",
           {
             reply_markup: K([
@@ -2873,8 +2884,14 @@ bot.callbackQuery(/^adj:(tax|tariff|wage|service_budget):(-?\d+)$/, async (ctx) 
   const p = await ready(ctx);
   if (!p) return;
   const f = ctx.match[1],
-    delta = Number(ctx.match[2]),
-    lim = { tax: [0, 60], tariff: [0, 50], wage: [10, 10000], service_budget: [0, 10000000] }[f],
+    rawDelta = Number(ctx.match[2]),
+    delta = f === "wage" || f === "service_budget" ? rawDelta * 1000 : rawDelta,
+    lim = {
+      tax: [0, 60],
+      tariff: [0, 50],
+      wage: [10000, 10000000],
+      service_budget: [0, 10000000000],
+    }[f],
     v = Math.max(lim[0], Math.min(lim[1], Number(p[f]) + delta));
   const q =
     f === "tax" && delta > 0
@@ -3224,7 +3241,11 @@ bot.callbackQuery(/^tc:route:(sea|land|air)$/, async (ctx) => {
   const st = pendingTradeInput.get(ctx.from.id);
   if (!st?.partner || !st.want_quantity) return;
   st.transport = ctx.match[1];
-  st.transit_cost = st.want_quantity * { sea: 1, land: 2, air: 4 }[st.transport];
+  st.transit_cost = Math.round(
+    (st.want_resource === "cash" ? st.want_quantity / 1000 : st.want_quantity) *
+      { sea: 1, land: 2, air: 4 }[st.transport] *
+      1000,
+  );
   st.step = "contract_payer";
   pendingTradeInput.set(ctx.from.id, st);
   await edit(
@@ -3255,11 +3276,11 @@ bot.callbackQuery(/^tc:payer:(seller|buyer)$/, async (ctx) => {
     "<b>📋 پیش‌نمایش قرارداد</b>\n\nشما می‌فرستید: " +
       resourceNames[st.offer_resource] +
       " × " +
-      fmt(st.offer_quantity) +
+      formatTradeQuantity(st.offer_resource, st.offer_quantity) +
       "\nدر مقابل دریافت: " +
       resourceNames[st.want_resource] +
       " × " +
-      fmt(st.want_quantity) +
+      formatTradeQuantity(st.want_resource, st.want_quantity) +
       "\nمسیر: " +
       { sea: "دریایی", land: "زمینی", air: "هوایی" }[st.transport] +
       "\nترانزیت: " +
@@ -3391,11 +3412,11 @@ bot.callbackQuery(/^tc:view:(\d+)$/, async (ctx) => {
       "\nارسال: " +
       resourceLabel(x.offer_resource) +
       " × " +
-      fmt(x.offer_quantity) +
+      formatTradeQuantity(x.offer_resource, x.offer_quantity) +
       "\nدرخواست در مقابل: " +
       resourceLabel(x.want_resource) +
       " × " +
-      fmt(x.want_quantity) +
+      formatTradeQuantity(x.want_resource, x.want_quantity) +
       "\nمسیر: " +
       { sea: "🚢 دریایی", land: "🚆 زمینی", air: "✈️ هوایی" }[x.transport] +
       "\nهزینه‌ی ترانزیت: " +
@@ -3563,11 +3584,11 @@ bot.callbackQuery(/^tc:accept:(\d+)$/, async (ctx) => {
       "✅ قرارداد اجرا شد!\n\nدریافت شما: " +
         resourceLabel(x.offer_resource) +
         " × " +
-        fmt(x.offer_quantity) +
+        formatTradeQuantity(x.offer_resource, x.offer_quantity) +
         "\nارسال شما: " +
         resourceLabel(x.want_resource) +
         " × " +
-        fmt(x.want_quantity) +
+        formatTradeQuantity(x.want_resource, x.want_quantity) +
         "\nترانزیت پرداخت‌شده: " +
         money(x.transit_cost),
       K([
@@ -5139,7 +5160,7 @@ bot.callbackQuery(/^intlloan:(\d+):(\d+)$/, async (ctx) => {
   await ctx.answerCallbackQuery();
   if (!(await internationalAllowed(ctx))) return;
   const id = ctx.match[1],
-    amount = Number(ctx.match[2]),
+    amount = Number(ctx.match[2]) * 1000,
     client = await pool.connect();
   try {
     await client.query("BEGIN");

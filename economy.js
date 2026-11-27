@@ -1,8 +1,8 @@
 export function calcEconomy(p) {
   const taxable = Math.max(10000, Number(p.population) / 100),
-    tax = (taxable * p.tax_rate) / 100,
-    production = p.industry * 1200 + p.agriculture * 800,
-    tariff = p.tariff * 500,
+    tax = ((taxable * p.tax_rate) / 100) * 1000,
+    production = (p.industry * 1200 + p.agriculture * 800) * 1000,
+    tariff = p.tariff * 500 * 1000,
     oilProduction = Math.min(
       Number(p.oil_reserves || 0),
       Math.round(Number(p.oil_field_level || 0) * (1 + Number(p.technology || 0) / 250)),
@@ -30,4 +30,3 @@ export function calcEconomy(p) {
     oilNet: oilProduction - oilConsumption,
   };
 }
-
