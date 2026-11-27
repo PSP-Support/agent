@@ -3967,18 +3967,21 @@ bot.callbackQuery(/^dipmission:(\d+)$/, async (ctx) => {
   try {
     await client.query("BEGIN");
     const me = (
-      await client.query("SELECT treasury FROM game_players WHERE telegram_id=$1 FOR UPDATE", [
+      await client.query("SELECT treasury,cloth,grain FROM game_players WHERE telegram_id=$1 FOR UPDATE", [
         ctx.from.id,
       ])
     ).rows[0];
-    if (!me || Number(me.treasury) < 5000) {
+    const missionCosts = diplomacyResourceCosts.mission,
+      shortage = resourceShortages(me, missionCosts);
+    if (!me || shortage.length) {
       await client.query("ROLLBACK");
-      await say(ctx, "برای اعزام هیئت به $5,000 نیاز دارید.");
+      await say(ctx, "مواد اولیه برای اعزام هیئت کافی نیست: " + resourceCostDescription(Object.fromEntries(shortage)) + ".");
       return;
     }
-    await client.query("UPDATE game_players SET treasury=treasury-5000 WHERE telegram_id=$1", [
-      ctx.from.id,
-    ]);
+    await client.query(
+      "UPDATE game_players SET " + resourceCostAssignments(missionCosts).join(",") + " WHERE telegram_id=$1",
+      [ctx.from.id, ...resourceCostValues(missionCosts)],
+    );
     for (const [a, b] of [
       [ctx.from.id, other],
       [other, ctx.from.id],
@@ -3988,8 +3991,8 @@ bot.callbackQuery(/^dipmission:(\d+)$/, async (ctx) => {
         [a, b],
       );
     await client.query(
-      "INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,'اعزام هیئت دیپلماتیک',-5000,$2)",
-      [ctx.from.id, Number(me.treasury) - 5000],
+      "INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,'اعزام هیئت دیپلماتیک (هزینه منابع)',0,$2)",
+      [ctx.from.id, Number(me.treasury)],
     );
     await client.query(
       "INSERT INTO game_diplomacy_log(player_id,other_id,event,details) VALUES($1,$2,'mission','هیئت دیپلماتیک اعزام شد')",
@@ -4006,7 +4009,7 @@ bot.callbackQuery(/^dipmission:(\d+)$/, async (ctx) => {
     } catch {}
     await edit(
       ctx,
-      "🕊️ هیئت دیپلماتیک اعزام شد.\n💵 هزینه: $5,000\n💗 اعتماد دوطرفه: +5",
+      "🕊️ هیئت دیپلماتیک اعزام شد.\n🧱 منابع مصرف‌شده: " + resourceCostDescription(missionCosts) + "\n💰 خزانه تغییر نکرد.\n💗 اعتماد دوطرفه: +5",
       K([
         [{ text: "↩️ پرونده‌ی دیپلماتیک", callback_data: "dip:" + other }],
         [{ text: "📜 دفتر روابط", callback_data: "diprelations" }],
@@ -4033,7 +4036,7 @@ bot.callbackQuery(/^dipembassy:(\d+)$/, async (ctx) => {
     await client.query("BEGIN");
     const me = (
         await client.query(
-          "SELECT treasury,iron FROM game_players WHERE telegram_id=$1 FOR UPDATE",
+          "SELECT treasury,iron,cloth FROM game_players WHERE telegram_id=$1 FOR UPDATE",
           [ctx.from.id],
         )
       ).rows[0],
@@ -4049,14 +4052,16 @@ bot.callbackQuery(/^dipembassy:(\d+)$/, async (ctx) => {
       await say(ctx, "سفارت به حداکثر سطح ۳ رسیده است.");
       return;
     }
-    if (!me || Number(me.treasury) < 25000 || Number(me.iron) < 100) {
+    const embassyCosts = diplomacyResourceCosts.embassy,
+      embassyShortage = resourceShortages(me, embassyCosts);
+    if (!me || embassyShortage.length) {
       await client.query("ROLLBACK");
-      await say(ctx, "برای ساخت/ارتقای سفارت به $25,000 و 100 آهن نیاز دارید.");
+      await say(ctx, "مواد اولیه برای سفارت کافی نیست: " + resourceCostDescription(Object.fromEntries(embassyShortage)) + ".");
       return;
     }
     await client.query(
-      "UPDATE game_players SET treasury=treasury-25000,iron=iron-100 WHERE telegram_id=$1",
-      [ctx.from.id],
+      "UPDATE game_players SET " + resourceCostAssignments(embassyCosts).join(",") + " WHERE telegram_id=$1",
+      [ctx.from.id, ...resourceCostValues(embassyCosts)],
     );
     await client.query(
       "INSERT INTO game_embassies(player_id,other_id,level) VALUES($1,$2,1) ON CONFLICT(player_id,other_id) DO UPDATE SET level=LEAST(3,game_embassies.level+1)",
@@ -4067,8 +4072,8 @@ bot.callbackQuery(/^dipembassy:(\d+)$/, async (ctx) => {
       [ctx.from.id, other],
     );
     await client.query(
-      "INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,'ساخت یا ارتقای سفارت',-25000,$2)",
-      [ctx.from.id, Number(me.treasury) - 25000],
+      "INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,'ساخت یا ارتقای سفارت (هزینه منابع)',0,$2)",
+      [ctx.from.id, Number(me.treasury)],
     );
     await client.query(
       "INSERT INTO game_diplomacy_log(player_id,other_id,event,details) VALUES($1,$2,'embassy',$3)",
@@ -4079,7 +4084,7 @@ bot.callbackQuery(/^dipembassy:(\d+)$/, async (ctx) => {
       ctx,
       "🏛️ سفارت ساخته/ارتقا یافت.\n📈 سطح: " +
         (level + 1) +
-        "/3\n💵 هزینه: $25,000\n⛓ آهن: 100\n💗 اعتماد: +8",
+        "/3\n🧱 منابع مصرف‌شده: " + resourceCostDescription(embassyCosts) + "\n💰 خزانه تغییر نکرد.\n💗 اعتماد: +8",
       K([[{ text: "↩️ پرونده‌ی دیپلماتیک", callback_data: "dip:" + other }]]),
     );
   } catch (e) {
