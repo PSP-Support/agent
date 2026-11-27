@@ -7,6 +7,7 @@ Use a separate Railway service for testing. Do not point it at the production bo
 1. Create a second Telegram bot with BotFather and keep its token only in Railway Variables.
 2. Create a separate PostgreSQL service/database for the test deployment. It must not share the production database.
 3. Deploy this repository to a separate Railway service connected to a test branch.
+4. Use a fresh, disposable test database; never import real production user data or credentials into it.
 4. Set the following variables on the **test service only**:
 
 | Variable | Purpose |
