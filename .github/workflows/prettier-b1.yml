@@ -2,7 +2,10 @@ name: Verify index.js Prettier formatting
 on:
   push:
     branches:
-      - chore/prettier-format-index-b1
+      - main
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
 permissions:
   contents: read
