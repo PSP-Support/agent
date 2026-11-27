@@ -155,7 +155,7 @@ export const countryWeapons = Object.fromEntries(
     items.map(([key, name, referencePrice]) => [key, name, referencePrice * 1000]),
   ]),
 );
-xport function weaponResourceCosts(weapon) {
+export function weaponResourceCosts(weapon) {
   const name = String(weapon?.[1] || "");
   const referenceValue = Math.max(0, Number(weapon?.[2] || 0));
   if (/ناو|زیردریایی|کشتی|دریایی/.test(name)) {
