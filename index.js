@@ -4,6 +4,7 @@ import http from "node:http";
 import { countries } from "./data/countries.js";
 import { countryWeapons } from "./data/weapons.js";
 import { initDb } from "./db.js";
+import { calcEconomy } from "./economy.js";
 import {
   advanceSettlementTimestamp,
   calculateSettlementResources,
@@ -217,41 +218,9 @@ async function ready(ctx) {
   }
   return p;
 }
-function calc(p) {
-  const taxable = Math.max(10000, Number(p.population) / 100),
-    tax = (taxable * p.tax_rate) / 100,
-    production = p.industry * 1200 + p.agriculture * 800,
-    tariff = p.tariff * 500,
-    oilProduction = Math.min(
-      Number(p.oil_reserves || 0),
-      Math.round(Number(p.oil_field_level || 0) * (1 + Number(p.technology || 0) / 250)),
-    ),
-    oilConsumption = Math.max(
-      10,
-      Number(p.industry || 0) * 4 +
-        Number(p.army || 0) * 2 +
-        Number(p.navy || 0) * 10 +
-        Number(p.air_force || 0) * 3,
-    );
-  return {
-    income: tax + production + tariff,
-    expense: 0,
-    tax,
-    production,
-    tariff,
-    wages: 0,
-    army: 0,
-    services: 0,
-    roads: 0,
-    upkeep: 0,
-    oilProduction,
-    oilConsumption,
-    oilNet: oilProduction - oilConsumption,
-  };
-}
 async function status(p) {
   const c = country(p.country_id),
-    d = calc(p);
+    d = calcEconomy(p);
   const owned = (
     await pool.query("SELECT building_key,level FROM game_buildings WHERE telegram_id=$1", [
       p.telegram_id,
@@ -1489,7 +1458,7 @@ bot.on("message:text", async (ctx) => {
       return;
     }
     if (k === "money") {
-      const d = calc(p);
+      const d = calcEconomy(p);
       await ctx.reply(
         `<b>💰 خزانه و دفتر حساب</b>\nمانده: ${money(p.treasury)}\nدرآمد روزانه: ${money(d.income)}\nهزینه‌ی روزانه: ${money(d.expense)}`,
         { parse_mode: "HTML", reply_markup: nationReply() },
@@ -2221,7 +2190,7 @@ bot.callbackQuery(
     if (!p) return;
     let s = ctx.match[1];
     if (s === "trade") s = "stocks";
-    const d = calc(p);
+    const d = calcEconomy(p);
     if (s === "strategy") {
       await pool.query(
         "INSERT INTO game_maneuver_stats(owner_id) VALUES($1) ON CONFLICT(owner_id) DO NOTHING",
@@ -4889,7 +4858,7 @@ async function settleOne(id) {
       fuelStock,
       dailyBuildingIncome,
     } = calculateSettlementResources(row, buildings, ticks);
-    const d = calc(row),
+    const d = calcEconomy(row),
       earned = Math.max(0, Math.round((d.income + dailyBuildingIncome) * scale));
     const balance = Number(row.treasury) + earned,
       net = earned;
@@ -4970,7 +4939,7 @@ async function settleOne(id) {
   }
 }
 function settlementReport(result, p) {
-  const d = calc(p),
+  const d = calcEconomy(p),
     scale = result.ticks / 8,
     c = country(p.country_id),
     line = (label, value) => "• " + label + ": " + money(value * scale);
