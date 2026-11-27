@@ -149,12 +149,12 @@ const strategicMenu = () =>
   ]);
 async function refreshCommodities() {
   await pool.query(
-    "WITH due AS (SELECT symbol,price FROM game_commodities WHERE updated_at<NOW()-INTERVAL '15 minutes'), changed AS (SELECT symbol,price,GREATEST(1,ROUND(price*(1+(random()*0.06-0.03)))::bigint) AS new_price FROM due) UPDATE game_commodities c SET price=x.new_price,change_pct=ROUND(((x.new_price-x.price)::numeric/NULLIF(x.price,0))*100,2),updated_at=NOW() FROM changed x WHERE c.symbol=x.symbol",
+    "WITH due AS (SELECT symbol,price FROM game_commodities WHERE updated_at<NOW()-INTERVAL '15 minutes'), changed AS (SELECT symbol,price,GREATEST(1000,ROUND(price*(1+(random()*0.06-0.03))/1000)::bigint*1000) AS new_price FROM due) UPDATE game_commodities c SET price=x.new_price,change_pct=ROUND(((x.new_price-x.price)::numeric/NULLIF(x.price,0))*100,2),updated_at=NOW() FROM changed x WHERE c.symbol=x.symbol",
   );
 }
 async function refreshStocks() {
   await pool.query(
-    "WITH due AS (SELECT symbol,price FROM game_stocks WHERE updated_at<NOW()-INTERVAL '15 minutes'), changed AS (SELECT symbol,price,GREATEST(1,ROUND(price*(1+(random()*0.10-0.05)))::bigint) AS new_price FROM due) UPDATE game_stocks s SET price=c.new_price,change_pct=ROUND(((c.new_price-c.price)::numeric/NULLIF(c.price,0))*100,2),updated_at=NOW() FROM changed c WHERE s.symbol=c.symbol",
+    "WITH due AS (SELECT symbol,price FROM game_stocks WHERE updated_at<NOW()-INTERVAL '15 minutes'), changed AS (SELECT symbol,price,GREATEST(1000,ROUND(price*(1+(random()*0.10-0.05))/1000)::bigint*1000) AS new_price FROM due) UPDATE game_stocks s SET price=c.new_price,change_pct=ROUND(((c.new_price-c.price)::numeric/NULLIF(c.price,0))*100,2),updated_at=NOW() FROM changed c WHERE s.symbol=c.symbol",
   );
 }
 async function get(id) {
@@ -571,11 +571,11 @@ const storeItemDetail = (x) =>
   money(storeIncomeDaily[x[0]] || 0) +
   " در هر روز بازی (هر نوبت سه‌ساعته یک‌هشتم این مبلغ؛ متناسب با سطح سازه).";
 const militaryDetails = {
-  army: "🪖 زمینی: واحد لشکر/تیپ برای دفاع و عملیات زمینی. هزینه هر واحد ۲۸٬۰۰۰ دلار؛ نگهداری ۹۰۰ دلار در هر نوبت. اعداد مقیاس بازی‌اند، نه شمار سرباز واقعی.",
-  air: "✈️ هوایی: گروه هوایی برای پشتیبانی و برتری هوایی. هزینه هر گروه ۱۴٬۰۰۰ دلار؛ نگهداری ۴۵۰ دلار در هر نوبت. یک گروه نماینده چند هواپیما در مقیاس بازی است.",
-  navy: "⚓ دریایی: واحد ناوگانی برای حفاظت مسیرهای آبراهی و قدرت دریایی. هزینه هر واحد ۱۸۰٬۰۰۰ دلار؛ نگهداری ۱٬۴۰۰ دلار در هر نوبت. تعدادها مقیاس بازی‌اند.",
+  army: "🪖 زمینی: واحد لشکر/تیپ برای دفاع و عملیات زمینی. مصرف ساخت: ۴۰ آهن، ۲۰ پارچه و ۵۰ غله؛ خزانه کسر نمی‌شود. نگهداری از بودجه محاسبه می‌شود. اعداد مقیاس بازی‌اند، نه شمار سرباز واقعی.",
+  air: "✈️ هوایی: گروه هوایی برای پشتیبانی و برتری هوایی. مصرف ساخت: ۱۲۰ آهن، ۶۰ پارچه و ۲۰ سوخت؛ خزانه کسر نمی‌شود. نگهداری از بودجه محاسبه می‌شود. یک گروه نماینده چند هواپیما در مقیاس بازی است.",
+  navy: "⚓ دریایی: واحد ناوگانی برای حفاظت مسیرهای آبراهی و قدرت دریایی. مصرف ساخت: ۶۰۰ آهن، ۳۰۰ زغال و ۱۰۰ سوخت؛ خزانه کسر نمی‌شود. نگهداری از بودجه محاسبه می‌شود. تعدادها مقیاس بازی‌اند.",
   defense:
-    "🛡️ پدافند: آتشبار دفاع هوایی برای حفاظت از شهرها و تأسیسات. هزینه هر آتشبار ۹٬۰۰۰ دلار؛ نگهداری ۳۰۰ دلار در هر نوبت.",
+    "🛡️ پدافند: آتشبار دفاع هوایی برای حفاظت از شهرها و تأسیسات. مصرف ساخت: ۸۰ آهن و ۵۰ زغال؛ خزانه کسر نمی‌شود. نگهداری از بودجه محاسبه می‌شود.",
 };
 const findStoreItem = (id) => storeItems().find((x) => x[0] === id);
 const getCountryWeapons = (id) => countryWeapons[id] || [];
@@ -593,7 +593,7 @@ const weaponCategoryInfo = {
 async function openStore(ctx) {
   await edit(
     ctx,
-    "<b>🏪 فروشگاه کشور</b>\nساخت پروژه نیازمند خزانه و مواد اولیه است. قیمت‌ها دلاری هستند.\nدسته را انتخاب کنید:",
+    "<b>🏪 فروشگاه کشور</b>\nساخت پروژه فقط مواد اولیه مصرف می‌کند؛ خزانه کسر نمی‌شود. ارزش مرجع برای مقایسه نمایش داده می‌شود.\nدسته را انتخاب کنید:",
     K([
       ...storeCats.map((c) => [{ text: c.name, callback_data: "shopcat:" + c.id }]),
       [{ text: "🛡️ تسلیحات مخصوص کشور", callback_data: "shopweapons" }],
@@ -1427,10 +1427,10 @@ bot.on("message:text", async (ctx) => {
         {
           parse_mode: "HTML",
           reply_markup: K([
-            [{ text: "🪖 واحد زمینی — $28,000", callback_data: "mil:army" }],
-            [{ text: "✈️ گروه هوایی — $14,000", callback_data: "mil:air" }],
-            [{ text: "⚓ واحد ناوگانی — $180,000", callback_data: "mil:navy" }],
-            [{ text: "🛡️ آتشبار پدافند — $9,000", callback_data: "mil:defense" }],
+            [{ text: "🪖 واحد زمینی — 40 آهن +20 پارچه +50 غله", callback_data: "mil:army" }],
+            [{ text: "✈️ گروه هوایی — 120 آهن +60 پارچه +20 سوخت", callback_data: "mil:air" }],
+            [{ text: "⚓ واحد ناوگانی — 600 آهن +300 زغال +100 سوخت", callback_data: "mil:navy" }],
+            [{ text: "🛡️ آتشبار پدافند — 80 آهن +50 زغال", callback_data: "mil:defense" }],
           ]),
         },
       );
