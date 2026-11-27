@@ -1,51 +1,60 @@
+import { readdir, readFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const migrationsDirectory = join(dirname(fileURLToPath(import.meta.url)), "migrations");
+const migrationPattern = /^(\d{3})_[a-z0-9_]+\.sql$/;
+
+export function migrationVersionFromFilename(filename) {
+  return filename.match(migrationPattern)?.[1] ?? null;
+}
+
+async function runMigrations(pool) {
+  await pool.query(
+    "CREATE TABLE IF NOT EXISTS schema_migrations(version TEXT PRIMARY KEY, filename TEXT NOT NULL, applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW())",
+  );
+  const files = (await readdir(migrationsDirectory))
+    .filter((filename) => migrationVersionFromFilename(filename))
+    .sort();
+  const versions = files.map(migrationVersionFromFilename);
+  if (new Set(versions).size !== versions.length)
+    throw new Error("Duplicate migration version detected");
+
+  for (const filename of files) {
+    const version = migrationVersionFromFilename(filename),
+      client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const applied = await client.query(
+        "SELECT 1 FROM schema_migrations WHERE version=$1",
+        [version],
+      );
+      if (applied.rows.length) {
+        await client.query("COMMIT");
+        continue;
+      }
+      const sql = await readFile(join(migrationsDirectory, filename), "utf8");
+      await client.query(sql);
+      await client.query(
+        "INSERT INTO schema_migrations(version,filename) VALUES($1,$2)",
+        [version, filename],
+      );
+      await client.query("COMMIT");
+      console.log("Database migration applied:", filename);
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw new Error("Database migration " + filename + " failed: " + error.message, {
+        cause: error,
+      });
+    } finally {
+      client.release();
+    }
+  }
+}
+
 export async function initDb({ pool, ownerTelegramId, oilField, oilStartingStock }) {
-  await pool.query(`
-CREATE TABLE IF NOT EXISTS game_players(telegram_id BIGINT PRIMARY KEY,username TEXT,display_name TEXT NOT NULL,country_id TEXT,ruler TEXT,government TEXT,approved BOOLEAN DEFAULT FALSE,selected_country_id TEXT,treasury BIGINT DEFAULT 100000,population BIGINT DEFAULT 0,stability INT DEFAULT 60,legitimacy INT DEFAULT 55,tax_rate INT DEFAULT 10,tariff INT DEFAULT 5,industry INT DEFAULT 20,agriculture INT DEFAULT 30,grain BIGINT DEFAULT 10000,coal BIGINT DEFAULT 5000,iron BIGINT DEFAULT 3000,cloth BIGINT DEFAULT 2500,army INT DEFAULT 20,navy INT DEFAULT 5,morale INT DEFAULT 60,technology INT DEFAULT 10,infrastructure INT DEFAULT 20,education INT DEFAULT 15,health INT DEFAULT 15,wage BIGINT DEFAULT 100,service_budget BIGINT DEFAULT 1000,last_settlement TIMESTAMPTZ DEFAULT NOW());
-CREATE TABLE IF NOT EXISTS game_ledger(id BIGSERIAL PRIMARY KEY,telegram_id BIGINT,description TEXT,amount BIGINT,balance BIGINT,created_at TIMESTAMPTZ DEFAULT NOW());
-CREATE TABLE IF NOT EXISTS game_relations(player_id BIGINT,other_id BIGINT,relation TEXT DEFAULT 'neutral',trust INT DEFAULT 0,PRIMARY KEY(player_id,other_id));
- CREATE TABLE IF NOT EXISTS game_sanctions(issuer_id BIGINT NOT NULL,target_id BIGINT NOT NULL,active BOOLEAN NOT NULL DEFAULT TRUE,created_at TIMESTAMPTZ DEFAULT NOW(),PRIMARY KEY(issuer_id,target_id));
- CREATE TABLE IF NOT EXISTS game_diplomacy_log(id BIGSERIAL PRIMARY KEY,player_id BIGINT NOT NULL,other_id BIGINT NOT NULL,event TEXT NOT NULL,details TEXT,created_at TIMESTAMPTZ DEFAULT NOW());
- CREATE TABLE IF NOT EXISTS game_embassies(player_id BIGINT NOT NULL,other_id BIGINT NOT NULL,level INT NOT NULL DEFAULT 0,created_at TIMESTAMPTZ DEFAULT NOW(),PRIMARY KEY(player_id,other_id));
-CREATE TABLE IF NOT EXISTS game_trade(id BIGSERIAL PRIMARY KEY,seller_id BIGINT,buyer_id BIGINT,resource TEXT,quantity BIGINT,unit_price BIGINT,status TEXT DEFAULT 'open',created_at TIMESTAMPTZ DEFAULT NOW());
- CREATE INDEX IF NOT EXISTS game_trade_open_seller_idx ON game_trade(status,seller_id);
- CREATE TABLE IF NOT EXISTS game_trade_contracts(id BIGSERIAL PRIMARY KEY,proposer_id BIGINT NOT NULL,recipient_id BIGINT NOT NULL,offer_resource TEXT NOT NULL,offer_quantity BIGINT NOT NULL,want_resource TEXT NOT NULL,want_quantity BIGINT NOT NULL,transport TEXT NOT NULL,transit_payer TEXT NOT NULL,transit_cost BIGINT NOT NULL,status TEXT NOT NULL DEFAULT 'pending',created_at TIMESTAMPTZ DEFAULT NOW());
- CREATE INDEX IF NOT EXISTS game_trade_contracts_recipient_idx ON game_trade_contracts(recipient_id,status,created_at);
- CREATE TABLE IF NOT EXISTS game_buildings(telegram_id BIGINT NOT NULL,building_key TEXT NOT NULL,level INT NOT NULL DEFAULT 0,PRIMARY KEY(telegram_id,building_key));
- CREATE TABLE IF NOT EXISTS game_weapon_stock(telegram_id BIGINT NOT NULL,weapon_key TEXT NOT NULL,quantity INT NOT NULL DEFAULT 0,PRIMARY KEY(telegram_id,weapon_key));
- ALTER TABLE game_weapon_stock ADD COLUMN IF NOT EXISTS damaged INT NOT NULL DEFAULT 0;
- CREATE TABLE IF NOT EXISTS game_battles(id BIGSERIAL PRIMARY KEY,attacker_id BIGINT NOT NULL,defender_id BIGINT NOT NULL,attacker_weapon TEXT NOT NULL,damaged_weapon TEXT,created_at TIMESTAMPTZ DEFAULT NOW(),result TEXT NOT NULL DEFAULT 'damage');
- CREATE TABLE IF NOT EXISTS game_weapon_market(id BIGSERIAL PRIMARY KEY,seller_id BIGINT NOT NULL,weapon_key TEXT NOT NULL,quantity INT NOT NULL,unit_price BIGINT NOT NULL,status TEXT DEFAULT 'open',created_at TIMESTAMPTZ DEFAULT NOW());
- CREATE INDEX IF NOT EXISTS game_weapon_market_open_idx ON game_weapon_market(status,created_at);
- ALTER TABLE game_players ADD COLUMN IF NOT EXISTS gold_stock BIGINT DEFAULT 0;
- ALTER TABLE game_players ADD COLUMN IF NOT EXISTS bot_blocked BOOLEAN DEFAULT FALSE;
- ALTER TABLE game_players ADD COLUMN IF NOT EXISTS country_removed BOOLEAN DEFAULT FALSE;
- CREATE TABLE IF NOT EXISTS game_international_loans(id BIGSERIAL PRIMARY KEY,player_id BIGINT NOT NULL,admin_id BIGINT NOT NULL,amount BIGINT NOT NULL,reason TEXT,created_at TIMESTAMPTZ DEFAULT NOW());
- CREATE TABLE IF NOT EXISTS game_international_audit(id BIGSERIAL PRIMARY KEY,admin_id BIGINT NOT NULL,target_id BIGINT,action TEXT NOT NULL,details TEXT,created_at TIMESTAMPTZ DEFAULT NOW());
- ALTER TABLE game_players ADD COLUMN IF NOT EXISTS electricity_stock BIGINT DEFAULT 0;
- ALTER TABLE game_players ADD COLUMN IF NOT EXISTS fuel_stock BIGINT DEFAULT 0;
- ALTER TABLE game_players ADD COLUMN IF NOT EXISTS air_force INT DEFAULT 0;
- ALTER TABLE game_players ADD COLUMN IF NOT EXISTS air_defense INT DEFAULT 0;
- ALTER TABLE game_players ADD COLUMN IF NOT EXISTS forces_initialized BOOLEAN DEFAULT FALSE;
- ALTER TABLE game_players ADD COLUMN IF NOT EXISTS selected_country_id TEXT;
- ALTER TABLE game_players ADD COLUMN IF NOT EXISTS oil_field_level BIGINT DEFAULT 0;
- ALTER TABLE game_players ADD COLUMN IF NOT EXISTS oil_reserves BIGINT DEFAULT 0;
- ALTER TABLE game_players ADD COLUMN IF NOT EXISTS oil_stock BIGINT DEFAULT 0;
- ALTER TABLE game_players ADD COLUMN IF NOT EXISTS oil_initialized BOOLEAN DEFAULT FALSE;
- CREATE TABLE IF NOT EXISTS game_country_requests(id BIGSERIAL PRIMARY KEY,telegram_id BIGINT NOT NULL,country_id TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending',created_at TIMESTAMPTZ DEFAULT NOW(),processed_at TIMESTAMPTZ);
- CREATE INDEX IF NOT EXISTS game_country_requests_pending_idx ON game_country_requests(telegram_id,status);
- CREATE TABLE IF NOT EXISTS game_stocks(symbol TEXT PRIMARY KEY,name TEXT NOT NULL,price BIGINT NOT NULL,change_pct NUMERIC(8,2) DEFAULT 0,updated_at TIMESTAMPTZ DEFAULT NOW());
- CREATE TABLE IF NOT EXISTS game_stock_holdings(telegram_id BIGINT NOT NULL,symbol TEXT NOT NULL REFERENCES game_stocks(symbol),shares BIGINT NOT NULL DEFAULT 0,PRIMARY KEY(telegram_id,symbol));
- CREATE TABLE IF NOT EXISTS game_commodities(symbol TEXT PRIMARY KEY,name TEXT NOT NULL,price BIGINT NOT NULL,change_pct NUMERIC(8,2) DEFAULT 0,updated_at TIMESTAMPTZ DEFAULT NOW());
- CREATE TABLE IF NOT EXISTS game_commodity_holdings(telegram_id BIGINT NOT NULL,symbol TEXT NOT NULL REFERENCES game_commodities(symbol),units BIGINT NOT NULL DEFAULT 0,PRIMARY KEY(telegram_id,symbol));
- CREATE TABLE IF NOT EXISTS game_exchange_orders(id BIGSERIAL PRIMARY KEY,seller_id BIGINT NOT NULL,asset_type TEXT NOT NULL CHECK(asset_type IN ('stock','commodity')),symbol TEXT NOT NULL,quantity BIGINT NOT NULL,unit_price BIGINT NOT NULL,status TEXT DEFAULT 'open',created_at TIMESTAMPTZ DEFAULT NOW());
- CREATE INDEX IF NOT EXISTS game_exchange_orders_open_idx ON game_exchange_orders(status,asset_type,symbol);
- INSERT INTO game_commodities(symbol,name,price) VALUES('OIL','نفت خام (هر بشکه)',75),('GOLD','طلا (هر اونس)',1800),('GRAIN','غلات (هر واحد)',40) ON CONFLICT(symbol) DO NOTHING;
- INSERT INTO game_stocks(symbol,name,price) VALUES('IND','صنایع و فولاد',120),('RAIL','راه‌آهن و زیرساخت',85),('OIL','نفت و انرژی',150),('BANK','بانکداری و مالی',100),('FOOD','کشاورزی و غلات',65),('SHIP','کشتیرانی و تجارت',95) ON CONFLICT(symbol) DO NOTHING;
- CREATE TABLE IF NOT EXISTS game_strategic_bases(id BIGSERIAL PRIMARY KEY,owner_id BIGINT NOT NULL,host_country_id TEXT NOT NULL,base_name TEXT NOT NULL DEFAULT 'پایگاه عملیاتی',created_at TIMESTAMPTZ DEFAULT NOW());
- CREATE TABLE IF NOT EXISTS game_naval_deployments(id BIGSERIAL PRIMARY KEY,owner_id BIGINT NOT NULL,zone TEXT NOT NULL,units INT NOT NULL DEFAULT 1,status TEXT NOT NULL DEFAULT 'active',created_at TIMESTAMPTZ DEFAULT NOW());
- CREATE TABLE IF NOT EXISTS game_maneuver_stats(owner_id BIGINT PRIMARY KEY,readiness INT NOT NULL DEFAULT 97,last_maneuver_date DATE,maneuvers_today INT NOT NULL DEFAULT 0);
- CREATE TABLE IF NOT EXISTS game_maneuver_history(id BIGSERIAL PRIMARY KEY,owner_id BIGINT NOT NULL,country_id TEXT,created_at TIMESTAMPTZ DEFAULT NOW());
- CREATE TABLE IF NOT EXISTS game_base_requests(id BIGSERIAL PRIMARY KEY,owner_id BIGINT NOT NULL,host_id BIGINT,host_country_id TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending',created_at TIMESTAMPTZ DEFAULT NOW());`);
+  await runMigrations(pool);
+
   const uninitializedOil = (
     await pool.query(
       "SELECT telegram_id,country_id FROM game_players WHERE approved=TRUE AND oil_initialized=FALSE",
