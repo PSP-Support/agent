@@ -24,3 +24,5 @@ jobs:
       - run: node --check data/weapons.js
       - run: node --check settlement.js
       - run: node --check economy.js
+      - run: node --check scripts/simulate.js
+      - run: node scripts/simulate.js
