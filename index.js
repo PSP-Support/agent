@@ -192,13 +192,12 @@ async function edit(ctx,text,markup=main()){try{await ctx.editMessageText(text,{
 const forceBases={germany:[48,12,24,4],britain:[35,18,18,5],france:[45,12,8,4],russia:[65,14,3,2],austria:[35,8,4,2],italy:[25,10,6,2],ottoman:[20,5,1,1],usa:[12,8,6,1],japan:[18,12,6,2],belgium:[6,2,1,1],serbia:[6,0,0,0],bulgaria:[6,0,0,0],romania:[8,1,0,0],persia:[4,0,0,0],netherlands:[5,4,1,1],portugal:[3,3,0,0],greece:[5,3,0,0],sweden:[5,4,0,0],norway:[2,3,0,0],denmark:[2,3,0,0],china:[15,4,0,0]};
 function historicForces(id,population=0){if(forceBases[id])return forceBases[id];const pop=Number(population)||1000000;return [Math.max(1,Math.min(18,Math.round(pop/2500000))),0,0,0];}
 async function ready(ctx){const p=await get(ctx.from.id);if(!p?.approved){await say(ctx,"🪪 برای آغاز بازی از /start استفاده کنید.");return null;}if(!p.forces_initialized){const f=historicForces(p.country_id,p.population);await pool.query("UPDATE game_players SET army=$2,navy=$3,air_force=$4,air_defense=$5,forces_initialized=TRUE WHERE telegram_id=$1",[ctx.from.id,...f]);return get(ctx.from.id);}return p;}
-function calc(p){const taxable=Math.max(10000,Number(p.population)/100),tax=taxable*p.tax_rate/100,production=p.industry*1200+p.agriculture*800,tariff=p.tariff*500,wages=p.population/1000*p.wage,army=p.army*900+p.navy*1400+Number(p.air_force||0)*450+Number(p.air_defense||0)*300,services=Number(p.service_budget),roads=p.infrastructure*250,upkeep=p.industry*300+p.agriculture*150,oilProduction=Math.min(Number(p.oil_reserves||0),Math.round(Number(p.oil_field_level||0)*(1+Number(p.technology||0)/250))),oilConsumption=Math.max(10,Number(p.industry||0)*4+Number(p.army||0)*2+Number(p.navy||0)*10+Number(p.air_force||0)*3);return {income:tax+production+tariff,expense:wages+army+services+roads+upkeep,tax,production,tariff,wages,army,services,roads,upkeep,oilProduction,oilConsumption,oilNet:oilProduction-oilConsumption};}
+function calc(p){const taxable=Math.max(10000,Number(p.population)/100),tax=taxable*p.tax_rate/100,production=p.industry*1200+p.agriculture*800,tariff=p.tariff*500,oilProduction=Math.min(Number(p.oil_reserves||0),Math.round(Number(p.oil_field_level||0)*(1+Number(p.technology||0)/250))),oilConsumption=Math.max(10,Number(p.industry||0)*4+Number(p.army||0)*2+Number(p.navy||0)*10+Number(p.air_force||0)*3);return {income:tax+production+tariff,expense:0,tax,production,tariff,wages:0,army:0,services:0,roads:0,upkeep:0,oilProduction,oilConsumption,oilNet:oilProduction-oilConsumption};}
 async function status(p){
- const c=country(p.country_id),d=calc(p),net=d.income-d.expense;
+ const c=country(p.country_id),d=calc(p);
  const owned=(await pool.query("SELECT building_key,level FROM game_buildings WHERE telegram_id=$1",[p.telegram_id])).rows;
  const levels=owned.reduce((a,x)=>(a[x.building_key]=Number(x.level),a),{}),lv=k=>Number(levels[k]||0);
  const buildingIncome=lv("gold_mine")*9000+lv("iron_mine")*6500+lv("coal_mine")*5000+lv("oil_refinery")*8500+lv("housing")*1800+lv("admin")*2500+lv("commercial")*4000+lv("hotel")*6000+lv("highway")*1200+lv("railway")*2500+lv("station")*2000+lv("airport")*12000+lv("port")*9000+lv("wheat_farm")*1800+lv("plateau_farm")*1200+lv("grain_silo")*700+lv("coal_power")*4000+lv("hydro_power")*5000+lv("oil_power")*3800+lv("arms_factory")*6500;
- const buildingUpkeep=lv("gold_mine")*250+lv("iron_mine")*250+lv("coal_mine")*250+lv("oil_refinery")*500+lv("commercial")*300+lv("hotel")*500+lv("airport")*1000+lv("port")*800+lv("coal_power")*700+lv("hydro_power")*500+lv("oil_power")*650+lv("arms_factory")*600;
  const weapons=(await pool.query("SELECT weapon_key,quantity,damaged FROM game_weapon_stock WHERE telegram_id=$1 AND quantity>0",[p.telegram_id])).rows;
  const oilStock=Number(p.oil_stock||0),oilNeed=Math.max(1,d.oilConsumption),oilDays=Math.floor(oilStock/oilNeed),foodDays=Math.floor(Number(p.grain||0)/Math.max(1,Number(p.population||0)/1000));
  const buildingLines=owned.length?owned.map(x=>"🏗️ "+(storeItems().find(i=>i[0]===x.building_key)?.[1]||x.building_key)+" × "+fmt(x.level)).join("\\n"):"🏗️ هنوز ساختمانی ساخته نشده است.";
@@ -216,13 +215,6 @@ ${statusMark} <b>ثبات:</b> ${fmt(p.stability)}٪ | 👑 مشروعیت: ${fm
    ├ 🧾 مالیات: ${money(d.tax)}
    ├ 🏭 تولید و تعرفه: ${money(d.production+d.tariff)}
    └ 🏗️ درآمد ساختمان‌ها: ${money(buildingIncome)}
-📉 هزینه روزانه پایه: ${money(d.expense)}
-   ├ 👥 حقوق: ${money(d.wages)}
-   ├ 🪖 نگهداری نیروها: ${money(d.army)}
-   ├ 🏛️ خدمات: ${money(d.services)}
-   └ 🛤️ زیرساخت و صنعت: ${money(d.roads+d.upkeep)}
-🏦 نگهداری ساختمان‌ها: ${money(buildingUpkeep)}
-${net+buildingIncome-buildingUpkeep>=0?"🟢":"🔴"} تراز روزانه تخمینی: ${money(net+buildingIncome-buildingUpkeep)}
 🧾 مالیات: ${p.tax_rate}٪ | تعرفه: ${p.tariff}٪
 
 <b>🏭 تولید و ذخایر کشور</b>
@@ -242,7 +234,7 @@ ${buildingLines}
 <b>👥 جمعیت و خدمات عمومی</b>
 👥 جمعیت: ${fmt(p.population)}
 📚 آموزش: ${fmt(p.education)} | 🏥 سلامت: ${fmt(p.health)}
-💵 حقوق پایه: ${money(p.wage)} | 🏛️ بودجه خدمات: ${money(p.service_budget)}
+
 
 <b>🛡️ نیروهای مسلح</b>
 🪖 نیروی زمینی: ${fmt(p.army)} واحد
@@ -255,7 +247,7 @@ ${buildingLines}
 ${weaponLines}
 
 <b>⚠️ گزارش مدیریتی</b>
-${Number(p.treasury)<0?"🔴 خزانه منفی است؛ پرداخت‌ها را بررسی کنید.":"💵 خزانه در وضعیت غیرمنفی قرار دارد."}
+💵 درآمد دوره‌ای به خزانه افزوده می‌شود و برای خرید منابع در بازار قابل استفاده است.
 ${oilStock<oilNeed*3?"🛢️ ذخیره نفت کمتر از سه روز است؛ واردات یا تولید را افزایش دهید.":"🟢 ذخیره نفت برای بیش از سه روز مصرف کافی است."}
 ${p.stability<40?"⚠️ ثبات پایین است؛ احتمال ناآرامی را در نظر بگیرید.":"🟢 ثبات داخلی در محدوده قابل قبول است."}`;
 }const continentNames={europe:"🌍 اروپا",asia:"🌏 آسیا",africa:"🌍 آفریقا",north_america:"🌎 آمریکای شمالی",south_america:"🌎 آمریکای جنوبی",oceania:"🌏 اقیانوسیه"};
@@ -483,7 +475,8 @@ async function settleOne(id){
   await client.query("COMMIT");return {ticks,net,balance,buildingIncome:Math.round(dailyBuildingIncome*scale),grainNeed,grainUsed,coalNeed,coalUsed,ironNeed,ironUsed,clothNeed,clothUsed,electricityNeed,electricityUsed,oilNeed,oilConsumed,shortages};
  }catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
 }
-function settlementReport(result,p){const d=calc(p),scale=result.ticks/8,c=country(p.country_id),line=(label,value)=>"• "+label+": "+money(value*scale);return "<b>📜 واریز درآمد و تسویه‌ی دوره‌ای — "+(c?.[1]||p.country_id)+"</b>\n━━━━━━━━━━━━━━━━━━\n\n<b>💵 درآمد این نوبت</b>\n"+line("مالیات وصول‌شده",d.tax)+"\n"+line("درآمد صنعت و کشاورزی",d.production)+"\n"+line("درآمد تعرفه‌ها",d.tariff)+"\n• درآمد سازه‌ها: "+money(result.buildingIncome)+"\n\n<b>💰 خزانه</b>\n• واریز واقعی این نوبت: "+money(result.net)+"\n• موجودی خزانه: "+money(result.balance)+"\n\n<b>📦 تولید و مصرف منابع</b>\n• غله: مصرف "+fmtAsset(result.grainUsed)+" / "+fmtAsset(result.grainNeed)+" | موجودی "+fmtAsset(p.grain)+"\n• زغال: مصرف "+fmtAsset(result.coalUsed)+" / "+fmtAsset(result.coalNeed)+" | موجودی "+fmtAsset(p.coal)+"\n• آهن: مصرف "+fmtAsset(result.ironUsed)+" / "+fmtAsset(result.ironNeed)+" | موجودی "+fmtAsset(p.iron)+"\n• پارچه: مصرف "+fmtAsset(result.clothUsed)+" / "+fmtAsset(result.clothNeed)+" | موجودی "+fmtAsset(p.cloth)+"\n• برق: مصرف "+fmtAsset(result.electricityUsed)+" / "+fmtAsset(result.electricityNeed)+" | موجودی "+fmtAsset(p.electricity_stock)+"\n• نفت (بشکه): مصرف "+fmtAsset(result.oilConsumed)+" / "+fmtAsset(result.oilNeed)+" | موجودی "+fmtAsset(p.oil_stock)+"\n\n<b>🏛️ شاخص‌های اداره کشور</b>\n• برآورد حقوق و دستمزد: "+money(d.wages*scale)+"\n• برآورد نگهداری نیروهای مسلح: "+money(d.army*scale)+"\n• بودجه خدمات و زیرساخت: "+money((d.services+d.roads+d.upkeep)*scale)+"\n\n"+(result.shortages?"⚠️ کمبود منابع ثبت شد؛ ثبات کشور کاهش یافت.":"✅ منابع موردنیاز تأمین شد.")+"\nℹ️ هزینه‌های اداره در این گزارش برآوردی‌اند؛ در این مدل فقط درآمد به خزانه واریز می‌شود و کمبودها در منابع اعمال می‌شوند.";}
+function settlementReport(result,p){const d=calc(p),scale=result.ticks/8,c=country(p.country_id),line=(label,value)=>"• "+label+": "+money(value*scale);return "<b>📜 واریز درآمد و تسویه‌ی دوره‌ای — "+(c?.[1]||p.country_id)+"</b>\n━━━━━━━━━━━━━━━━━━\n\n<b>💵 درآمد این نوبت</b>\n"+line("مالیات وصول‌شده",d.tax)+"\n"+line("درآمد صنعت و کشاورزی",d.production)+"\n"+line("درآمد تعرفه‌ها",d.tariff)+"\n• درآمد سازه‌ها: "+money(result.buildingIncome)+"\n\n<b>💰 خزانه</b>\n• واریز واقعی این نوبت: "+money(result.net)+"\n• موجودی خزانه: "+money(result.balance)+"\n\n<b>📦 تولید و مصرف منابع</b>\n• غله: مصرف "+fmtAsset(result.grainUsed)+" / "+fmtAsset(result.grainNeed)+" | موجودی "+fmtAsset(p.grain)+"\n• زغال: مصرف "+fmtAsset(result.coalUsed)+" / "+fmtAsset(result.coalNeed)+" | موجودی "+fmtAsset(p.coal)+"\n• آهن: مصرف "+fmtAsset(result.ironUsed)+" / "+fmtAsset(result.ironNeed)+" | موجودی "+fmtAsset(p.iron)+"\n• پارچه: مصرف "+fmtAsset(result.clothUsed)+" / "+fmtAsset(result.clothNeed)+" | موجودی "+fmtAsset(p.cloth)+"\n• برق: مصرف "+fmtAsset(result.electricityUsed)+" / "+fmtAsset(result.electricityNeed)+" | موجودی "+fmtAsset(p.electricity_stock)+"\n• نفت (بشکه): مصرف "+fmtAsset(result.oilConsumed)+" / "+fmtAsset(result.oilNeed)+" | موجودی "+fmtAsset(p.oil_stock)+"\n\n"+(result.shortages?"⚠️ کمبود منابع ثبت شد؛ ثبات کشور کاهش یافت.":"✅ منابع موردنیاز تأمین شد.")+"\nℹ️ درآمد به خزانه افزوده می‌شود؛ تسویه‌ی دوره‌ای هزینه‌ی نقدی از خزانه کم نمی‌کند.";}
+
 bot.callbackQuery(/^turn$/,async ctx=>{
  await ctx.answerCallbackQuery();const p=await ready(ctx);if(!p)return;
  const result=await settleOne(ctx.from.id);
