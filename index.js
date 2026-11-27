@@ -2877,25 +2877,24 @@ bot.callbackQuery(/^build:(industry|agriculture|infrastructure)$/, async (ctx) =
   const p = await ready(ctx);
   if (!p) return;
   const f = ctx.match[1],
-    cost = f === "industry" ? 5000 : f === "agriculture" ? 3500 : 6000,
-    need = f === "industry" ? { iron: 100, coal: 150 } : f === "agriculture" ? {} : { iron: 50 };
-  if (Number(p.treasury) < cost || Object.entries(need).some(([r, q]) => p[r] < q)) {
-    await say(ctx, "خزانه یا مواد اولیه کافی نیست.", nation());
+    need = developmentResourceCosts[f],
+    shortage = resourceShortages(p, need);
+  if (shortage.length) {
+    await say(ctx, "مواد اولیه برای توسعه کافی نیست: " + resourceCostDescription(Object.fromEntries(shortage)) + ".", nation());
     return;
   }
   const changes = [
     f + "=" + f + "+1",
-    "treasury=treasury-" + cost,
-    ...Object.entries(need).map(([r, q]) => r + "=" + r + "-" + q),
+    ...Object.entries(need).map(([r, q]) => r + "=GREATEST(0," + r + "-" + q + ")"),
   ];
   await pool.query("UPDATE game_players SET " + changes.join(",") + " WHERE telegram_id=$1", [
     ctx.from.id,
   ]);
   await pool.query(
     "INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,$3,$4)",
-    [ctx.from.id, "پروژه‌ی توسعه‌ی " + f, -cost, p.treasury - cost],
+    [ctx.from.id, "پروژه‌ی توسعه‌ی " + f + " (هزینه منابع)", 0, p.treasury],
   );
-  await say(ctx, "پروژه تکمیل و هزینه در دفتر حساب ثبت شد.", nation());
+  await say(ctx, "پروژه تکمیل شد؛ منابع مصرف‌شده: " + resourceCostDescription(need) + ". خزانه تغییر نکرد.", nation());
 });
 bot.callbackQuery(/^mil:(army|navy|air|defense)$/, async (ctx) => {
   await ctx.answerCallbackQuery();
@@ -2903,33 +2902,38 @@ bot.callbackQuery(/^mil:(army|navy|air|defense)$/, async (ctx) => {
   if (!p) return;
   const type = ctx.match[1],
     cfg = {
-      army: ["army", 28000, "🪖 یک واحد زمینی"],
-      navy: ["navy", 180000, "⚓ یک شناور"],
-      air: ["air_force", 14000, "✈️ یک هواپیما"],
-      defense: ["air_defense", 9000, "🛡️ یک قبضه پدافند"],
+      army: ["army", "🪖 یک واحد زمینی"],
+      navy: ["navy", "⚓ یک شناور"],
+      air: ["air_force", "✈️ یک هواپیما"],
+      defense: ["air_defense", "🛡️ یک قبضه پدافند"],
     }[type],
     field = cfg[0],
-    cost = cfg[1];
-  if (Number(p.treasury) < cost) {
-    await say(ctx, "💰 خزانه برای این تجهیز کافی نیست.", nation());
+    costs = militaryUnitResourceCosts[type],
+    shortage = resourceShortages(p, costs);
+  if (shortage.length) {
+    await say(ctx, "مواد اولیه برای تجهیز نیرو کافی نیست: " + resourceCostDescription(Object.fromEntries(shortage)) + ".", nation());
     return;
   }
+  const assignments = [
+    field + "=" + field + "+1",
+    ...resourceCostAssignments(costs),
+  ];
   await pool.query(
-    `UPDATE game_players SET ${field}=${field}+1,treasury=treasury-$2 WHERE telegram_id=$1`,
-    [ctx.from.id, cost],
+    "UPDATE game_players SET " + assignments.join(",") + " WHERE telegram_id=$1",
+    [ctx.from.id, ...resourceCostValues(costs)],
   );
   await pool.query(
     "INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,$3,$4)",
-    [ctx.from.id, "تجهیز نیرو: " + cfg[2], -cost, Number(p.treasury) - cost],
+    [ctx.from.id, "تجهیز نیرو: " + cfg[1] + " (هزینه منابع)", 0, Number(p.treasury)],
   );
   await say(
     ctx,
     "✅ افزوده شد: " +
-      cfg[2] +
-      "\n💵 هزینه: " +
-      money(cost) +
-      "\n💰 خزانه: " +
-      money(Number(p.treasury) - cost),
+      cfg[1] +
+      "\n🧱 منابع مصرف‌شده: " +
+      resourceCostDescription(costs) +
+      "\n💰 خزانه تغییر نکرد: " +
+      money(Number(p.treasury)),
     nation(),
   );
 });
