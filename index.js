@@ -5287,17 +5287,19 @@ async function finalizeForeignBase(ownerId, hostCountryId) {
   try {
     await client.query("BEGIN");
     const me = (
-      await client.query("SELECT treasury,iron FROM game_players WHERE telegram_id=$1 FOR UPDATE", [
+      await client.query("SELECT treasury,iron,coal FROM game_players WHERE telegram_id=$1 FOR UPDATE", [
         ownerId,
       ])
     ).rows[0];
-    if (!me || Number(me.treasury) < 75000 || Number(me.iron) < 300) {
+    const costs = strategicResourceCosts.foreignBase,
+      shortage = resourceShortages(me, costs);
+    if (!me || shortage.length) {
       await client.query("ROLLBACK");
       return false;
     }
     await client.query(
-      "UPDATE game_players SET treasury=treasury-75000,iron=iron-300 WHERE telegram_id=$1",
-      [ownerId],
+      "UPDATE game_players SET " + resourceCostAssignments(costs).join(",") + " WHERE telegram_id=$1",
+      [ownerId, ...resourceCostValues(costs)],
     );
     await client.query(
       "INSERT INTO game_strategic_bases(owner_id,host_country_id,base_name) VALUES($1,$2,$3)",
@@ -5308,11 +5310,11 @@ async function finalizeForeignBase(ownerId, hostCountryId) {
       [ownerId],
     );
     await client.query(
-      "INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,-75000,$3)",
+      "INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,0,$3)",
       [
         ownerId,
-        "ساخت پایگاه خارجی در " + (country(hostCountryId)?.[1] || hostCountryId),
-        Number(me.treasury) - 75000,
+        "ساخت پایگاه خارجی (هزینه منابع) در " + (country(hostCountryId)?.[1] || hostCountryId),
+        Number(me.treasury),
       ],
     );
     await client.query("COMMIT");
@@ -5677,20 +5679,19 @@ bot.callbackQuery(
         await say(ctx, "کشور مقصد معتبر نیست یا اتحاد فعال ندارید.");
         return;
       }
-      const cost = ally ? 50000 : 75000,
-        iron = ally ? 250 : 300,
-        me = (
-          await pool.query("SELECT treasury,iron FROM game_players WHERE telegram_id=$1", [
-            ctx.from.id,
-          ])
-        ).rows[0];
-      if (!me || Number(me.treasury) < cost || Number(me.iron) < iron) {
-        await say(ctx, "منابع کافی نیست؛ نیاز: " + money(cost) + " و " + fmt(iron) + " آهن.");
+      const costs = ally ? strategicResourceCosts.alliedBase : strategicResourceCosts.foreignBase,
+        me = await pool.query(
+          "SELECT treasury,iron,coal FROM game_players WHERE telegram_id=$1",
+          [ctx.from.id],
+        ).then((result) => result.rows[0]),
+        shortage = resourceShortages(me, costs);
+      if (!me || shortage.length) {
+        await say(ctx, "مواد اولیه برای پایگاه کافی نیست: " + resourceCostDescription(Object.fromEntries(shortage)) + ".");
         return;
       }
       await pool.query(
-        "UPDATE game_players SET treasury=treasury-$2,iron=iron-$3 WHERE telegram_id=$1",
-        [ctx.from.id, cost, iron],
+        "UPDATE game_players SET " + resourceCostAssignments(costs).join(",") + " WHERE telegram_id=$1",
+        [ctx.from.id, ...resourceCostValues(costs)],
       );
       await pool.query(
         "INSERT INTO game_strategic_bases(owner_id,host_country_id,base_name) VALUES($1,$2,$3)",
@@ -5701,8 +5702,8 @@ bot.callbackQuery(
         [ctx.from.id],
       );
       await pool.query(
-        "INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,$3,$4)",
-        [ctx.from.id, "ساخت پایگاه عملیاتی", -cost, Number(me.treasury) - cost],
+        "INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,0,$3)",
+        [ctx.from.id, "ساخت پایگاه عملیاتی (هزینه منابع)", Number(me.treasury)],
       );
       return say(
         ctx,
@@ -5736,23 +5737,22 @@ bot.callbackQuery(
       if (
         !me ||
         Number(me.navy) - active < 1 ||
-        Number(me.treasury) < 15000 ||
-        Number(me.fuel_stock) < 200
+        Number(me.fuel_stock) < strategicResourceCosts.navalPatrol.fuel_stock
       ) {
-        await say(ctx, "نیاز: یک واحد ناوگان، $15,000 و 200 واحد سوخت.");
+        await say(ctx, "نیاز: یک واحد ناوگان و " + resourceCostDescription(strategicResourceCosts.navalPatrol) + ".");
         return;
       }
       await pool.query(
-        "UPDATE game_players SET treasury=treasury-15000,fuel_stock=fuel_stock-200 WHERE telegram_id=$1",
-        [ctx.from.id],
+        "UPDATE game_players SET fuel_stock=GREATEST(0,fuel_stock-$2) WHERE telegram_id=$1",
+        [ctx.from.id, strategicResourceCosts.navalPatrol.fuel_stock],
       );
       await pool.query("INSERT INTO game_naval_deployments(owner_id,zone,units) VALUES($1,$2,1)", [
         ctx.from.id,
         zone,
       ]);
       await pool.query(
-        "INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,-15000,$3)",
-        [ctx.from.id, "گشت ناوگان در " + zone, Number(me.treasury) - 15000],
+        "INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,0,$3)",
+        [ctx.from.id, "گشت ناوگان در " + zone + " (هزینه منابع)", Number(me.treasury)],
       );
       return say(
         ctx,
