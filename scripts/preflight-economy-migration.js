@@ -2,16 +2,12 @@ import pg from "pg";
 
 const { Pool } = pg;
 const appEnv = process.env.APP_ENV || "production";
-const databaseUrl =
-  appEnv === "test" ? process.env.TEST_DATABASE_URL : process.env.DATABASE_URL;
+const databaseUrl = appEnv === "test" ? process.env.TEST_DATABASE_URL : process.env.DATABASE_URL;
 if (!databaseUrl) {
-  throw new Error(
-    appEnv === "test" ? "TEST_DATABASE_URL is required" : "DATABASE_URL is required",
-  );
+  throw new Error(appEnv === "test" ? "TEST_DATABASE_URL is required" : "DATABASE_URL is required");
 }
 const ssl =
-  /railway|rlwy\.net/i.test(new URL(databaseUrl).hostname) ||
-  process.env.PGSSLMODE === "require"
+  /railway|rlwy\.net/i.test(new URL(databaseUrl).hostname) || process.env.PGSSLMODE === "require"
     ? { rejectUnauthorized: false }
     : undefined;
 const pool = new Pool({ connectionString: databaseUrl, ssl });
@@ -33,10 +29,7 @@ try {
   console.log("Economy ×1000 migration preflight (read-only)");
   for (const [table, columns] of checks) {
     const select = columns
-      .map(
-        (column) =>
-          "MAX(ABS(" + column + "::numeric)) AS " + column + "_max",
-      )
+      .map((column) => "MAX(ABS(" + column + "::numeric)) AS " + column + "_max")
       .join(", ");
     const result = await pool.query("SELECT COUNT(*) AS rows, " + select + " FROM " + table);
     const row = result.rows[0];
@@ -59,7 +52,8 @@ try {
   const cashRow = cashContracts.rows[0];
   for (const column of ["offer_cash_max", "want_cash_max"]) {
     const max = cashRow[column] == null ? 0n : BigInt(cashRow[column]);
-    if (max > safeMax) throw new Error("game_trade_contracts." + column + " exceeds BIGINT scale limit");
+    if (max > safeMax)
+      throw new Error("game_trade_contracts." + column + " exceeds BIGINT scale limit");
     cashRow[column] = max.toString();
   }
   console.log("cash contract quantities:", JSON.stringify(cashRow));

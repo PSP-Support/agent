@@ -63,7 +63,8 @@ bot.use(async (ctx, next) => {
   }
   return next();
 });
-const MONEY_SCALE = 1, ASSET_DISPLAY_SCALE = 1000;
+const MONEY_SCALE = 1,
+  ASSET_DISPLAY_SCALE = 1000;
 const country = (id) => countries.find((c) => c[0] === id),
   money = (n) =>
     new Intl.NumberFormat("en-US", {
@@ -3240,7 +3241,11 @@ bot.callbackQuery(/^tc:route:(sea|land|air)$/, async (ctx) => {
   const st = pendingTradeInput.get(ctx.from.id);
   if (!st?.partner || !st.want_quantity) return;
   st.transport = ctx.match[1];
-  st.transit_cost = Math.round((st.want_resource === "cash" ? st.want_quantity / 1000 : st.want_quantity) * { sea: 1, land: 2, air: 4 }[st.transport] * 1000);
+  st.transit_cost = Math.round(
+    (st.want_resource === "cash" ? st.want_quantity / 1000 : st.want_quantity) *
+      { sea: 1, land: 2, air: 4 }[st.transport] *
+      1000,
+  );
   st.step = "contract_payer";
   pendingTradeInput.set(ctx.from.id, st);
   await edit(

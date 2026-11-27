@@ -69,7 +69,7 @@ const storeCatsBase = [
   },
 ];
 
-c
+c;
 export const storeCats = storeCatsBase.map((category) => ({
   ...category,
   items: category.items.map(([id, name, referencePrice, materials, effect]) => [

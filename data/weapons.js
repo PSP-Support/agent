@@ -148,7 +148,7 @@ const countryWeaponsBase = {
   ],
 };
 
-e
+e;
 export const countryWeapons = Object.fromEntries(
   Object.entries(countryWeaponsBase).map(([countryId, items]) => [
     countryId,

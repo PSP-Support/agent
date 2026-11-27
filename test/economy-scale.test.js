@@ -12,7 +12,9 @@ test("country starting treasury, building prices, and building income use ×1000
   assert.ok(germany);
   assert.ok(Number(germany[5]) >= 1000000000);
   assert.equal(Number(germany[5]) % 1000, 0);
-  const commercial = storeCats.flatMap((category) => category.items).find((item) => item[0] === "commercial");
+  const commercial = storeCats
+    .flatMap((category) => category.items)
+    .find((item) => item[0] === "commercial");
   assert.equal(commercial[2], 38000000);
   assert.equal(storeIncomeDaily.commercial, 4000000);
 });
@@ -43,8 +45,14 @@ test("economy income calculations return actual scaled dollars", () => {
 test("economy migration is numbered and down migration stays outside auto-run directory", async () => {
   const rootFiles = await readdir(new URL("../migrations/", import.meta.url));
   assert.ok(rootFiles.includes("002_economy_scale_1000.sql"));
-  const sql = await readFile(new URL("../migrations/002_economy_scale_1000.sql", import.meta.url), "utf8");
-  const down = await readFile(new URL("../migrations/down/002_economy_scale_1000.sql", import.meta.url), "utf8");
+  const sql = await readFile(
+    new URL("../migrations/002_economy_scale_1000.sql", import.meta.url),
+    "utf8",
+  );
+  const down = await readFile(
+    new URL("../migrations/down/002_economy_scale_1000.sql", import.meta.url),
+    "utf8",
+  );
   assert.match(sql, /UPDATE game_players/);
   assert.match(sql, /COALESCE\(treasury,100000\)::numeric\*1000/);
   assert.match(sql, /ALTER COLUMN treasury SET DEFAULT 100000000/);
@@ -52,5 +60,8 @@ test("economy migration is numbered and down migration stays outside auto-run di
 });
 
 test("migration preflight script passes Node syntax validation", () => {
-  execFileSync(process.execPath, ["--check", new URL("../scripts/preflight-economy-migration.js", import.meta.url).pathname]);
+  execFileSync(process.execPath, [
+    "--check",
+    new URL("../scripts/preflight-economy-migration.js", import.meta.url).pathname,
+  ]);
 });

@@ -30,4 +30,3 @@ export function calcEconomy(p) {
     oilNet: oilProduction - oilConsumption,
   };
 }
-
