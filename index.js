@@ -193,57 +193,65 @@ async function status(p){
  const buildingIncome=lv("gold_mine")*9000+lv("iron_mine")*6500+lv("coal_mine")*5000+lv("oil_refinery")*8500+lv("housing")*1800+lv("admin")*2500+lv("commercial")*4000+lv("hotel")*6000+lv("highway")*1200+lv("railway")*2500+lv("station")*2000+lv("airport")*12000+lv("port")*9000+lv("wheat_farm")*1800+lv("plateau_farm")*1200+lv("grain_silo")*700+lv("coal_power")*4000+lv("hydro_power")*5000+lv("oil_power")*3800+lv("arms_factory")*6500;
  const buildingUpkeep=lv("gold_mine")*250+lv("iron_mine")*250+lv("coal_mine")*250+lv("oil_refinery")*500+lv("commercial")*300+lv("hotel")*500+lv("airport")*1000+lv("port")*800+lv("coal_power")*700+lv("hydro_power")*500+lv("oil_power")*650+lv("arms_factory")*600;
  const weapons=(await pool.query("SELECT weapon_key,quantity,damaged FROM game_weapon_stock WHERE telegram_id=$1 AND quantity>0",[p.telegram_id])).rows;
- const percent=(n,max)=>Math.max(0,Math.min(100,Math.round(Number(n||0)/Math.max(1,Number(max||1))*100)));
- const mood=p.stability>=75?"آرام و باثبات":p.stability>=50?"قابل کنترل":p.stability>=30?"پر تنش":"در آستانه‌ی بحران";
- const budget="درآمد قابل وصول";
- const oilStock=Number(p.oil_stock||0),oilNeed=Math.max(1,d.oilConsumption);
- const oilDays=Math.floor(oilStock/oilNeed);
- const foodDays=Math.floor(Number(p.grain||0)/Math.max(1,Number(p.population||0)/1000));
- return `<b>📊 گزارش جامع کشور — ${c?.[1]}</b>
-👑 فرمانروا: ${p.ruler}
-🏛 حکومت: ${p.government||"نامشخص"}
+ const oilStock=Number(p.oil_stock||0),oilNeed=Math.max(1,d.oilConsumption),oilDays=Math.floor(oilStock/oilNeed),foodDays=Math.floor(Number(p.grain||0)/Math.max(1,Number(p.population||0)/1000));
+ const buildingLines=owned.length?owned.map(x=>"🏗️ "+(storeItems().find(i=>i[0]===x.building_key)?.[1]||x.building_key)+" × "+fmt(x.level)).join("\\n"):"🏗️ هنوز ساختمانی ساخته نشده است.";
+ const weaponLines=weapons.length?weapons.map(w=>{const found=getCountryWeapons(p.country_id).find(x=>x[0]===w.weapon_key);return "🛡️ "+(found?.[1]||w.weapon_key)+" × "+fmt(w.quantity)+" | سالم "+fmt(Number(w.quantity)-Number(w.damaged||0))+" | آسیب‌دیده "+fmt(w.damaged||0)}).join("\\n"):"🛡️ انبار تسلیحات خالی است.";
+ const statusMark=p.stability>=75?"🟢 باثبات":p.stability>=50?"🟡 قابل کنترل":p.stability>=30?"🟠 پرتنش":"🔴 بحرانی";
+ return `<b>📊 گزارش ملی — ${c?.[1]||"کشور"}</b>
+━━━━━━━━━━━━━━━━━━
+🏳️ <b>کشور:</b> ${c?.[1]||"نامشخص"} | 👑 <b>فرمانروا:</b> ${p.ruler||p.display_name}
+🏛️ <b>حکومت:</b> ${p.government||"نامشخص"}
+${statusMark} <b>ثبات:</b> ${fmt(p.stability)}٪ | 👑 مشروعیت: ${fmt(p.legitimacy)}٪
 
-<b>💰 خزانه و بودجه</b>
-خزانه: ${money(p.treasury)}
-📈 درآمد نقدی روزانه: ${money(d.income+buildingIncome)}
-  ├ مالیات: ${money(d.tax)}
-  ├ تولید و تجارت: ${money(d.production+d.tariff)}
-  └ درآمد سازه‌ها: ${money(buildingIncome)}
-<b>👥 مردم و ثبات</b>
-جمعیت: ${fmt(p.population)}
-🏛 ثبات: ${p.stability}٪ — ${mood}
-👑 مشروعیت حکومت: ${p.legitimacy}٪
-📚 آموزش: ${p.education} | 🏥 بهداشت: ${p.health}
-💵 حقوق پایه: ${money(p.wage)}
+<b>💰 اقتصاد و خزانه</b>
+💵 موجودی خزانه: ${money(p.treasury)}
+📈 درآمد روزانه: ${money(d.income+buildingIncome)}
+   ├ 🧾 مالیات: ${money(d.tax)}
+   ├ 🏭 تولید و تعرفه: ${money(d.production+d.tariff)}
+   └ 🏗️ درآمد ساختمان‌ها: ${money(buildingIncome)}
+📉 هزینه روزانه پایه: ${money(d.expense)}
+   ├ 👥 حقوق: ${money(d.wages)}
+   ├ 🪖 نگهداری نیروها: ${money(d.army)}
+   ├ 🏛️ خدمات: ${money(d.services)}
+   └ 🛤️ زیرساخت و صنعت: ${money(d.roads+d.upkeep)}
+🏦 نگهداری ساختمان‌ها: ${money(buildingUpkeep)}
+${net+buildingIncome-buildingUpkeep>=0?"🟢":"🔴"} تراز روزانه تخمینی: ${money(net+buildingIncome-buildingUpkeep)}
+🧾 مالیات: ${p.tax_rate}٪ | تعرفه: ${p.tariff}٪
 
-<b>🏭 تولید و منابع</b>
-صنعت: ${p.industry} | کشاورزی: ${p.agriculture}
-🌾 غله: ${fmt(p.grain)} (تقریباً ${fmt(foodDays)} روز ذخیره بر مبنای شاخص جمعیت)
-🪨 زغال‌سنگ: ${fmt(p.coal)} | ⛓ آهن: ${fmt(p.iron)} | 🧵 پارچه: ${fmt(p.cloth)}
-🪙 طلا: ${fmt(p.gold_stock||0)} | ⚡ برق: ${fmt(p.electricity_stock||0)} | ⛽ سوخت: ${fmt(p.fuel_stock||0)}
-🛢 نفت: ${fmt(oilStock)} واحد
-  ├ تولید روزانه: ${fmt(d.oilProduction)}
-  ├ مصرف روزانه: ${fmt(d.oilConsumption)}
-  └ ذخیره برای حدود ${fmt(oilDays)} روز مصرف
-🧠 فناوری: ${p.technology} | 🛤 زیرساخت: ${p.infrastructure}
+<b>🏭 تولید و ذخایر کشور</b>
+🏭 صنعت: ${fmt(p.industry)} | 🌾 کشاورزی: ${fmt(p.agriculture)}
+🌾 غله: ${fmt(p.grain)} — حدود ${fmt(foodDays)} روز مصرف
+🪨 زغال‌سنگ: ${fmt(p.coal)} | ⛓️ آهن: ${fmt(p.iron)} | 🧵 پارچه: ${fmt(p.cloth)}
+🪙 طلا: ${fmt(p.gold_stock||0)} | ⚡ برق: ${fmt(p.electricity_stock||0)}
+⛽ سوخت: ${fmt(p.fuel_stock||0)} | 🛢️ نفت: ${fmt(oilStock)}
+   ├ تولید نفت: ${fmt(d.oilProduction)} در روز
+   ├ مصرف نفت: ${fmt(d.oilConsumption)} در روز
+   └ ذخیره نفت: حدود ${fmt(oilDays)} روز
+🧠 فناوری: ${fmt(p.technology)} | 🛤️ زیرساخت: ${fmt(p.infrastructure)}
 
-<b>🏗️ دارایی‌های ساخته‌شده</b>
-${owned.length?owned.map(x=>(storeItems().find(i=>i[0]===x.building_key)?.[1]||x.building_key)+" × "+fmt(x.level)).join("\n"):"هنوز پروژه‌ای ساخته نشده است."}
-${weapons.length?"\n<b>انبار تسلیحات</b>\n"+weapons.map(w=>{const found=getCountryWeapons(p.country_id).find(x=>x[0]===w.weapon_key);return (found?.[1]||w.weapon_key)+" × "+fmt(w.quantity)+" | سالم: "+fmt(Number(w.quantity)-Number(w.damaged||0))+" | آسیب‌دیده: "+fmt(w.damaged||0)}).join("\n"):""}
+<b>🏗️ دارایی‌ها و ساختمان‌ها</b>
+${buildingLines}
+
+<b>👥 جمعیت و خدمات عمومی</b>
+👥 جمعیت: ${fmt(p.population)}
+📚 آموزش: ${fmt(p.education)} | 🏥 سلامت: ${fmt(p.health)}
+💵 حقوق پایه: ${money(p.wage)} | 🏛️ بودجه خدمات: ${money(p.service_budget)}
 
 <b>🛡️ نیروهای مسلح</b>
-🪖 نیروی زمینی: ${fmt(p.army)} واحد لشکر/تیپ
-✈️ نیروی هوایی: ${fmt(p.air_force||0)} گروه هوایی (مقیاس بازی)
-⚓ نیروی دریایی: ${fmt(p.navy)} واحد ناوگانی (مقیاس بازی)
-🛡️ پدافند زمینی: ${fmt(p.air_defense||0)} آتشبار
-🎖️ روحیه: ${p.morale}٪
+🪖 نیروی زمینی: ${fmt(p.army)} واحد
+✈️ نیروی هوایی: ${fmt(p.air_force||0)} گروه (مقیاس بازی)
+⚓ نیروی دریایی: ${fmt(p.navy)} واحد ناوگانی
+🛡️ پدافند: ${fmt(p.air_defense||0)} آتشبار
+🎖️ روحیه: ${fmt(p.morale)}٪
 
-<b>📌 هشدارهای مدیریتی</b>
-${"هزینه‌ها فقط از موجودی قابل پرداخت کسر می‌شوند و خزانه منفی نمی‌شود."}
-${oilStock<oilNeed*3?"⚠️ ذخیره‌ی نفت کمتر از سه روز است؛ واردات یا افزایش تولید را بررسی کنید.":"✅ ذخیره‌ی نفت فعلاً مناسب است."}
-${p.stability<40?"⚠️ ثبات پایین است؛ کشور در معرض ناآرامی قرار دارد.":""}`;
-}
-const continentNames={europe:"🌍 اروپا",asia:"🌏 آسیا",africa:"🌍 آفریقا",north_america:"🌎 آمریکای شمالی",south_america:"🌎 آمریکای جنوبی",oceania:"🌏 اقیانوسیه"};
+<b>📦 انبار تسلیحات</b>
+${weaponLines}
+
+<b>⚠️ گزارش مدیریتی</b>
+${Number(p.treasury)<0?"🔴 خزانه منفی است؛ پرداخت‌ها را بررسی کنید.":"💵 خزانه در وضعیت غیرمنفی قرار دارد."}
+${oilStock<oilNeed*3?"🛢️ ذخیره نفت کمتر از سه روز است؛ واردات یا تولید را افزایش دهید.":"🟢 ذخیره نفت برای بیش از سه روز مصرف کافی است."}
+${p.stability<40?"⚠️ ثبات پایین است؛ احتمال ناآرامی را در نظر بگیرید.":"🟢 ثبات داخلی در محدوده قابل قبول است."}`;
+}const continentNames={europe:"🌍 اروپا",asia:"🌏 آسیا",africa:"🌍 آفریقا",north_america:"🌎 آمریکای شمالی",south_america:"🌎 آمریکای جنوبی",oceania:"🌏 اقیانوسیه"};
 const continentSets={
 europe:"ottoman germany russia austria britain france italy serbia bulgaria romania belgium netherlands portugal greece montenegro albania denmark sweden norway switzerland luxembourg ireland finland poland ukraine croatia czech slovakia hungary ireland_home iceland malta cyprus monaco liechtenstein san_marino vatican",
 asia:"persia japan china siam afghanistan korea vietnam philippines indonesia india russia_caucasus azerbaijan georgia armenia nepal bhutan oman yemen qatar kuwait bahrain uae saudi mongolia manchuria taiwan burma malaya cambodia laos persian_gulf libya iraq syria lebanon palestine kurdistan",
