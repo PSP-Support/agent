@@ -5189,16 +5189,50 @@ async function settleOne(id) {
     const fuelMade = Math.round(refineryOil * 1.7);
     const population = Number(row.population || 0);
     const coldGeo = [
-      "russia", "canada", "sweden", "norway", "finland", "iceland", "denmark",
-      "switzerland", "mongolia", "ukraine", "poland", "czech", "hungary", "serbia", "romania",
+      "russia",
+      "canada",
+      "sweden",
+      "norway",
+      "finland",
+      "iceland",
+      "denmark",
+      "switzerland",
+      "mongolia",
+      "ukraine",
+      "poland",
+      "czech",
+      "hungary",
+      "serbia",
+      "romania",
     ];
     const aridGeo = [
-      "persia", "afghanistan", "saudi", "oman", "yemen", "egypt", "sudan", "libya",
-      "algeria", "morocco", "iraq",
+      "persia",
+      "afghanistan",
+      "saudi",
+      "oman",
+      "yemen",
+      "egypt",
+      "sudan",
+      "libya",
+      "algeria",
+      "morocco",
+      "iraq",
     ];
     const tropicalGeo = [
-      "india", "indonesia", "vietnam", "burma", "malaya", "nigeria", "ghana", "kenya",
-      "uganda", "congo", "brazil", "colombia", "venezuela", "philippines",
+      "india",
+      "indonesia",
+      "vietnam",
+      "burma",
+      "malaya",
+      "nigeria",
+      "ghana",
+      "kenya",
+      "uganda",
+      "congo",
+      "brazil",
+      "colombia",
+      "venezuela",
+      "philippines",
     ];
     const coldFactor = coldGeo.includes(row.country_id) ? 1.2 : 1;
     const foodFactor = aridGeo.includes(row.country_id)
@@ -5242,18 +5276,13 @@ async function settleOne(id) {
     const coalForPower = Math.min(coalPowerDemand, Math.max(0, coalUsed - coalBaseNeed));
     const coalPowerRatio = coalPowerDemand ? coalForPower / coalPowerDemand : 1;
     const electricityMade = Math.round(
-      (lv("coal_power") * 500 * coalPowerRatio +
-        lv("hydro_power") * 650 +
-        lv("oil_power") * 420) *
+      (lv("coal_power") * 500 * coalPowerRatio + lv("hydro_power") * 650 + lv("oil_power") * 420) *
         scale,
     );
     const ironUsed = Math.min(Number(row.iron || 0), ironNeed);
     const grainUsed = Math.min(Number(row.grain || 0), grainNeed);
     const clothUsed = Math.min(Number(row.cloth || 0), clothNeed);
-    const electricityAvailable = Math.max(
-      0,
-      Number(row.electricity_stock || 0) + electricityMade,
-    );
+    const electricityAvailable = Math.max(0, Number(row.electricity_stock || 0) + electricityMade);
     const electricityUsed = Math.min(electricityAvailable, electricityNeed);
     const oilAvailable = Math.max(0, rawOil - refineryOil);
     const fuelAvailable = Math.max(0, Number(row.fuel_stock || 0) + fuelMade);
