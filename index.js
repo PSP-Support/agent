@@ -1,138 +1,247 @@
-import {Bot,InlineKeyboard,Keyboard} from "grammy";
+import { Bot, InlineKeyboard, Keyboard } from "grammy";
 import pg from "pg";
 import http from "node:http";
-const {Pool}=pg, token=process.env.BOT_TOKEN, PORT=Number(process.env.PORT||3000);
-if(!token) throw new Error("BOT_TOKEN is required");
-const pool=new Pool({connectionString:process.env.DATABASE_URL,ssl:process.env.DATABASE_URL?.includes("railway")?{rejectUnauthorized:false}:undefined});
-const bot=new Bot(token), period=10800000, ownerTelegramId=String(process.env.OWNER_TELEGRAM_ID||"8873717047");
-bot.use(async(ctx,next)=>{if(!ctx.from||String(ctx.from.id)===ownerTelegramId)return next();try{const p=await get(ctx.from.id);if(p?.bot_blocked){if(ctx.callbackQuery)await ctx.answerCallbackQuery({text:"دسترسی شما به ربات توسط سازمان بین‌الملل مسدود شده است.",show_alert:true});else if(ctx.message)await ctx.reply("⛔ دسترسی شما به شاه شاهان توسط سازمان بین‌الملل مسدود شده است.");return;}}catch(e){console.error("Access control:",e);}return next();});
-const countries=[
-["ottoman","امپراتوری عثمانی","محمد پنجم","استانبول",28500000,1200000],
-["germany","امپراتوری آلمان","ویلهلم دوم","برلین",65000000,1800000],
-["russia","امپراتوری روسیه","نیکلای دوم","سن‌پترزبورگ",166000000,2100000],
-["austria","اتریش-مجارستان","فرانتس یوزف یکم","وین",52000000,1500000],
-["britain","امپراتوری بریتانیا","جورج پنجم","لندن",460000000,2400000],
-["france","جمهوری فرانسه","ریموند پوانکاره","پاریس",39000000,1400000],
-["italy","پادشاهی ایتالیا","ویکتور امانوئل سوم","رم",35000000,900000],
-["persia","ایران قاجاری","احمدشاه قاجار","تهران",10000000,350000],
-["japan","امپراتوری ژاپن","امپراتور تای‌شو","توکیو",51000000,1000000],
-["serbia","پادشاهی صربستان","پتر یکم","بلگراد",4500000,180000],
-["bulgaria","پادشاهی بلغارستان","فردیناند یکم","صوفیه",4700000,170000],
-["romania","پادشاهی رومانی","کارول یکم","بخارست",7000000,250000],
-["belgium","پادشاهی بلژیک","آلبرت یکم","بروکسل",7500000,420000],
-["netherlands","پادشاهی هلند","ویلهلمینا","آمستردام",6000000,400000],
-["portugal","جمهوری پرتغال","مانوئل دوم","لیسبون",6000000,300000],
-["greece","پادشاهی یونان","کنستانتین یکم","آتن",4800000,260000],
-["montenegro","پادشاهی مونته‌نگرو","نیکولا یکم","ستینیه",500000,50000],
-["albania","شاهزاده‌نشین آلبانی","ویلهلم وید","دورِس",800000,60000],
-["denmark","پادشاهی دانمارک","کریستیان دهم","کپنهاگ",2800000,250000],
-["sweden","پادشاهی سوئد","گوستاو پنجم","استکهلم",5600000,420000],
-["norway","پادشاهی نروژ","هاکون هفتم","کریستیانیا",2400000,230000],
-["switzerland","کنفدراسیون سوئیس","آرتور هوفمان","برن",3800000,350000],
-["luxembourg","دوک‌نشین لوکزامبورگ","آدولف","لوکزامبورگ",260000,40000],
-["usa","ایالات متحده‌ی آمریکا","وودرو ویلسون","واشینگتن",99000000,2500000],
-["china","جمهوری چین","یوان شیکای","پکن",430000000,1500000],
-["siam","پادشاهی سیام","رامای ششم","بانکوک",8500000,250000],
-["afghanistan","امارت افغانستان","حبیب‌الله خان","کابل",6000000,180000],
-["ethiopia","امپراتوری اتیوپی","لیج ایاسو","آدیس‌آبابا",10000000,220000],
-["liberia","جمهوری لیبریا","دانیل هاوارد","مونروویا",1200000,60000],
-["egypt","سلطنت مصر تحت‌الحمایه‌ی بریتانیا","عباس حلمی دوم","قاهره",12000000,300000],
-["morocco","سلطنت مراکش","مولای یوسف","فاس",5000000,180000],
-["south_africa","اتحاد آفریقای جنوبی","لوئیس بوتا","پرتوریا",6000000,450000],
-["canada","دومینیون کانادا","جورج پنجم","اتاوا",8000000,650000],
-["australia","دومینیون استرالیا","جورج پنجم","ملبورن",4900000,500000],
-["new_zealand","دومینیون نیوزیلند","جورج پنجم","ولینگتون",1100000,180000],
-["brazil","جمهوری برزیل","هرمس دا فونseca","ریو دو ژانیرو",24000000,650000],
-["argentina","جمهوری آرژانتین","روکه ساِنز پنیا","بوئنوس‌آیرس",7800000,550000],
-["chile","جمهوری شیلی","رامون باروس لوکو","سانتیاگو",3500000,300000],
-["mexico","جمهوری مکزیک","ویکتوریانو اوئرتا","مکزیکوسیتی",15000000,250000],
-["cuba","جمهوری کوبا","ماریو گارسیا منوکال","هاوانا",2400000,160000],
-["bolivia","جمهوری بولیوی","ایسماعیل مونتس","لاپاز",2200000,120000],
-["uruguay","جمهوری اروگوئه","خوزه باتیه ای اوردونیس","مونته‌ویدئو",1100000,140000],
-["venezuela","جمهوری ونزوئلا","خوان ویسنته گومز","کاراکاس",2700000,130000],
-["korea","امپراتوری کره (تحت سلطه‌ی ژاپن)","سو جونگ","هان‌سونگ",16000000,100000],
-["vietnam","هندوچین فرانسه","فرماندار فرانسوی","هانوی",16000000,150000],
-["philippines","جزایر فیلیپین (تحت اداره‌ی آمریکا)","فرانسیس برتون هریسون","مانیل",8000000,120000],
-["indonesia","هند شرقی هلند","فرماندار هلندی","باتاویا",40000000,250000],
-["india","هند بریتانیا","جورج پنجم","دهلی","315000000",1800000],
-["ireland","ایرلند تحت اداره‌ی بریتانیا","جورج پنجم","دوبلین",4500000,180000],
-["finland","دوک‌نشین بزرگ فنلاند","نیکلای دوم","هلسینکی",3200000,200000],
-["poland","سرزمین‌های لهستانی تقسیم‌شده","فرمانروایان سه امپراتوری","ورشو",12000000,100000],
-["ukraine","سرزمین‌های اوکراینی","نیکلای دوم","کی‌یف",30000000,250000],
-["croatia","کرواسی-اسلاونیا","فرانتس یوزف یکم","زاگرب",2500000,120000],
-["czech","سرزمین‌های چک در اتریش-مجارستان","فرانتس یوزف یکم","پراگ",6500000,200000],
-["slovakia","سرزمین‌های اسلواک در مجارستان","فرانتس یوزف یکم","پوزونی",3000000,100000],
-["hungary","پادشاهی مجارستان","فرانتس یوزف یکم","بوداپست",21000000,450000],
-["ireland_home","جنبش خودمختاری ایرلند","جورج پنجم","دوبلین",4500000,100000],
-["peru","جمهوری پرو","گیلرمو بیلینگهرست","لیما",5000000,180000],
-["paraguay","جمهوری پاراگوئه","ادواردو شرر","آسونسیون",700000,90000],
-["ecuador","جمهوری اکوادور","لئونیداس پلازا","کیتو",1500000,100000],
-["colombia","جمهوری کلمبیا","کارلوس اوخینیو","بوگوتا",5000000,180000],
-["panama","جمهوری پاناما","بلساریو پوراس","پاناما",400000,80000],
-["haiti","جمهوری هائیتی","میشل اورسته","پورتو پرنس",2000000,90000],
-["dominican","جمهوری دومینیکن","رامون کاسرس","سانتو دومینگو",700000,70000],
-["guatemala","جمهوری گواتمالا","مانوئل استرادا کابرا","گواتمالاسیتی",2000000,100000],
-["honduras","جمهوری هندوراس","فرانسیسکو برتراند","تگوسیگالپا",600000,50000],
-["el_salvador","جمهوری السالوادور","کارلوس ملندز","سان سالوادور",1200000,70000],
-["nicaragua","جمهوری نیکاراگوئه","آدولفو دیاز","ماناگوا",600000,50000],
-["costa_rica","جمهوری کاستاریکا","ریکاردو خیمنس","سن‌خوزه",400000,60000],
-["nigeria","نیجریه‌ی بریتانیا","فرماندار بریتانیایی","لاگوس",17000000,180000],
-["ghana","ساحل طلایی بریتانیا","فرماندار بریتانیایی","آکرا",1500000,80000],
-["kenya","آفریقای شرقی بریتانیا","فرماندار بریتانیایی","نایروبی",4000000,70000],
-["uganda","اوگاندا تحت‌الحمایه‌ی بریتانیا","فرماندار بریتانیایی","انتبه",3000000,60000],
-["algeria","الجزایر فرانسه","فرماندار فرانسوی","الجزیره",5000000,180000],
-["tunisia","تونس تحت‌الحمایه‌ی فرانسه","محمد الناصر","تونس",2000000,100000],
-["madagascar","ماداگاسکار فرانسه","فرماندار فرانسوی","آنتاناناریوو",3000000,80000],
-["angola","آنگولای پرتغال","فرماندار پرتغالی","لوآندا",4000000,70000],
-["mozambique","موزامبیک پرتغال","فرماندار پرتغالی","لورنسو مارکز",4000000,70000],
-["congo","کنگوی بلژیک","فرماندار بلژیکی","لئوپولدویل",15000000,120000],
-["nepal","پادشاهی نپال","تریبووان","کاتماندو",5000000,100000],
-["bhutan","پادشاهی بوتان","اوگین وانگچوک","پارو",300000,30000],
-["oman","سلطنت عمان","فیصل بن ترکی","مسقط",500000,60000],
-["yemen","امام‌نشین یمن","یحیی حمیدالدین","صنعا",3000000,70000],
-["qatar","شیخ‌نشین قطر","عبدالله بن جاسم","دوحه",25000,20000],
-["kuwait","شیخ‌نشین کویت","مبارک الصباح","کویت",50000,30000],
-["bahrain","شیخ‌نشین بحرین","عیسی بن علی","منامه",100000,30000],
-["saudi","امارت نجد و حسا","عبدالعزیز آل سعود","ریاض",1000000,70000],
-["mongolia","مغولستان","بوگد خان","اورگا",600000,50000],
-["manchuria","منچوری","چانگ تسولین","موکدن",15000000,100000],
-["taiwan","تایوان ژاپن","فرماندار ژاپنی","تایپه",3500000,70000],
-["burma","برمه‌ی بریتانیا","فرماندار بریتانیایی","رانگون",12000000,100000],
-["malaya","مالایای بریتانیا","فرماندار بریتانیایی","کوالالامپور",2500000,100000],
-["cambodia","کامبوج تحت‌الحمایه‌ی فرانسه","سیسووات","پنوم‌پن",1500000,50000],
-["laos","لائوس تحت‌الحمایه‌ی فرانسه","فرماندار فرانسوی","وینتیان",600000,30000],
-["azerbaijan","آذربایجان در امپراتوری روسیه","نیکلای دوم","باکو",2500000,150000],
-["georgia","گرجستان در امپراتوری روسیه","نیکلای دوم","تفلیس",2500000,100000],
-["armenia","ارمنستان","فرمانروایان عثمانی و روسیه","ایروان",2000000,80000],
-["iceland","ایسلند تحت تاج دانمارک","کریستیان دهم","ریکیاویک",85000,30000],
-["malta","مالت بریتانیا","فرماندار بریتانیایی","والتا",200000,40000],
-["cyprus","قبرس بریتانیا","فرماندار بریتانیایی","نیکوزیا",250000,40000],
-["monaco","شاهزاده‌نشین موناکو","آلبرت یکم","موناکو",20000,20000],
-["liechtenstein","شاهزاده‌نشین لیختن‌اشتاین","یوهان دوم","فادوتس",10000,10000],
-["san_marino","جمهوری سان‌مارینو","کاپیتان‌های نایب","سان‌مارینو",12000,10000],
-["vatican","دولت پاپی","پاپ پیوس دهم","واتیکان",1000,10000],
-["tanzania","آفریقای شرقی آلمان","فرماندار آلمانی","دارالسلام",7500000,120000],
-["namibia","آفریقای جنوب غربی آلمان","فرماندار آلمانی","ویندهوک",800000,50000],
-["cameroon","کامِرون آلمان","فرماندار آلمانی","دوالا",2500000,70000],
-["togo","توگولند آلمان","فرماندار آلمانی","لومه",1000000,40000],
-["sudan","سودان انگلیس و مصر","فرماندار مشترک","خارطوم",3000000,80000],
-["senegal","سنگال فرانسه","فرماندار فرانسوی","سن‌لوئی",1000000,50000],
-["libya","طرابلس و برقه‌ی عثمانی","فرماندار عثمانی","طرابلس",1500000,80000],
-["iraq","ولایت‌های عثمانی در عراق","فرمانروای عثمانی","بغداد",5000000,150000],
-["syria","ولایت‌های عثمانی در شام","فرمانروای عثمانی","دمشق",4000000,130000],
-["lebanon","متصرفات لبنان عثمانی","متصرف عثمانی","بیروت",400000,50000],
-["palestine","ولایت فلسطین عثمانی","فرمانروای عثمانی","قدس",600000,70000],
-["kurdistan","سرزمین‌های کردنشین عثمانی و ایران","حاکمان محلی","موصل",3000000,80000]];
-const ECONOMY_DISPLAY_SCALE=1000;
-const country=id=>countries.find(c=>c[0]===id), money=n=>new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0}).format(Math.round((Number(n)||0)*ECONOMY_DISPLAY_SCALE)), fmt=n=>Math.round(Number(n)||0).toLocaleString("fa-IR"), fmtAsset=n=>Math.round((Number(n)||0)*ECONOMY_DISPLAY_SCALE).toLocaleString("fa-IR");
-const mainReply=()=>new Keyboard().text("🏛️ دربار و کشور").row().text("📜 تسویه‌ی نوبت").text("📚 راهنما").resized();
-const adminReply=()=>new Keyboard().text("🌐 پنل سازمان بین‌الملل").row().text("🪪 درخواست‌های کشور").text("🔍 بازرسی").row().text("💳 وام‌دهی").text("📦 افزودن منابع").row().text("🏠 منوی اصلی").resized();
-const nationReply=()=>new Keyboard().text("🏛️ دربار و کشور").text("📜 تسویه‌ی نوبت").row().text("🏠 منوی اصلی").resized();
-const K=rows=>new InlineKeyboard(rows), main=()=>K([[{text:"🏛️ دربار و کشور",callback_data:"m:n"},{text:"📜 تسویه‌ی نوبت",callback_data:"turn"}],[{text:"📚 راهنما",callback_data:"help"}]]);
-const nation=()=>K([[{text:"📊 وضعیت",callback_data:"n:status"},{text:"💰 خزانه",callback_data:"n:money"}],[{text:"🧾 مالیات",callback_data:"n:tax"},{text:"🏭 تولید",callback_data:"n:industry"}],[{text:"👥 جمعیت",callback_data:"n:people"},{text:"🛡️ ارتش",callback_data:"n:army"}],[{text:"🤝 دیپلماسی",callback_data:"n:diplomacy"},{text:"🛒 بورس و تجارت",callback_data:"n:stocks"}],[{text:"🎯 ستاد راهبردی",callback_data:"n:strategy"}],[{text:"⚙️ تنظیمات",callback_data:"n:settings"}],[{text:"🏠 منوی اصلی",callback_data:"m:main"}]]);
-const back=()=>K([[{text:"↩️ دربار",callback_data:"m:n"},{text:"🏠 خانه",callback_data:"m:main"}]]);
-const strategicMenu=()=>K([[{text:"🎖️ ستاد برگزاری مانور و تمرینات رزمی",callback_data:"str:exercise"}],[{text:"🕵️ سازمان اطلاعات و امنیت ملی",callback_data:"str:intel"}],[{text:"🏅 کادر فرماندهی و ستاد نظامی",callback_data:"str:command"}],[{text:"☢️ برنامه راهبردی هسته‌ای",callback_data:"str:nuclear"}],[{text:"🏗️ ساخت پایگاه عملیاتی خارجی",callback_data:"str:base"}],[{text:"📍 پایگاه‌های عملیاتی من",callback_data:"str:mybases"},{text:"🗺️ پایگاه‌های داخل کشور من",callback_data:"str:territory"}],[{text:"🤝 استقرار پایگاه در کشور متحد",callback_data:"str:allybases"}],[{text:"⚓ گشت و استقرار ناوگان",callback_data:"str:navy"}],[{text:"↩️ بازگشت به دربار",callback_data:"m:n"}]]);
-async function db(){await pool.query(`
+const { Pool } = pg,
+  token = process.env.BOT_TOKEN,
+  PORT = Number(process.env.PORT || 3000);
+if (!token) throw new Error("BOT_TOKEN is required");
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.DATABASE_URL?.includes("railway") ? { rejectUnauthorized: false } : undefined,
+});
+const bot = new Bot(token),
+  period = 10800000,
+  ownerTelegramId = String(process.env.OWNER_TELEGRAM_ID || "8873717047");
+bot.use(async (ctx, next) => {
+  if (!ctx.from || String(ctx.from.id) === ownerTelegramId) return next();
+  try {
+    const p = await get(ctx.from.id);
+    if (p?.bot_blocked) {
+      if (ctx.callbackQuery)
+        await ctx.answerCallbackQuery({
+          text: "دسترسی شما به ربات توسط سازمان بین‌الملل مسدود شده است.",
+          show_alert: true,
+        });
+      else if (ctx.message)
+        await ctx.reply("⛔ دسترسی شما به شاه شاهان توسط سازمان بین‌الملل مسدود شده است.");
+      return;
+    }
+  } catch (e) {
+    console.error("Access control:", e);
+  }
+  return next();
+});
+const countries = [
+  ["ottoman", "امپراتوری عثمانی", "محمد پنجم", "استانبول", 28500000, 1200000],
+  ["germany", "امپراتوری آلمان", "ویلهلم دوم", "برلین", 65000000, 1800000],
+  ["russia", "امپراتوری روسیه", "نیکلای دوم", "سن‌پترزبورگ", 166000000, 2100000],
+  ["austria", "اتریش-مجارستان", "فرانتس یوزف یکم", "وین", 52000000, 1500000],
+  ["britain", "امپراتوری بریتانیا", "جورج پنجم", "لندن", 460000000, 2400000],
+  ["france", "جمهوری فرانسه", "ریموند پوانکاره", "پاریس", 39000000, 1400000],
+  ["italy", "پادشاهی ایتالیا", "ویکتور امانوئل سوم", "رم", 35000000, 900000],
+  ["persia", "ایران قاجاری", "احمدشاه قاجار", "تهران", 10000000, 350000],
+  ["japan", "امپراتوری ژاپن", "امپراتور تای‌شو", "توکیو", 51000000, 1000000],
+  ["serbia", "پادشاهی صربستان", "پتر یکم", "بلگراد", 4500000, 180000],
+  ["bulgaria", "پادشاهی بلغارستان", "فردیناند یکم", "صوفیه", 4700000, 170000],
+  ["romania", "پادشاهی رومانی", "کارول یکم", "بخارست", 7000000, 250000],
+  ["belgium", "پادشاهی بلژیک", "آلبرت یکم", "بروکسل", 7500000, 420000],
+  ["netherlands", "پادشاهی هلند", "ویلهلمینا", "آمستردام", 6000000, 400000],
+  ["portugal", "جمهوری پرتغال", "مانوئل دوم", "لیسبون", 6000000, 300000],
+  ["greece", "پادشاهی یونان", "کنستانتین یکم", "آتن", 4800000, 260000],
+  ["montenegro", "پادشاهی مونته‌نگرو", "نیکولا یکم", "ستینیه", 500000, 50000],
+  ["albania", "شاهزاده‌نشین آلبانی", "ویلهلم وید", "دورِس", 800000, 60000],
+  ["denmark", "پادشاهی دانمارک", "کریستیان دهم", "کپنهاگ", 2800000, 250000],
+  ["sweden", "پادشاهی سوئد", "گوستاو پنجم", "استکهلم", 5600000, 420000],
+  ["norway", "پادشاهی نروژ", "هاکون هفتم", "کریستیانیا", 2400000, 230000],
+  ["switzerland", "کنفدراسیون سوئیس", "آرتور هوفمان", "برن", 3800000, 350000],
+  ["luxembourg", "دوک‌نشین لوکزامبورگ", "آدولف", "لوکزامبورگ", 260000, 40000],
+  ["usa", "ایالات متحده‌ی آمریکا", "وودرو ویلسون", "واشینگتن", 99000000, 2500000],
+  ["china", "جمهوری چین", "یوان شیکای", "پکن", 430000000, 1500000],
+  ["siam", "پادشاهی سیام", "رامای ششم", "بانکوک", 8500000, 250000],
+  ["afghanistan", "امارت افغانستان", "حبیب‌الله خان", "کابل", 6000000, 180000],
+  ["ethiopia", "امپراتوری اتیوپی", "لیج ایاسو", "آدیس‌آبابا", 10000000, 220000],
+  ["liberia", "جمهوری لیبریا", "دانیل هاوارد", "مونروویا", 1200000, 60000],
+  ["egypt", "سلطنت مصر تحت‌الحمایه‌ی بریتانیا", "عباس حلمی دوم", "قاهره", 12000000, 300000],
+  ["morocco", "سلطنت مراکش", "مولای یوسف", "فاس", 5000000, 180000],
+  ["south_africa", "اتحاد آفریقای جنوبی", "لوئیس بوتا", "پرتوریا", 6000000, 450000],
+  ["canada", "دومینیون کانادا", "جورج پنجم", "اتاوا", 8000000, 650000],
+  ["australia", "دومینیون استرالیا", "جورج پنجم", "ملبورن", 4900000, 500000],
+  ["new_zealand", "دومینیون نیوزیلند", "جورج پنجم", "ولینگتون", 1100000, 180000],
+  ["brazil", "جمهوری برزیل", "هرمس دا فونseca", "ریو دو ژانیرو", 24000000, 650000],
+  ["argentina", "جمهوری آرژانتین", "روکه ساِنز پنیا", "بوئنوس‌آیرس", 7800000, 550000],
+  ["chile", "جمهوری شیلی", "رامون باروس لوکو", "سانتیاگو", 3500000, 300000],
+  ["mexico", "جمهوری مکزیک", "ویکتوریانو اوئرتا", "مکزیکوسیتی", 15000000, 250000],
+  ["cuba", "جمهوری کوبا", "ماریو گارسیا منوکال", "هاوانا", 2400000, 160000],
+  ["bolivia", "جمهوری بولیوی", "ایسماعیل مونتس", "لاپاز", 2200000, 120000],
+  ["uruguay", "جمهوری اروگوئه", "خوزه باتیه ای اوردونیس", "مونته‌ویدئو", 1100000, 140000],
+  ["venezuela", "جمهوری ونزوئلا", "خوان ویسنته گومز", "کاراکاس", 2700000, 130000],
+  ["korea", "امپراتوری کره (تحت سلطه‌ی ژاپن)", "سو جونگ", "هان‌سونگ", 16000000, 100000],
+  ["vietnam", "هندوچین فرانسه", "فرماندار فرانسوی", "هانوی", 16000000, 150000],
+  [
+    "philippines",
+    "جزایر فیلیپین (تحت اداره‌ی آمریکا)",
+    "فرانسیس برتون هریسون",
+    "مانیل",
+    8000000,
+    120000,
+  ],
+  ["indonesia", "هند شرقی هلند", "فرماندار هلندی", "باتاویا", 40000000, 250000],
+  ["india", "هند بریتانیا", "جورج پنجم", "دهلی", "315000000", 1800000],
+  ["ireland", "ایرلند تحت اداره‌ی بریتانیا", "جورج پنجم", "دوبلین", 4500000, 180000],
+  ["finland", "دوک‌نشین بزرگ فنلاند", "نیکلای دوم", "هلسینکی", 3200000, 200000],
+  ["poland", "سرزمین‌های لهستانی تقسیم‌شده", "فرمانروایان سه امپراتوری", "ورشو", 12000000, 100000],
+  ["ukraine", "سرزمین‌های اوکراینی", "نیکلای دوم", "کی‌یف", 30000000, 250000],
+  ["croatia", "کرواسی-اسلاونیا", "فرانتس یوزف یکم", "زاگرب", 2500000, 120000],
+  ["czech", "سرزمین‌های چک در اتریش-مجارستان", "فرانتس یوزف یکم", "پراگ", 6500000, 200000],
+  ["slovakia", "سرزمین‌های اسلواک در مجارستان", "فرانتس یوزف یکم", "پوزونی", 3000000, 100000],
+  ["hungary", "پادشاهی مجارستان", "فرانتس یوزف یکم", "بوداپست", 21000000, 450000],
+  ["ireland_home", "جنبش خودمختاری ایرلند", "جورج پنجم", "دوبلین", 4500000, 100000],
+  ["peru", "جمهوری پرو", "گیلرمو بیلینگهرست", "لیما", 5000000, 180000],
+  ["paraguay", "جمهوری پاراگوئه", "ادواردو شرر", "آسونسیون", 700000, 90000],
+  ["ecuador", "جمهوری اکوادور", "لئونیداس پلازا", "کیتو", 1500000, 100000],
+  ["colombia", "جمهوری کلمبیا", "کارلوس اوخینیو", "بوگوتا", 5000000, 180000],
+  ["panama", "جمهوری پاناما", "بلساریو پوراس", "پاناما", 400000, 80000],
+  ["haiti", "جمهوری هائیتی", "میشل اورسته", "پورتو پرنس", 2000000, 90000],
+  ["dominican", "جمهوری دومینیکن", "رامون کاسرس", "سانتو دومینگو", 700000, 70000],
+  ["guatemala", "جمهوری گواتمالا", "مانوئل استرادا کابرا", "گواتمالاسیتی", 2000000, 100000],
+  ["honduras", "جمهوری هندوراس", "فرانسیسکو برتراند", "تگوسیگالپا", 600000, 50000],
+  ["el_salvador", "جمهوری السالوادور", "کارلوس ملندز", "سان سالوادور", 1200000, 70000],
+  ["nicaragua", "جمهوری نیکاراگوئه", "آدولفو دیاز", "ماناگوا", 600000, 50000],
+  ["costa_rica", "جمهوری کاستاریکا", "ریکاردو خیمنس", "سن‌خوزه", 400000, 60000],
+  ["nigeria", "نیجریه‌ی بریتانیا", "فرماندار بریتانیایی", "لاگوس", 17000000, 180000],
+  ["ghana", "ساحل طلایی بریتانیا", "فرماندار بریتانیایی", "آکرا", 1500000, 80000],
+  ["kenya", "آفریقای شرقی بریتانیا", "فرماندار بریتانیایی", "نایروبی", 4000000, 70000],
+  ["uganda", "اوگاندا تحت‌الحمایه‌ی بریتانیا", "فرماندار بریتانیایی", "انتبه", 3000000, 60000],
+  ["algeria", "الجزایر فرانسه", "فرماندار فرانسوی", "الجزیره", 5000000, 180000],
+  ["tunisia", "تونس تحت‌الحمایه‌ی فرانسه", "محمد الناصر", "تونس", 2000000, 100000],
+  ["madagascar", "ماداگاسکار فرانسه", "فرماندار فرانسوی", "آنتاناناریوو", 3000000, 80000],
+  ["angola", "آنگولای پرتغال", "فرماندار پرتغالی", "لوآندا", 4000000, 70000],
+  ["mozambique", "موزامبیک پرتغال", "فرماندار پرتغالی", "لورنسو مارکز", 4000000, 70000],
+  ["congo", "کنگوی بلژیک", "فرماندار بلژیکی", "لئوپولدویل", 15000000, 120000],
+  ["nepal", "پادشاهی نپال", "تریبووان", "کاتماندو", 5000000, 100000],
+  ["bhutan", "پادشاهی بوتان", "اوگین وانگچوک", "پارو", 300000, 30000],
+  ["oman", "سلطنت عمان", "فیصل بن ترکی", "مسقط", 500000, 60000],
+  ["yemen", "امام‌نشین یمن", "یحیی حمیدالدین", "صنعا", 3000000, 70000],
+  ["qatar", "شیخ‌نشین قطر", "عبدالله بن جاسم", "دوحه", 25000, 20000],
+  ["kuwait", "شیخ‌نشین کویت", "مبارک الصباح", "کویت", 50000, 30000],
+  ["bahrain", "شیخ‌نشین بحرین", "عیسی بن علی", "منامه", 100000, 30000],
+  ["saudi", "امارت نجد و حسا", "عبدالعزیز آل سعود", "ریاض", 1000000, 70000],
+  ["mongolia", "مغولستان", "بوگد خان", "اورگا", 600000, 50000],
+  ["manchuria", "منچوری", "چانگ تسولین", "موکدن", 15000000, 100000],
+  ["taiwan", "تایوان ژاپن", "فرماندار ژاپنی", "تایپه", 3500000, 70000],
+  ["burma", "برمه‌ی بریتانیا", "فرماندار بریتانیایی", "رانگون", 12000000, 100000],
+  ["malaya", "مالایای بریتانیا", "فرماندار بریتانیایی", "کوالالامپور", 2500000, 100000],
+  ["cambodia", "کامبوج تحت‌الحمایه‌ی فرانسه", "سیسووات", "پنوم‌پن", 1500000, 50000],
+  ["laos", "لائوس تحت‌الحمایه‌ی فرانسه", "فرماندار فرانسوی", "وینتیان", 600000, 30000],
+  ["azerbaijan", "آذربایجان در امپراتوری روسیه", "نیکلای دوم", "باکو", 2500000, 150000],
+  ["georgia", "گرجستان در امپراتوری روسیه", "نیکلای دوم", "تفلیس", 2500000, 100000],
+  ["armenia", "ارمنستان", "فرمانروایان عثمانی و روسیه", "ایروان", 2000000, 80000],
+  ["iceland", "ایسلند تحت تاج دانمارک", "کریستیان دهم", "ریکیاویک", 85000, 30000],
+  ["malta", "مالت بریتانیا", "فرماندار بریتانیایی", "والتا", 200000, 40000],
+  ["cyprus", "قبرس بریتانیا", "فرماندار بریتانیایی", "نیکوزیا", 250000, 40000],
+  ["monaco", "شاهزاده‌نشین موناکو", "آلبرت یکم", "موناکو", 20000, 20000],
+  ["liechtenstein", "شاهزاده‌نشین لیختن‌اشتاین", "یوهان دوم", "فادوتس", 10000, 10000],
+  ["san_marino", "جمهوری سان‌مارینو", "کاپیتان‌های نایب", "سان‌مارینو", 12000, 10000],
+  ["vatican", "دولت پاپی", "پاپ پیوس دهم", "واتیکان", 1000, 10000],
+  ["tanzania", "آفریقای شرقی آلمان", "فرماندار آلمانی", "دارالسلام", 7500000, 120000],
+  ["namibia", "آفریقای جنوب غربی آلمان", "فرماندار آلمانی", "ویندهوک", 800000, 50000],
+  ["cameroon", "کامِرون آلمان", "فرماندار آلمانی", "دوالا", 2500000, 70000],
+  ["togo", "توگولند آلمان", "فرماندار آلمانی", "لومه", 1000000, 40000],
+  ["sudan", "سودان انگلیس و مصر", "فرماندار مشترک", "خارطوم", 3000000, 80000],
+  ["senegal", "سنگال فرانسه", "فرماندار فرانسوی", "سن‌لوئی", 1000000, 50000],
+  ["libya", "طرابلس و برقه‌ی عثمانی", "فرماندار عثمانی", "طرابلس", 1500000, 80000],
+  ["iraq", "ولایت‌های عثمانی در عراق", "فرمانروای عثمانی", "بغداد", 5000000, 150000],
+  ["syria", "ولایت‌های عثمانی در شام", "فرمانروای عثمانی", "دمشق", 4000000, 130000],
+  ["lebanon", "متصرفات لبنان عثمانی", "متصرف عثمانی", "بیروت", 400000, 50000],
+  ["palestine", "ولایت فلسطین عثمانی", "فرمانروای عثمانی", "قدس", 600000, 70000],
+  ["kurdistan", "سرزمین‌های کردنشین عثمانی و ایران", "حاکمان محلی", "موصل", 3000000, 80000],
+];
+const ECONOMY_DISPLAY_SCALE = 1000;
+const country = (id) => countries.find((c) => c[0] === id),
+  money = (n) =>
+    new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+      maximumFractionDigits: 0,
+    }).format(Math.round((Number(n) || 0) * ECONOMY_DISPLAY_SCALE)),
+  fmt = (n) => Math.round(Number(n) || 0).toLocaleString("fa-IR"),
+  fmtAsset = (n) => Math.round((Number(n) || 0) * ECONOMY_DISPLAY_SCALE).toLocaleString("fa-IR");
+const mainReply = () =>
+  new Keyboard().text("🏛️ دربار و کشور").row().text("📜 تسویه‌ی نوبت").text("📚 راهنما").resized();
+const adminReply = () =>
+  new Keyboard()
+    .text("🌐 پنل سازمان بین‌الملل")
+    .row()
+    .text("🪪 درخواست‌های کشور")
+    .text("🔍 بازرسی")
+    .row()
+    .text("💳 وام‌دهی")
+    .text("📦 افزودن منابع")
+    .row()
+    .text("🏠 منوی اصلی")
+    .resized();
+const nationReply = () =>
+  new Keyboard()
+    .text("🏛️ دربار و کشور")
+    .text("📜 تسویه‌ی نوبت")
+    .row()
+    .text("🏠 منوی اصلی")
+    .resized();
+const K = (rows) => new InlineKeyboard(rows),
+  main = () =>
+    K([
+      [
+        { text: "🏛️ دربار و کشور", callback_data: "m:n" },
+        { text: "📜 تسویه‌ی نوبت", callback_data: "turn" },
+      ],
+      [{ text: "📚 راهنما", callback_data: "help" }],
+    ]);
+const nation = () =>
+  K([
+    [
+      { text: "📊 وضعیت", callback_data: "n:status" },
+      { text: "💰 خزانه", callback_data: "n:money" },
+    ],
+    [
+      { text: "🧾 مالیات", callback_data: "n:tax" },
+      { text: "🏭 تولید", callback_data: "n:industry" },
+    ],
+    [
+      { text: "👥 جمعیت", callback_data: "n:people" },
+      { text: "🛡️ ارتش", callback_data: "n:army" },
+    ],
+    [
+      { text: "🤝 دیپلماسی", callback_data: "n:diplomacy" },
+      { text: "🛒 بورس و تجارت", callback_data: "n:stocks" },
+    ],
+    [{ text: "🎯 ستاد راهبردی", callback_data: "n:strategy" }],
+    [{ text: "⚙️ تنظیمات", callback_data: "n:settings" }],
+    [{ text: "🏠 منوی اصلی", callback_data: "m:main" }],
+  ]);
+const back = () =>
+  K([
+    [
+      { text: "↩️ دربار", callback_data: "m:n" },
+      { text: "🏠 خانه", callback_data: "m:main" },
+    ],
+  ]);
+const strategicMenu = () =>
+  K([
+    [{ text: "🎖️ ستاد برگزاری مانور و تمرینات رزمی", callback_data: "str:exercise" }],
+    [{ text: "🕵️ سازمان اطلاعات و امنیت ملی", callback_data: "str:intel" }],
+    [{ text: "🏅 کادر فرماندهی و ستاد نظامی", callback_data: "str:command" }],
+    [{ text: "☢️ برنامه راهبردی هسته‌ای", callback_data: "str:nuclear" }],
+    [{ text: "🏗️ ساخت پایگاه عملیاتی خارجی", callback_data: "str:base" }],
+    [
+      { text: "📍 پایگاه‌های عملیاتی من", callback_data: "str:mybases" },
+      { text: "🗺️ پایگاه‌های داخل کشور من", callback_data: "str:territory" },
+    ],
+    [{ text: "🤝 استقرار پایگاه در کشور متحد", callback_data: "str:allybases" }],
+    [{ text: "⚓ گشت و استقرار ناوگان", callback_data: "str:navy" }],
+    [{ text: "↩️ بازگشت به دربار", callback_data: "m:n" }],
+  ]);
+async function db() {
+  await pool.query(`
 CREATE TABLE IF NOT EXISTS game_players(telegram_id BIGINT PRIMARY KEY,username TEXT,display_name TEXT NOT NULL,country_id TEXT,ruler TEXT,government TEXT,approved BOOLEAN DEFAULT FALSE,selected_country_id TEXT,treasury BIGINT DEFAULT 100000,population BIGINT DEFAULT 0,stability INT DEFAULT 60,legitimacy INT DEFAULT 55,tax_rate INT DEFAULT 10,tariff INT DEFAULT 5,industry INT DEFAULT 20,agriculture INT DEFAULT 30,grain BIGINT DEFAULT 10000,coal BIGINT DEFAULT 5000,iron BIGINT DEFAULT 3000,cloth BIGINT DEFAULT 2500,army INT DEFAULT 20,navy INT DEFAULT 5,morale INT DEFAULT 60,technology INT DEFAULT 10,infrastructure INT DEFAULT 20,education INT DEFAULT 15,health INT DEFAULT 15,wage BIGINT DEFAULT 100,service_budget BIGINT DEFAULT 1000,last_settlement TIMESTAMPTZ DEFAULT NOW());
 CREATE TABLE IF NOT EXISTS game_ledger(id BIGSERIAL PRIMARY KEY,telegram_id BIGINT,description TEXT,amount BIGINT,balance BIGINT,created_at TIMESTAMPTZ DEFAULT NOW());
 CREATE TABLE IF NOT EXISTS game_relations(player_id BIGINT,other_id BIGINT,relation TEXT DEFAULT 'neutral',trust INT DEFAULT 0,PRIMARY KEY(player_id,other_id));
@@ -179,52 +288,229 @@ CREATE TABLE IF NOT EXISTS game_trade(id BIGSERIAL PRIMARY KEY,seller_id BIGINT,
  CREATE TABLE IF NOT EXISTS game_maneuver_stats(owner_id BIGINT PRIMARY KEY,readiness INT NOT NULL DEFAULT 97,last_maneuver_date DATE,maneuvers_today INT NOT NULL DEFAULT 0);
  CREATE TABLE IF NOT EXISTS game_maneuver_history(id BIGSERIAL PRIMARY KEY,owner_id BIGINT NOT NULL,country_id TEXT,created_at TIMESTAMPTZ DEFAULT NOW());
  CREATE TABLE IF NOT EXISTS game_base_requests(id BIGSERIAL PRIMARY KEY,owner_id BIGINT NOT NULL,host_id BIGINT,host_country_id TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending',created_at TIMESTAMPTZ DEFAULT NOW());`);
- const uninitializedOil=(await pool.query("SELECT telegram_id,country_id FROM game_players WHERE approved=TRUE AND oil_initialized=FALSE")).rows;
- for(const player of uninitializedOil){const field=oilField(player.country_id);await pool.query("UPDATE game_players SET oil_field_level=$2,oil_reserves=$3,oil_stock=$4,oil_initialized=TRUE WHERE telegram_id=$1",[player.telegram_id,field.daily,field.reserves,oilStartingStock(player.country_id)]);}
- await pool.query("UPDATE game_players SET approved=FALSE,country_id=NULL,ruler=NULL,government=NULL WHERE telegram_id=$1",[ownerTelegramId]);
+  const uninitializedOil = (
+    await pool.query(
+      "SELECT telegram_id,country_id FROM game_players WHERE approved=TRUE AND oil_initialized=FALSE",
+    )
+  ).rows;
+  for (const player of uninitializedOil) {
+    const field = oilField(player.country_id);
+    await pool.query(
+      "UPDATE game_players SET oil_field_level=$2,oil_reserves=$3,oil_stock=$4,oil_initialized=TRUE WHERE telegram_id=$1",
+      [player.telegram_id, field.daily, field.reserves, oilStartingStock(player.country_id)],
+    );
+  }
+  await pool.query(
+    "UPDATE game_players SET approved=FALSE,country_id=NULL,ruler=NULL,government=NULL WHERE telegram_id=$1",
+    [ownerTelegramId],
+  );
 }
-async function refreshCommodities(){await pool.query("WITH due AS (SELECT symbol,price FROM game_commodities WHERE updated_at<NOW()-INTERVAL '15 minutes'), changed AS (SELECT symbol,price,GREATEST(1,ROUND(price*(1+(random()*0.06-0.03)))::bigint) AS new_price FROM due) UPDATE game_commodities c SET price=x.new_price,change_pct=ROUND(((x.new_price-x.price)::numeric/NULLIF(x.price,0))*100,2),updated_at=NOW() FROM changed x WHERE c.symbol=x.symbol");}
-async function refreshStocks(){await pool.query("WITH due AS (SELECT symbol,price FROM game_stocks WHERE updated_at<NOW()-INTERVAL '15 minutes'), changed AS (SELECT symbol,price,GREATEST(1,ROUND(price*(1+(random()*0.10-0.05)))::bigint) AS new_price FROM due) UPDATE game_stocks s SET price=c.new_price,change_pct=ROUND(((c.new_price-c.price)::numeric/NULLIF(c.price,0))*100,2),updated_at=NOW() FROM changed c WHERE s.symbol=c.symbol");}
-async function get(id){return (await pool.query("SELECT * FROM game_players WHERE telegram_id=$1",[id])).rows[0];}
-async function ensure(ctx){await pool.query("INSERT INTO game_players(telegram_id,username,display_name) VALUES($1,$2,$3) ON CONFLICT(telegram_id) DO UPDATE SET username=EXCLUDED.username,display_name=EXCLUDED.display_name",[ctx.from.id,ctx.from.username||null,[ctx.from.first_name,ctx.from.last_name].filter(Boolean).join(" ")||"فرمانروا"]);return get(ctx.from.id);}
-async function say(ctx,text,markup=main()){await ctx.reply(text,{reply_markup:markup,parse_mode:"HTML"});}
-async function edit(ctx,text,markup=main()){try{await ctx.editMessageText(text,{reply_markup:markup,parse_mode:"HTML"});}catch(e){if(!String(e).includes("message is not modified"))await say(ctx,text,markup);}}
-const forceBases={germany:[48,12,24,4],britain:[35,18,18,5],france:[45,12,8,4],russia:[65,14,3,2],austria:[35,8,4,2],italy:[25,10,6,2],ottoman:[20,5,1,1],usa:[12,8,6,1],japan:[18,12,6,2],belgium:[6,2,1,1],serbia:[6,0,0,0],bulgaria:[6,0,0,0],romania:[8,1,0,0],persia:[4,0,0,0],netherlands:[5,4,1,1],portugal:[3,3,0,0],greece:[5,3,0,0],sweden:[5,4,0,0],norway:[2,3,0,0],denmark:[2,3,0,0],china:[15,4,0,0]};
-function historicForces(id,population=0){if(forceBases[id])return forceBases[id];const pop=Number(population)||1000000;return [Math.max(1,Math.min(18,Math.round(pop/2500000))),0,0,0];}
-async function ready(ctx){const p=await get(ctx.from.id);if(!p?.approved){await say(ctx,"🪪 برای آغاز بازی از /start استفاده کنید.");return null;}if(!p.forces_initialized){const f=historicForces(p.country_id,p.population);await pool.query("UPDATE game_players SET army=$2,navy=$3,air_force=$4,air_defense=$5,forces_initialized=TRUE WHERE telegram_id=$1",[ctx.from.id,...f]);return get(ctx.from.id);}return p;}
-function calc(p){const taxable=Math.max(10000,Number(p.population)/100),tax=taxable*p.tax_rate/100,production=p.industry*1200+p.agriculture*800,tariff=p.tariff*500,oilProduction=Math.min(Number(p.oil_reserves||0),Math.round(Number(p.oil_field_level||0)*(1+Number(p.technology||0)/250))),oilConsumption=Math.max(10,Number(p.industry||0)*4+Number(p.army||0)*2+Number(p.navy||0)*10+Number(p.air_force||0)*3);return {income:tax+production+tariff,expense:0,tax,production,tariff,wages:0,army:0,services:0,roads:0,upkeep:0,oilProduction,oilConsumption,oilNet:oilProduction-oilConsumption};}
-async function status(p){
- const c=country(p.country_id),d=calc(p);
- const owned=(await pool.query("SELECT building_key,level FROM game_buildings WHERE telegram_id=$1",[p.telegram_id])).rows;
- const levels=owned.reduce((a,x)=>(a[x.building_key]=Number(x.level),a),{}),lv=k=>Number(levels[k]||0);
- const buildingIncome=lv("gold_mine")*9000+lv("iron_mine")*6500+lv("coal_mine")*5000+lv("oil_refinery")*8500+lv("housing")*1800+lv("admin")*2500+lv("commercial")*4000+lv("hotel")*6000+lv("highway")*1200+lv("railway")*2500+lv("station")*2000+lv("airport")*12000+lv("port")*9000+lv("wheat_farm")*1800+lv("plateau_farm")*1200+lv("grain_silo")*700+lv("coal_power")*4000+lv("hydro_power")*5000+lv("oil_power")*3800+lv("arms_factory")*6500;
- const weapons=(await pool.query("SELECT weapon_key,quantity,damaged FROM game_weapon_stock WHERE telegram_id=$1 AND quantity>0",[p.telegram_id])).rows;
- const oilStock=Number(p.oil_stock||0),oilNeed=Math.max(1,d.oilConsumption),oilDays=Math.floor(oilStock/oilNeed),foodDays=Math.floor(Number(p.grain||0)/Math.max(1,Number(p.population||0)/1000));
- const buildingLines=owned.length?owned.map(x=>{const label=buildingLabel(x.building_key);return label+" × "+fmt(x.level)}).join("\\n"):"🏗️ هنوز ساختمانی ساخته نشده است.";
- const weaponLines=weapons.length?weapons.map(w=>{const found=getCountryWeapons(p.country_id).find(x=>x[0]===w.weapon_key);return "🛡️ "+(found?.[1]||weaponName(w.weapon_key,p.country_id))+" × "+fmt(w.quantity)+" | سالم "+fmt(Number(w.quantity)-Number(w.damaged||0))+" | آسیب‌دیده "+fmt(w.damaged||0)}).join("\\n"):"🛡️ انبار تسلیحات خالی است.";
- const statusMark=p.stability>=75?"🟢 باثبات":p.stability>=50?"🟡 قابل کنترل":p.stability>=30?"🟠 پرتنش":"🔴 بحرانی";
- return `<b>📊 گزارش ملی — ${c?.[1]||"کشور"}</b>
+async function refreshCommodities() {
+  await pool.query(
+    "WITH due AS (SELECT symbol,price FROM game_commodities WHERE updated_at<NOW()-INTERVAL '15 minutes'), changed AS (SELECT symbol,price,GREATEST(1,ROUND(price*(1+(random()*0.06-0.03)))::bigint) AS new_price FROM due) UPDATE game_commodities c SET price=x.new_price,change_pct=ROUND(((x.new_price-x.price)::numeric/NULLIF(x.price,0))*100,2),updated_at=NOW() FROM changed x WHERE c.symbol=x.symbol",
+  );
+}
+async function refreshStocks() {
+  await pool.query(
+    "WITH due AS (SELECT symbol,price FROM game_stocks WHERE updated_at<NOW()-INTERVAL '15 minutes'), changed AS (SELECT symbol,price,GREATEST(1,ROUND(price*(1+(random()*0.10-0.05)))::bigint) AS new_price FROM due) UPDATE game_stocks s SET price=c.new_price,change_pct=ROUND(((c.new_price-c.price)::numeric/NULLIF(c.price,0))*100,2),updated_at=NOW() FROM changed c WHERE s.symbol=c.symbol",
+  );
+}
+async function get(id) {
+  return (await pool.query("SELECT * FROM game_players WHERE telegram_id=$1", [id])).rows[0];
+}
+async function ensure(ctx) {
+  await pool.query(
+    "INSERT INTO game_players(telegram_id,username,display_name) VALUES($1,$2,$3) ON CONFLICT(telegram_id) DO UPDATE SET username=EXCLUDED.username,display_name=EXCLUDED.display_name",
+    [
+      ctx.from.id,
+      ctx.from.username || null,
+      [ctx.from.first_name, ctx.from.last_name].filter(Boolean).join(" ") || "فرمانروا",
+    ],
+  );
+  return get(ctx.from.id);
+}
+async function say(ctx, text, markup = main()) {
+  await ctx.reply(text, { reply_markup: markup, parse_mode: "HTML" });
+}
+async function edit(ctx, text, markup = main()) {
+  try {
+    await ctx.editMessageText(text, { reply_markup: markup, parse_mode: "HTML" });
+  } catch (e) {
+    if (!String(e).includes("message is not modified")) await say(ctx, text, markup);
+  }
+}
+const forceBases = {
+  germany: [48, 12, 24, 4],
+  britain: [35, 18, 18, 5],
+  france: [45, 12, 8, 4],
+  russia: [65, 14, 3, 2],
+  austria: [35, 8, 4, 2],
+  italy: [25, 10, 6, 2],
+  ottoman: [20, 5, 1, 1],
+  usa: [12, 8, 6, 1],
+  japan: [18, 12, 6, 2],
+  belgium: [6, 2, 1, 1],
+  serbia: [6, 0, 0, 0],
+  bulgaria: [6, 0, 0, 0],
+  romania: [8, 1, 0, 0],
+  persia: [4, 0, 0, 0],
+  netherlands: [5, 4, 1, 1],
+  portugal: [3, 3, 0, 0],
+  greece: [5, 3, 0, 0],
+  sweden: [5, 4, 0, 0],
+  norway: [2, 3, 0, 0],
+  denmark: [2, 3, 0, 0],
+  china: [15, 4, 0, 0],
+};
+function historicForces(id, population = 0) {
+  if (forceBases[id]) return forceBases[id];
+  const pop = Number(population) || 1000000;
+  return [Math.max(1, Math.min(18, Math.round(pop / 2500000))), 0, 0, 0];
+}
+async function ready(ctx) {
+  const p = await get(ctx.from.id);
+  if (!p?.approved) {
+    await say(ctx, "🪪 برای آغاز بازی از /start استفاده کنید.");
+    return null;
+  }
+  if (!p.forces_initialized) {
+    const f = historicForces(p.country_id, p.population);
+    await pool.query(
+      "UPDATE game_players SET army=$2,navy=$3,air_force=$4,air_defense=$5,forces_initialized=TRUE WHERE telegram_id=$1",
+      [ctx.from.id, ...f],
+    );
+    return get(ctx.from.id);
+  }
+  return p;
+}
+function calc(p) {
+  const taxable = Math.max(10000, Number(p.population) / 100),
+    tax = (taxable * p.tax_rate) / 100,
+    production = p.industry * 1200 + p.agriculture * 800,
+    tariff = p.tariff * 500,
+    oilProduction = Math.min(
+      Number(p.oil_reserves || 0),
+      Math.round(Number(p.oil_field_level || 0) * (1 + Number(p.technology || 0) / 250)),
+    ),
+    oilConsumption = Math.max(
+      10,
+      Number(p.industry || 0) * 4 +
+        Number(p.army || 0) * 2 +
+        Number(p.navy || 0) * 10 +
+        Number(p.air_force || 0) * 3,
+    );
+  return {
+    income: tax + production + tariff,
+    expense: 0,
+    tax,
+    production,
+    tariff,
+    wages: 0,
+    army: 0,
+    services: 0,
+    roads: 0,
+    upkeep: 0,
+    oilProduction,
+    oilConsumption,
+    oilNet: oilProduction - oilConsumption,
+  };
+}
+async function status(p) {
+  const c = country(p.country_id),
+    d = calc(p);
+  const owned = (
+    await pool.query("SELECT building_key,level FROM game_buildings WHERE telegram_id=$1", [
+      p.telegram_id,
+    ])
+  ).rows;
+  const levels = owned.reduce((a, x) => ((a[x.building_key] = Number(x.level)), a), {}),
+    lv = (k) => Number(levels[k] || 0);
+  const buildingIncome =
+    lv("gold_mine") * 9000 +
+    lv("iron_mine") * 6500 +
+    lv("coal_mine") * 5000 +
+    lv("oil_refinery") * 8500 +
+    lv("housing") * 1800 +
+    lv("admin") * 2500 +
+    lv("commercial") * 4000 +
+    lv("hotel") * 6000 +
+    lv("highway") * 1200 +
+    lv("railway") * 2500 +
+    lv("station") * 2000 +
+    lv("airport") * 12000 +
+    lv("port") * 9000 +
+    lv("wheat_farm") * 1800 +
+    lv("plateau_farm") * 1200 +
+    lv("grain_silo") * 700 +
+    lv("coal_power") * 4000 +
+    lv("hydro_power") * 5000 +
+    lv("oil_power") * 3800 +
+    lv("arms_factory") * 6500;
+  const weapons = (
+    await pool.query(
+      "SELECT weapon_key,quantity,damaged FROM game_weapon_stock WHERE telegram_id=$1 AND quantity>0",
+      [p.telegram_id],
+    )
+  ).rows;
+  const oilStock = Number(p.oil_stock || 0),
+    oilNeed = Math.max(1, d.oilConsumption),
+    oilDays = Math.floor(oilStock / oilNeed),
+    foodDays = Math.floor(Number(p.grain || 0) / Math.max(1, Number(p.population || 0) / 1000));
+  const buildingLines = owned.length
+    ? owned
+        .map((x) => {
+          const label = buildingLabel(x.building_key);
+          return label + " × " + fmt(x.level);
+        })
+        .join("\\n")
+    : "🏗️ هنوز ساختمانی ساخته نشده است.";
+  const weaponLines = weapons.length
+    ? weapons
+        .map((w) => {
+          const found = getCountryWeapons(p.country_id).find((x) => x[0] === w.weapon_key);
+          return (
+            "🛡️ " +
+            (found?.[1] || weaponName(w.weapon_key, p.country_id)) +
+            " × " +
+            fmt(w.quantity) +
+            " | سالم " +
+            fmt(Number(w.quantity) - Number(w.damaged || 0)) +
+            " | آسیب‌دیده " +
+            fmt(w.damaged || 0)
+          );
+        })
+        .join("\\n")
+    : "🛡️ انبار تسلیحات خالی است.";
+  const statusMark =
+    p.stability >= 75
+      ? "🟢 باثبات"
+      : p.stability >= 50
+        ? "🟡 قابل کنترل"
+        : p.stability >= 30
+          ? "🟠 پرتنش"
+          : "🔴 بحرانی";
+  return `<b>📊 گزارش ملی — ${c?.[1] || "کشور"}</b>
 ━━━━━━━━━━━━━━━━━━
-🏳️ <b>کشور:</b> ${c?.[1]||"نامشخص"} | 👑 <b>فرمانروا:</b> ${p.ruler||p.display_name}
-🏛️ <b>حکومت:</b> ${p.government||"نامشخص"}
+🏳️ <b>کشور:</b> ${c?.[1] || "نامشخص"} | 👑 <b>فرمانروا:</b> ${p.ruler || p.display_name}
+🏛️ <b>حکومت:</b> ${p.government || "نامشخص"}
 ${statusMark} <b>ثبات:</b> ${fmt(p.stability)}٪ | 👑 مشروعیت: ${fmt(p.legitimacy)}٪
 
 <b>💰 اقتصاد و خزانه</b>
 💵 موجودی خزانه: ${money(p.treasury)}
-📈 درآمد روزانه: ${money(d.income+buildingIncome)}
+📈 درآمد روزانه: ${money(d.income + buildingIncome)}
    ├ 🧾 مالیات: ${money(d.tax)}
-   ├ 🏭 تولید و تعرفه: ${money(d.production+d.tariff)}
+   ├ 🏭 تولید و تعرفه: ${money(d.production + d.tariff)}
    └ 🏗️ درآمد ساختمان‌ها: ${money(buildingIncome)}
 🧾 مالیات: ${p.tax_rate}٪ | تعرفه: ${p.tariff}٪
 
 <b>🏭 تولید و ذخایر کشور</b>
 🏭 صنعت: ${fmt(p.industry)} | 🌾 کشاورزی: ${fmt(p.agriculture)}
-🌾 غله: ${resourceAmount("grain",p.grain)} — حدود ${fmt(foodDays)} روز مصرف
-🪨 زغال‌سنگ: ${resourceAmount("coal",p.coal)} | ⛓️ آهن: ${resourceAmount("iron",p.iron)} | 🧵 پارچه: ${resourceAmount("cloth",p.cloth)}
-🪙 طلا: ${resourceAmount("gold_stock",p.gold_stock||0)} | ⚡ برق: ${resourceAmount("electricity_stock",p.electricity_stock||0)}
-⛽ سوخت: ${resourceAmount("fuel_stock",p.fuel_stock||0)} | 🛢️ نفت خام: ${resourceAmount("oil_stock",oilStock)}
-   ├ تولید نفت خام: ${resourceAmount("oil_stock",d.oilProduction)} در روز
-   ├ مصرف نفت خام: ${resourceAmount("oil_stock",d.oilConsumption)} در روز
+🌾 غله: ${resourceAmount("grain", p.grain)} — حدود ${fmt(foodDays)} روز مصرف
+🪨 زغال‌سنگ: ${resourceAmount("coal", p.coal)} | ⛓️ آهن: ${resourceAmount("iron", p.iron)} | 🧵 پارچه: ${resourceAmount("cloth", p.cloth)}
+🪙 طلا: ${resourceAmount("gold_stock", p.gold_stock || 0)} | ⚡ برق: ${resourceAmount("electricity_stock", p.electricity_stock || 0)}
+⛽ سوخت: ${resourceAmount("fuel_stock", p.fuel_stock || 0)} | 🛢️ نفت خام: ${resourceAmount("oil_stock", oilStock)}
+   ├ تولید نفت خام: ${resourceAmount("oil_stock", d.oilProduction)} در روز
+   ├ مصرف نفت خام: ${resourceAmount("oil_stock", d.oilConsumption)} در روز
    └ ذخیره نفت: ${fmt(oilDays)} روز
 🧠 فناوری: ${fmt(p.technology)} | 🛤️ زیرساخت: ${fmt(p.infrastructure)}
 
@@ -238,9 +524,9 @@ ${buildingLines}
 
 <b>🛡️ نیروهای مسلح</b>
 🪖 نیروی زمینی: ${fmt(p.army)} واحد
-✈️ نیروی هوایی: ${fmt(p.air_force||0)} گروه (مقیاس بازی)
+✈️ نیروی هوایی: ${fmt(p.air_force || 0)} گروه (مقیاس بازی)
 ⚓ نیروی دریایی: ${fmt(p.navy)} واحد ناوگانی
-🛡️ پدافند: ${fmt(p.air_defense||0)} آتشبار
+🛡️ پدافند: ${fmt(p.air_defense || 0)} آتشبار
 🎖️ روحیه: ${fmt(p.morale)}٪
 
 <b>📦 انبار تسلیحات</b>
@@ -248,307 +534,5975 @@ ${weaponLines}
 
 <b>⚠️ گزارش مدیریتی</b>
 💵 درآمد دوره‌ای به خزانه افزوده می‌شود و برای خرید منابع در بازار قابل استفاده است.
-${oilStock<oilNeed*3?"🛢️ ذخیره نفت کمتر از سه روز است؛ واردات یا تولید را افزایش دهید.":"🟢 ذخیره نفت برای بیش از سه روز مصرف کافی است."}
-${p.stability<40?"⚠️ ثبات پایین است؛ احتمال ناآرامی را در نظر بگیرید.":"🟢 ثبات داخلی در محدوده قابل قبول است."}`;
-}const continentNames={europe:"🌍 اروپا",asia:"🌏 آسیا",africa:"🌍 آفریقا",north_america:"🌎 آمریکای شمالی",south_america:"🌎 آمریکای جنوبی",oceania:"🌏 اقیانوسیه"};
-const continentSets={
-europe:"ottoman germany russia austria britain france italy serbia bulgaria romania belgium netherlands portugal greece montenegro albania denmark sweden norway switzerland luxembourg ireland finland poland ukraine croatia czech slovakia hungary ireland_home iceland malta cyprus monaco liechtenstein san_marino vatican",
-asia:"persia japan china siam afghanistan korea vietnam philippines indonesia india russia_caucasus azerbaijan georgia armenia nepal bhutan oman yemen qatar kuwait bahrain uae saudi mongolia manchuria taiwan burma malaya cambodia laos persian_gulf libya iraq syria lebanon palestine kurdistan",
-africa:"ethiopia liberia egypt morocco south_africa tanzania namibia cameroon togo ghana nigeria kenya uganda sudan senegal algeria tunisia madagascar angola mozambique congo",
-north_america:"usa canada mexico cuba haiti dominican guatemala honduras el_salvador nicaragua costa_rica panama",
-south_america:"brazil argentina chile bolivia uruguay venezuela peru paraguay ecuador colombia",
-oceania:"australia new_zealand"};
-const continentOf=id=>Object.keys(continentSets).find(k=>continentSets[k].split(" ").includes(id))||"asia";
-const countryMenu=async(ctx,continent="all",page=0,editMode=false)=>{
- const filtered=countries.filter(c=>continent==="all"||continentOf(c[0])===continent).sort((a,b)=>a[1].localeCompare(b[1],"fa"));
- const size=8,total=Math.max(1,Math.ceil(filtered.length/size)),p=Math.max(0,Math.min(page,total-1)),items=filtered.slice(p*size,(p+1)*size);
- const occupiedRows=(await pool.query("SELECT country_id FROM game_players WHERE approved=TRUE AND country_id=ANY($1::text[])",[items.map(c=>c[0])])).rows;const occupied=new Set(occupiedRows.map(x=>x.country_id));
- const rows=items.map(c=>[{text:(occupied.has(c[0])?"🔒 ":"🌍 ")+c[1],callback_data:occupied.has(c[0])?"lockedcountry:"+c[0]:"c:"+c[0]}]);
- const nav=[];if(p>0)nav.push({text:"⬅️ قبلی",callback_data:"cp:"+continent+":"+(p-1)});nav.push({text:"صفحه "+(p+1)+"/"+total,callback_data:"noop"});if(p<total-1)nav.push({text:"بعدی ➡️",callback_data:"cp:"+continent+":"+(p+1)});rows.push(nav);
- rows.push([{text:"🔎 جستجوی کشور",callback_data:"cs"}]);
- rows.push([{text:"↩️ قاره‌ها",callback_data:"start"}],[{text:"لغو",callback_data:"m:main"}]);
- const title=continent==="all"?"همه‌ی کشورها":continentNames[continent];
- const text="<b>مرحله ۱ از ۳ — انتخاب کشور</b>\n\nسناریو: سال ۱۹۱۴\nقاره: "+title+"\nکشورها: "+filtered.length+"\n\nکشور مورد نظر را انتخاب کنید:";
- if(editMode)await edit(ctx,text,K(rows));else await say(ctx,text,K(rows));
+${oilStock < oilNeed * 3 ? "🛢️ ذخیره نفت کمتر از سه روز است؛ واردات یا تولید را افزایش دهید." : "🟢 ذخیره نفت برای بیش از سه روز مصرف کافی است."}
+${p.stability < 40 ? "⚠️ ثبات پایین است؛ احتمال ناآرامی را در نظر بگیرید." : "🟢 ثبات داخلی در محدوده قابل قبول است."}`;
+}
+const continentNames = {
+  europe: "🌍 اروپا",
+  asia: "🌏 آسیا",
+  africa: "🌍 آفریقا",
+  north_america: "🌎 آمریکای شمالی",
+  south_america: "🌎 آمریکای جنوبی",
+  oceania: "🌏 اقیانوسیه",
 };
-async function chooseCountry(ctx){await say(ctx,"<b>مرحله ۱ از ۳ — انتخاب کشور</b>\n\nسناریوی تاریخی سال ۱۹۱۴. ابتدا قاره را انتخاب کنید یا در میان همه‌ی کشورها جستجو کنید:",K([[{text:continentNames.europe,callback_data:"cc:europe"},{text:continentNames.asia,callback_data:"cc:asia"}],[{text:continentNames.africa,callback_data:"cc:africa"},{text:continentNames.north_america,callback_data:"cc:north_america"}],[{text:continentNames.south_america,callback_data:"cc:south_america"},{text:continentNames.oceania,callback_data:"cc:oceania"}],[{text:"🌐 همه‌ی کشورها",callback_data:"cc:all"}],[{text:"🔎 جستجوی کشور",callback_data:"cs"}],[{text:"لغو",callback_data:"m:main"}]]));}
-const pendingCountrySearch=new Set();
-const pendingTradeInput=new Map();
-const resourceNames={grain:"غله",coal:"زغال‌سنگ",iron:"آهن",cloth:"پارچه",oil:"نفت خام",gold_stock:"طلا",cash:"دلار نقدی"};
-const resourceUnits={grain:"تن",coal:"تن",iron:"تن",cloth:"طاقه",gold_stock:"گرم",electricity_stock:"مگاوات‌ساعت",fuel_stock:"تن",oil_stock:"بشکه"};
-const resourceAmount=(key,value)=>fmtAsset(value)+" "+(resourceUnits[key]||"واحد");
-const keyWords={forward:"پیشرو",base:"پایگاه",foreign:"خارجی",operational:"عملیاتی",oil:"نفت",stock:"ذخیره",gold:"طلا",electricity:"برق",fuel:"سوخت",grain:"غله",coal:"زغال‌سنگ",iron:"آهن",cloth:"پارچه",cash:"وجه نقد",mine:"معدن",factory:"کارخانه",power:"نیروگاه",farm:"مزرعه",house:"مسکن",housing:"مسکونی",admin:"اداری",commercial:"تجاری",hotel:"هتل",highway:"بزرگراه",railway:"راه‌آهن",station:"ایستگاه",airport:"فرودگاه",port:"بندر",weapon:"تسلیحات",army:"ارتش",navy:"نیروی دریایی",air:"هوایی",repair:"تعمیر",alliance:"اتحاد",nonaggression:"عدم تعرض",trade:"تجاری",pact:"پیمان",ceasefire:"آتش‌بس",sanction:"تحریم",proposal:"پیشنهاد",neutral:"عادی"};
-const keyLabel=value=>{const raw=String(value??"");if(!raw)return"نامشخص";return raw.split("_").map(w=>keyWords[w]||w.replace(/\b[a-z]/g,c=>c.toUpperCase())).join(" ");};
-const resourceLabel=value=>resourceNames[value]||keyLabel(value);
-const buildingLabel=value=>{const item=storeItems().find(i=>i[0]===value);return item?storeLabel(item):({forward_base:"🌐 پایگاه عملیاتی خارجی"}[value]||"🏗️ "+keyLabel(value));};
-const weaponName=(value,countryId)=>getCountryWeapons(countryId).find(x=>x[0]===value)?.[1]||Object.values(countryWeapons).flat().find(x=>x[0]===value)?.[1]||keyLabel(value);
+const continentSets = {
+  europe:
+    "ottoman germany russia austria britain france italy serbia bulgaria romania belgium netherlands portugal greece montenegro albania denmark sweden norway switzerland luxembourg ireland finland poland ukraine croatia czech slovakia hungary ireland_home iceland malta cyprus monaco liechtenstein san_marino vatican",
+  asia: "persia japan china siam afghanistan korea vietnam philippines indonesia india russia_caucasus azerbaijan georgia armenia nepal bhutan oman yemen qatar kuwait bahrain uae saudi mongolia manchuria taiwan burma malaya cambodia laos persian_gulf libya iraq syria lebanon palestine kurdistan",
+  africa:
+    "ethiopia liberia egypt morocco south_africa tanzania namibia cameroon togo ghana nigeria kenya uganda sudan senegal algeria tunisia madagascar angola mozambique congo",
+  north_america:
+    "usa canada mexico cuba haiti dominican guatemala honduras el_salvador nicaragua costa_rica panama",
+  south_america: "brazil argentina chile bolivia uruguay venezuela peru paraguay ecuador colombia",
+  oceania: "australia new_zealand",
+};
+const continentOf = (id) =>
+  Object.keys(continentSets).find((k) => continentSets[k].split(" ").includes(id)) || "asia";
+const countryMenu = async (ctx, continent = "all", page = 0, editMode = false) => {
+  const filtered = countries
+    .filter((c) => continent === "all" || continentOf(c[0]) === continent)
+    .sort((a, b) => a[1].localeCompare(b[1], "fa"));
+  const size = 8,
+    total = Math.max(1, Math.ceil(filtered.length / size)),
+    p = Math.max(0, Math.min(page, total - 1)),
+    items = filtered.slice(p * size, (p + 1) * size);
+  const occupiedRows = (
+    await pool.query(
+      "SELECT country_id FROM game_players WHERE approved=TRUE AND country_id=ANY($1::text[])",
+      [items.map((c) => c[0])],
+    )
+  ).rows;
+  const occupied = new Set(occupiedRows.map((x) => x.country_id));
+  const rows = items.map((c) => [
+    {
+      text: (occupied.has(c[0]) ? "🔒 " : "🌍 ") + c[1],
+      callback_data: occupied.has(c[0]) ? "lockedcountry:" + c[0] : "c:" + c[0],
+    },
+  ]);
+  const nav = [];
+  if (p > 0) nav.push({ text: "⬅️ قبلی", callback_data: "cp:" + continent + ":" + (p - 1) });
+  nav.push({ text: "صفحه " + (p + 1) + "/" + total, callback_data: "noop" });
+  if (p < total - 1)
+    nav.push({ text: "بعدی ➡️", callback_data: "cp:" + continent + ":" + (p + 1) });
+  rows.push(nav);
+  rows.push([{ text: "🔎 جستجوی کشور", callback_data: "cs" }]);
+  rows.push(
+    [{ text: "↩️ قاره‌ها", callback_data: "start" }],
+    [{ text: "لغو", callback_data: "m:main" }],
+  );
+  const title = continent === "all" ? "همه‌ی کشورها" : continentNames[continent];
+  const text =
+    "<b>مرحله ۱ از ۳ — انتخاب کشور</b>\n\nسناریو: سال ۱۹۱۴\nقاره: " +
+    title +
+    "\nکشورها: " +
+    filtered.length +
+    "\n\nکشور مورد نظر را انتخاب کنید:";
+  if (editMode) await edit(ctx, text, K(rows));
+  else await say(ctx, text, K(rows));
+};
+async function chooseCountry(ctx) {
+  await say(
+    ctx,
+    "<b>مرحله ۱ از ۳ — انتخاب کشور</b>\n\nسناریوی تاریخی سال ۱۹۱۴. ابتدا قاره را انتخاب کنید یا در میان همه‌ی کشورها جستجو کنید:",
+    K([
+      [
+        { text: continentNames.europe, callback_data: "cc:europe" },
+        { text: continentNames.asia, callback_data: "cc:asia" },
+      ],
+      [
+        { text: continentNames.africa, callback_data: "cc:africa" },
+        { text: continentNames.north_america, callback_data: "cc:north_america" },
+      ],
+      [
+        { text: continentNames.south_america, callback_data: "cc:south_america" },
+        { text: continentNames.oceania, callback_data: "cc:oceania" },
+      ],
+      [{ text: "🌐 همه‌ی کشورها", callback_data: "cc:all" }],
+      [{ text: "🔎 جستجوی کشور", callback_data: "cs" }],
+      [{ text: "لغو", callback_data: "m:main" }],
+    ]),
+  );
+}
+const pendingCountrySearch = new Set();
+const pendingTradeInput = new Map();
+const resourceNames = {
+  grain: "غله",
+  coal: "زغال‌سنگ",
+  iron: "آهن",
+  cloth: "پارچه",
+  oil: "نفت خام",
+  gold_stock: "طلا",
+  cash: "دلار نقدی",
+};
+const resourceUnits = {
+  grain: "تن",
+  coal: "تن",
+  iron: "تن",
+  cloth: "طاقه",
+  gold_stock: "گرم",
+  electricity_stock: "مگاوات‌ساعت",
+  fuel_stock: "تن",
+  oil_stock: "بشکه",
+};
+const resourceAmount = (key, value) => fmtAsset(value) + " " + (resourceUnits[key] || "واحد");
+const keyWords = {
+  forward: "پیشرو",
+  base: "پایگاه",
+  foreign: "خارجی",
+  operational: "عملیاتی",
+  oil: "نفت",
+  stock: "ذخیره",
+  gold: "طلا",
+  electricity: "برق",
+  fuel: "سوخت",
+  grain: "غله",
+  coal: "زغال‌سنگ",
+  iron: "آهن",
+  cloth: "پارچه",
+  cash: "وجه نقد",
+  mine: "معدن",
+  factory: "کارخانه",
+  power: "نیروگاه",
+  farm: "مزرعه",
+  house: "مسکن",
+  housing: "مسکونی",
+  admin: "اداری",
+  commercial: "تجاری",
+  hotel: "هتل",
+  highway: "بزرگراه",
+  railway: "راه‌آهن",
+  station: "ایستگاه",
+  airport: "فرودگاه",
+  port: "بندر",
+  weapon: "تسلیحات",
+  army: "ارتش",
+  navy: "نیروی دریایی",
+  air: "هوایی",
+  repair: "تعمیر",
+  alliance: "اتحاد",
+  nonaggression: "عدم تعرض",
+  trade: "تجاری",
+  pact: "پیمان",
+  ceasefire: "آتش‌بس",
+  sanction: "تحریم",
+  proposal: "پیشنهاد",
+  neutral: "عادی",
+};
+const keyLabel = (value) => {
+  const raw = String(value ?? "");
+  if (!raw) return "نامشخص";
+  return raw
+    .split("_")
+    .map((w) => keyWords[w] || w.replace(/\b[a-z]/g, (c) => c.toUpperCase()))
+    .join(" ");
+};
+const resourceLabel = (value) => resourceNames[value] || keyLabel(value);
+const buildingLabel = (value) => {
+  const item = storeItems().find((i) => i[0] === value);
+  return item
+    ? storeLabel(item)
+    : { forward_base: "🌐 پایگاه عملیاتی خارجی" }[value] || "🏗️ " + keyLabel(value);
+};
+const weaponName = (value, countryId) =>
+  getCountryWeapons(countryId).find((x) => x[0] === value)?.[1] ||
+  Object.values(countryWeapons)
+    .flat()
+    .find((x) => x[0] === value)?.[1] ||
+  keyLabel(value);
 
-const storeCats=[
-{id:"mining",name:"⛏️ معدن و منابع",items:[["gold_mine","🪙 معدن طلا",28000,{iron:120,coal:100},"طلا +35 در روز"],["iron_mine","معدن آهن",18000,{coal:80},"آهن +180 در روز"],["coal_mine","معدن زغال",15000,{iron:60},"زغال +220 در روز"],["oil_refinery","پالایشگاه نفت",42000,{iron:200,coal:180},"سوخت +100 در روز"]]},
-{id:"buildings",name:"🏢 ساختمان‌ها",items:[["housing","🏘️ مجتمع مسکونی",24000,{iron:80,cloth:40},"ظرفیت جمعیت +1000"],["admin","ساختمان اداری",32000,{iron:120,coal:50},"کارایی مالیاتی +5٪"],["commercial","مرکز تجاری",38000,{iron:140,cloth:70},"درآمد +4000 دلار روزانه"],["hotel","هتل بین‌المللی",50000,{iron:180,cloth:150},"درآمد +6000 دلار روزانه"]]},
-{id:"transport",name:"🚆 حمل‌ونقل و ترابری",items:[["highway","🛣️ بزرگراه",45000,{iron:250,coal:150},"زیرساخت +2"],["railway","خط راه‌آهن",55000,{iron:400,coal:250},"زیرساخت +3"],["station","ایستگاه قطار",30000,{iron:180,cloth:50},"درآمد +2000 دلار روزانه"],["airport","فرودگاه بین‌المللی",125000,{iron:650,coal:300},"درآمد +12000 دلار روزانه"],["port","بندر تجاری",85000,{iron:450,coal:250},"درآمد +9000 دلار روزانه"]]},
-{id:"agriculture",name:"🌾 کشاورزی و غلات",items:[["wheat_farm","🌾 مزرعه گندم",12000,{iron:30},"غله +250 در روز"],["plateau_farm","مزرعه فلات",9000,{iron:20},"غله +160 در روز"],["grain_silo","سیلوی غلات",18000,{iron:60,coal:40},"ذخیره‌سازی غلات"]]},
-{id:"energy",name:"⚡ نیروگاه‌های انرژی",items:[["coal_power","🏭 نیروگاه زغال‌سنگی",65000,{iron:300,coal:250},"برق +500 در روز"],["hydro_power","نیروگاه برق‌آبی",95000,{iron:350,coal:80},"برق +650 در روز"],["oil_power","نیروگاه نفتی",78000,{iron:320,coal:100},"برق +420 در روز"]]},
-{id:"military",name:"🛡️ صنایع تسلیحاتی",items:[["arms_factory","🏭 کارخانه تسلیحات",90000,{iron:500,coal:350},"پیش‌نیاز ساخت سلاح‌های کشور"]]}
+const storeCats = [
+  {
+    id: "mining",
+    name: "⛏️ معدن و منابع",
+    items: [
+      ["gold_mine", "🪙 معدن طلا", 28000, { iron: 120, coal: 100 }, "طلا +35 در روز"],
+      ["iron_mine", "معدن آهن", 18000, { coal: 80 }, "آهن +180 در روز"],
+      ["coal_mine", "معدن زغال", 15000, { iron: 60 }, "زغال +220 در روز"],
+      ["oil_refinery", "پالایشگاه نفت", 42000, { iron: 200, coal: 180 }, "سوخت +100 در روز"],
+    ],
+  },
+  {
+    id: "buildings",
+    name: "🏢 ساختمان‌ها",
+    items: [
+      ["housing", "🏘️ مجتمع مسکونی", 24000, { iron: 80, cloth: 40 }, "ظرفیت جمعیت +1000"],
+      ["admin", "ساختمان اداری", 32000, { iron: 120, coal: 50 }, "کارایی مالیاتی +5٪"],
+      ["commercial", "مرکز تجاری", 38000, { iron: 140, cloth: 70 }, "درآمد +4000 دلار روزانه"],
+      ["hotel", "هتل بین‌المللی", 50000, { iron: 180, cloth: 150 }, "درآمد +6000 دلار روزانه"],
+    ],
+  },
+  {
+    id: "transport",
+    name: "🚆 حمل‌ونقل و ترابری",
+    items: [
+      ["highway", "🛣️ بزرگراه", 45000, { iron: 250, coal: 150 }, "زیرساخت +2"],
+      ["railway", "خط راه‌آهن", 55000, { iron: 400, coal: 250 }, "زیرساخت +3"],
+      ["station", "ایستگاه قطار", 30000, { iron: 180, cloth: 50 }, "درآمد +2000 دلار روزانه"],
+      [
+        "airport",
+        "فرودگاه بین‌المللی",
+        125000,
+        { iron: 650, coal: 300 },
+        "درآمد +12000 دلار روزانه",
+      ],
+      ["port", "بندر تجاری", 85000, { iron: 450, coal: 250 }, "درآمد +9000 دلار روزانه"],
+    ],
+  },
+  {
+    id: "agriculture",
+    name: "🌾 کشاورزی و غلات",
+    items: [
+      ["wheat_farm", "🌾 مزرعه گندم", 12000, { iron: 30 }, "غله +250 در روز"],
+      ["plateau_farm", "مزرعه فلات", 9000, { iron: 20 }, "غله +160 در روز"],
+      ["grain_silo", "سیلوی غلات", 18000, { iron: 60, coal: 40 }, "ذخیره‌سازی غلات"],
+    ],
+  },
+  {
+    id: "energy",
+    name: "⚡ نیروگاه‌های انرژی",
+    items: [
+      ["coal_power", "🏭 نیروگاه زغال‌سنگی", 65000, { iron: 300, coal: 250 }, "برق +500 در روز"],
+      ["hydro_power", "نیروگاه برق‌آبی", 95000, { iron: 350, coal: 80 }, "برق +650 در روز"],
+      ["oil_power", "نیروگاه نفتی", 78000, { iron: 320, coal: 100 }, "برق +420 در روز"],
+    ],
+  },
+  {
+    id: "military",
+    name: "🛡️ صنایع تسلیحاتی",
+    items: [
+      [
+        "arms_factory",
+        "🏭 کارخانه تسلیحات",
+        90000,
+        { iron: 500, coal: 350 },
+        "پیش‌نیاز ساخت سلاح‌های کشور",
+      ],
+    ],
+  },
 ];
-const countryWeapons={
-germany:[["mauser98","تفنگ ماوزر ۹۸",180],["mg08","مسلسل ام‌گه ۰۸",2200],["fieldgun77","توپ ۷۷ میلی‌متری",12500],["uboot","زیردریایی کلاس U",180000],["albatros_bii","هواپیمای آلباتروس B.II",85000],["taube","هواپیمای رومپلر تائوبه",72000],["aviatik_b1","هواپیمای آویاتیک B.I (۱۹۱۴)",79000],["helgoland","ناو جنگی کلاس هِلگولاند",2300000],["moltke","رزم‌ناو کلاس مولتکه",2450000],["nassau","ناو جنگی کلاس ناسائو",1850000],["kaiser","ناو جنگی کلاس کایزر",2600000]],
-britain:[["lee_enfield","تفنگ لی-انفیلد",190],["vickers","مسلسل ویکرز",2400],["qf18","توپ ۱۸ پوندی",13000],["dreadnought","ناو جنگی درِدنوت",2100000],["avro504","هواپیمای آورو ۵۰۴",78000],["be2","هواپیمای RAF B.E.2",85000],["bristol_scout","هواپیمای بریستول اسکات (۱۹۱۴)",90000],["sopwith_tab","هواپیمای سوپ‌ویت تابلوید",92000],["iron_duke","ناو جنگی کلاس آیرون دوک",2800000]],
-france:[["lebel","تفنگ لبل",175],["hotchkiss14","مسلسل هوتچکیس مدل ۱۹۱۴",2800],["canon75","توپ ۷۵ میلی‌متری",14000],["corbet","ناو جنگی کلاس کوربه",2400000],["mf7","هواپیمای فارمن MF.7",76000],["caudron_g3","هواپیمای کودرون G.3 (۱۹۱۴)",82000],["nieuport1","هواپیمای نیوپور ۱",83000],["danton","ناو جنگی کلاس دانتون",1950000]],
-russia:[["mosin","تفنگ موسین-ناگان",160],["maxim","مسلسل ماکسیم",2300],["fieldgun76","توپ ۷۶ میلی‌متری",12000],["gangut","ناو جنگی کلاس گانگوت",2450000],["novik_destroyer","ناوشکن نوویک",520000],["ilya_muromets","هواپیمای ایلیا مورومتس",155000],["sikorsky_s10","هواپیمای سیکورسکی S-10",95000]],
-ottoman:[],
-austria:[["mannlicher","تفنگ مانلیشر",170],["schwarzlose","مسلسل شوارتسلوزه",2200],["skoda75","توپ اشکودا",13500],["lohner_e","هواپیمای لونه‌ِر E",85000],["hansa_b1","هواپیمای هانزا-براندنبورگ B.I",88000],["tegetthoff","ناو جنگی کلاس تگت‌هوف",2500000],["viribus","ناو جنگی SMS Viribus Unitis",2350000]],
-italy:[["carcano","تفنگ کارکانو",165],["fiat14","مسلسل فیات-رِوِلی",2300],["italy75","توپ ۷۵ میلی‌متری",13000],["caproni_ca1","هواپیمای کاپرونی Ca.1",92000],["dante_alighieri","ناو جنگی دانته آلیگیری",2300000]],
-usa:[["springfield03","تفنگ اسپرینگفیلد ۱۹۰۳",200],["browning","مسلسل براونینگ",2500],["us3inch","توپ صحرایی ۳ اینچی",13500],["curtiss_f","هواپیمای دریایی کرتیس مدل F (۱۹۱۴)",68000],["curtiss_ab3","هواپیمای دریایی کرتیس AB-3 (۱۹۱۴)",74000],["wright_b","هواپیمای رایت مدل B (آموزشی)",52000],["burgess_h","هواپیمای بورگس مدل H",64000],["wyoming_us","ناو جنگی کلاس وایومینگ (۱۹۱۲)",2700000],["florida_us","ناو جنگی کلاس فلوریدا (۱۹۱۱)",2450000],["delaware_us","ناو جنگی کلاس دلاور (۱۹۱۰)",2350000],["newyork_us","ناو جنگی کلاس نیویورک (۱۹۱۴)",2850000],["us_sub_h","زیردریایی کلاس H آمریکا (تکمیل عمدتاً پس از ۱۹۱۴)",480000],["us_l_sub","زیردریایی کلاس L آمریکا",360000],["us_destroyer","ناوشکن‌های آمریکایی (کلاس Cassin؛ نمونه نماینده)",470000]],
-japan:[["arisaka","تفنگ آریساکا",170],["type3","مسلسل تایپ ۳",2400],["japan75","توپ ۷۵ میلی‌متری",13000],["kaishiki1","هواپیمای کایشیکی ۱",65000],["satsuma","ناو جنگی ساتسوما",1900000],["kongo_jp","رزم‌ناو کلاس کنگو (ساخت بریتانیا)",2900000],["kawachi","ناو جنگی کاواچی",2350000]],
-persia:[["lari_matchlock","تفنگ محلی لاری (ساخت کارگاه‌های لار)",95],["qajar_local_rifle","تفنگ سرپرست محلی قاجاری",110],["qajar_sword","شمشیر و سلاح سرد ساخت استادکاران ایرانی",75],["qajar_spear","نیزه و سلاح پیاده‌نظام محلی",45],["qajar_zamburak","زنبورک قاجاری (توپ سبک قدیمی)",2200]],
-belgium:[["mauser_be","تفنگ ماوزر بلژیکی",180],["maxim_be","مسلسل ماکسیم",2400],["canon_be","توپ صحرایی",13500]],
-serbia:[],
-romania:[],
-greece:[["mannlicher_greece","تفنگ مانلیشر یونانی",170],["schneider_greece","توپ اشنایدر ۷۵ میلی‌متری",13500],["averof_ship","رزم‌ناو زرهی جورجیوس آوروُف",2100000],["hydra_ship","ناو جنگی کلاس هیدرا",1850000]],
-netherlands:[["mannlicher_nl","تفنگ مانلیشر هلندی",170],["hembrug_rifle","تفنگ هلندی Hembrug",180],["o1_sub","زیردریایی کلاس O 1",300000]],
-china:[["hanyang88","تفنگ هانیانگ ۸۸",150],["qing_gun","توپ صحرایی چین",10000],["haiqi_ship","رزم‌ناو Hai Chi (ساخت خارجی؛ در اختیار چین)",1600000]],
-brazil:[["mauser_brazil","تفنگ ماوزر برزیلی",180],["brazil75","توپ صحرایی ۷۵ میلی‌متری",13000],["minas_gerais","ناو جنگی کلاس میناس ژرایس",2400000]],
-argentina:[["mauser_arg","تفنگ ماوزر آرژانتینی",180],["argentina75","توپ صحرایی",13000],["rivadavia","ناو جنگی کلاس ریواداویا",2500000]],
-chile:[["mauser_chile","تفنگ ماوزر شیلیایی",180],["chile75","توپ صحرایی",13000],["alminte_latorre","ناو جنگی آلْمیرانته لاتوره (ساخت بریتانیا)",2500000]],
-australia:[["lee_australia","تفنگ لی-انفیلد استرالیایی",190],["australia_cruiser","رزم‌ناو HMAS Australia (ساخت بریتانیا)",2200000]],
-canada:[["ross_rifle","تفنگ راس کانادایی",185]],
-bulgaria:[["mannlicher_bg","تفنگ مانلیشر بلغاری",170],["schneider_bg","توپ اشنایدر",13000]],
-portugal:[["mauser_pt","تفنگ ماوزر پرتغالی",180],["portugal75","توپ صحرایی",13000]],
-mexico:[["mauser_mx","تفنگ ماوزر مکزیکی",180],["mexico75","توپ صحرایی",13000]]
+const countryWeapons = {
+  germany: [
+    ["mauser98", "تفنگ ماوزر ۹۸", 180],
+    ["mg08", "مسلسل ام‌گه ۰۸", 2200],
+    ["fieldgun77", "توپ ۷۷ میلی‌متری", 12500],
+    ["uboot", "زیردریایی کلاس U", 180000],
+    ["albatros_bii", "هواپیمای آلباتروس B.II", 85000],
+    ["taube", "هواپیمای رومپلر تائوبه", 72000],
+    ["aviatik_b1", "هواپیمای آویاتیک B.I (۱۹۱۴)", 79000],
+    ["helgoland", "ناو جنگی کلاس هِلگولاند", 2300000],
+    ["moltke", "رزم‌ناو کلاس مولتکه", 2450000],
+    ["nassau", "ناو جنگی کلاس ناسائو", 1850000],
+    ["kaiser", "ناو جنگی کلاس کایزر", 2600000],
+  ],
+  britain: [
+    ["lee_enfield", "تفنگ لی-انفیلد", 190],
+    ["vickers", "مسلسل ویکرز", 2400],
+    ["qf18", "توپ ۱۸ پوندی", 13000],
+    ["dreadnought", "ناو جنگی درِدنوت", 2100000],
+    ["avro504", "هواپیمای آورو ۵۰۴", 78000],
+    ["be2", "هواپیمای RAF B.E.2", 85000],
+    ["bristol_scout", "هواپیمای بریستول اسکات (۱۹۱۴)", 90000],
+    ["sopwith_tab", "هواپیمای سوپ‌ویت تابلوید", 92000],
+    ["iron_duke", "ناو جنگی کلاس آیرون دوک", 2800000],
+  ],
+  france: [
+    ["lebel", "تفنگ لبل", 175],
+    ["hotchkiss14", "مسلسل هوتچکیس مدل ۱۹۱۴", 2800],
+    ["canon75", "توپ ۷۵ میلی‌متری", 14000],
+    ["corbet", "ناو جنگی کلاس کوربه", 2400000],
+    ["mf7", "هواپیمای فارمن MF.7", 76000],
+    ["caudron_g3", "هواپیمای کودرون G.3 (۱۹۱۴)", 82000],
+    ["nieuport1", "هواپیمای نیوپور ۱", 83000],
+    ["danton", "ناو جنگی کلاس دانتون", 1950000],
+  ],
+  russia: [
+    ["mosin", "تفنگ موسین-ناگان", 160],
+    ["maxim", "مسلسل ماکسیم", 2300],
+    ["fieldgun76", "توپ ۷۶ میلی‌متری", 12000],
+    ["gangut", "ناو جنگی کلاس گانگوت", 2450000],
+    ["novik_destroyer", "ناوشکن نوویک", 520000],
+    ["ilya_muromets", "هواپیمای ایلیا مورومتس", 155000],
+    ["sikorsky_s10", "هواپیمای سیکورسکی S-10", 95000],
+  ],
+  ottoman: [],
+  austria: [
+    ["mannlicher", "تفنگ مانلیشر", 170],
+    ["schwarzlose", "مسلسل شوارتسلوزه", 2200],
+    ["skoda75", "توپ اشکودا", 13500],
+    ["lohner_e", "هواپیمای لونه‌ِر E", 85000],
+    ["hansa_b1", "هواپیمای هانزا-براندنبورگ B.I", 88000],
+    ["tegetthoff", "ناو جنگی کلاس تگت‌هوف", 2500000],
+    ["viribus", "ناو جنگی SMS Viribus Unitis", 2350000],
+  ],
+  italy: [
+    ["carcano", "تفنگ کارکانو", 165],
+    ["fiat14", "مسلسل فیات-رِوِلی", 2300],
+    ["italy75", "توپ ۷۵ میلی‌متری", 13000],
+    ["caproni_ca1", "هواپیمای کاپرونی Ca.1", 92000],
+    ["dante_alighieri", "ناو جنگی دانته آلیگیری", 2300000],
+  ],
+  usa: [
+    ["springfield03", "تفنگ اسپرینگفیلد ۱۹۰۳", 200],
+    ["browning", "مسلسل براونینگ", 2500],
+    ["us3inch", "توپ صحرایی ۳ اینچی", 13500],
+    ["curtiss_f", "هواپیمای دریایی کرتیس مدل F (۱۹۱۴)", 68000],
+    ["curtiss_ab3", "هواپیمای دریایی کرتیس AB-3 (۱۹۱۴)", 74000],
+    ["wright_b", "هواپیمای رایت مدل B (آموزشی)", 52000],
+    ["burgess_h", "هواپیمای بورگس مدل H", 64000],
+    ["wyoming_us", "ناو جنگی کلاس وایومینگ (۱۹۱۲)", 2700000],
+    ["florida_us", "ناو جنگی کلاس فلوریدا (۱۹۱۱)", 2450000],
+    ["delaware_us", "ناو جنگی کلاس دلاور (۱۹۱۰)", 2350000],
+    ["newyork_us", "ناو جنگی کلاس نیویورک (۱۹۱۴)", 2850000],
+    ["us_sub_h", "زیردریایی کلاس H آمریکا (تکمیل عمدتاً پس از ۱۹۱۴)", 480000],
+    ["us_l_sub", "زیردریایی کلاس L آمریکا", 360000],
+    ["us_destroyer", "ناوشکن‌های آمریکایی (کلاس Cassin؛ نمونه نماینده)", 470000],
+  ],
+  japan: [
+    ["arisaka", "تفنگ آریساکا", 170],
+    ["type3", "مسلسل تایپ ۳", 2400],
+    ["japan75", "توپ ۷۵ میلی‌متری", 13000],
+    ["kaishiki1", "هواپیمای کایشیکی ۱", 65000],
+    ["satsuma", "ناو جنگی ساتسوما", 1900000],
+    ["kongo_jp", "رزم‌ناو کلاس کنگو (ساخت بریتانیا)", 2900000],
+    ["kawachi", "ناو جنگی کاواچی", 2350000],
+  ],
+  persia: [
+    ["lari_matchlock", "تفنگ محلی لاری (ساخت کارگاه‌های لار)", 95],
+    ["qajar_local_rifle", "تفنگ سرپرست محلی قاجاری", 110],
+    ["qajar_sword", "شمشیر و سلاح سرد ساخت استادکاران ایرانی", 75],
+    ["qajar_spear", "نیزه و سلاح پیاده‌نظام محلی", 45],
+    ["qajar_zamburak", "زنبورک قاجاری (توپ سبک قدیمی)", 2200],
+  ],
+  belgium: [
+    ["mauser_be", "تفنگ ماوزر بلژیکی", 180],
+    ["maxim_be", "مسلسل ماکسیم", 2400],
+    ["canon_be", "توپ صحرایی", 13500],
+  ],
+  serbia: [],
+  romania: [],
+  greece: [
+    ["mannlicher_greece", "تفنگ مانلیشر یونانی", 170],
+    ["schneider_greece", "توپ اشنایدر ۷۵ میلی‌متری", 13500],
+    ["averof_ship", "رزم‌ناو زرهی جورجیوس آوروُف", 2100000],
+    ["hydra_ship", "ناو جنگی کلاس هیدرا", 1850000],
+  ],
+  netherlands: [
+    ["mannlicher_nl", "تفنگ مانلیشر هلندی", 170],
+    ["hembrug_rifle", "تفنگ هلندی Hembrug", 180],
+    ["o1_sub", "زیردریایی کلاس O 1", 300000],
+  ],
+  china: [
+    ["hanyang88", "تفنگ هانیانگ ۸۸", 150],
+    ["qing_gun", "توپ صحرایی چین", 10000],
+    ["haiqi_ship", "رزم‌ناو Hai Chi (ساخت خارجی؛ در اختیار چین)", 1600000],
+  ],
+  brazil: [
+    ["mauser_brazil", "تفنگ ماوزر برزیلی", 180],
+    ["brazil75", "توپ صحرایی ۷۵ میلی‌متری", 13000],
+    ["minas_gerais", "ناو جنگی کلاس میناس ژرایس", 2400000],
+  ],
+  argentina: [
+    ["mauser_arg", "تفنگ ماوزر آرژانتینی", 180],
+    ["argentina75", "توپ صحرایی", 13000],
+    ["rivadavia", "ناو جنگی کلاس ریواداویا", 2500000],
+  ],
+  chile: [
+    ["mauser_chile", "تفنگ ماوزر شیلیایی", 180],
+    ["chile75", "توپ صحرایی", 13000],
+    ["alminte_latorre", "ناو جنگی آلْمیرانته لاتوره (ساخت بریتانیا)", 2500000],
+  ],
+  australia: [
+    ["lee_australia", "تفنگ لی-انفیلد استرالیایی", 190],
+    ["australia_cruiser", "رزم‌ناو HMAS Australia (ساخت بریتانیا)", 2200000],
+  ],
+  canada: [["ross_rifle", "تفنگ راس کانادایی", 185]],
+  bulgaria: [
+    ["mannlicher_bg", "تفنگ مانلیشر بلغاری", 170],
+    ["schneider_bg", "توپ اشنایدر", 13000],
+  ],
+  portugal: [
+    ["mauser_pt", "تفنگ ماوزر پرتغالی", 180],
+    ["portugal75", "توپ صحرایی", 13000],
+  ],
+  mexico: [
+    ["mauser_mx", "تفنگ ماوزر مکزیکی", 180],
+    ["mexico75", "توپ صحرایی", 13000],
+  ],
 };
-const storeItems=()=>storeCats.flatMap(c=>c.items);
-const storeEmoji=id=>({gold_mine:"🪙",iron_mine:"⛓️",coal_mine:"🪨",oil_refinery:"🛢️",housing:"🏘️",admin:"🏛️",commercial:"🏬",hotel:"🏨",highway:"🛣️",railway:"🚆",station:"🚉",airport:"🛫",port:"⚓",wheat_farm:"🌾",plateau_farm:"🌱",grain_silo:"🏚️",coal_power:"⚡",hydro_power:"💧",oil_power:"🛢️",arms_factory:"🏭"}[id]||"🏗️");
-const storeLabel=x=>storeEmoji(x[0])+" "+x[1].replace(/^[\p{Emoji_Presentation}\uFE0F\s]+/u,"");
-const weaponLabel=w=>((/ناو|زیردریایی|کشتی|دریایی/.test(w[1])?"⚓ ":/توپ|پدافند/.test(w[1])?"💣 ":/مسلسل/.test(w[1])?"🔫 ":"🪖 ")+w[1]);
-const storeDetails={"gold_mine":"🪙 استخراج طلا برای ذخیره و تجارت. تولید ۳۵ واحد طلا در روز بازی؛ نگهداری ۲۵۰ دلار در هر نوبت سه‌ساعته. طلا در تجارت بین کشورها قابل عرضه است.","iron_mine":"⛓️ تأمین آهن برای ساختمان، راه‌آهن و تسلیحات. تولید ۱۸۰ واحد آهن در روز بازی؛ نگهداری ۲۵۰ دلار در هر نوبت. کمبود آهن ساخت‌وساز را متوقف می‌کند.","coal_mine":"🪨 تأمین زغال برای صنایع و نیروگاه‌ها. تولید ۲۲۰ واحد زغال در روز بازی؛ نگهداری ۲۵۰ دلار در هر نوبت. زغال در ساخت پروژه‌ها نیز مصرف می‌شود.","oil_refinery":"🛢️ تبدیل نفت خام به سوخت. ظرفیت تا ۱۰۰ واحد سوخت در روز بازی؛ نگهداری ۵۰۰ دلار در هر نوبت. تولید وابسته به ذخیره نفت خام است.","housing":"🏘️ افزایش فوری جمعیت به میزان ۱٬۰۰۰ نفر در مقیاس بازی. برای توسعه شهر و افزایش پایه مالیاتی مفید است؛ جمعیت بیشتر مصرف و تقاضا را هم بالا می‌برد.","admin":"🏛️ ساختمان اداره و خدمات دولتی. اثر مالیاتی +۵٪ در محاسبه درآمد ساختمان؛ درآمد واقعی به پایه مالیاتی کشور وابسته است. هزینه نگهداری جداگانه ندارد.","commercial":"🏬 رونق تجارت و خدمات شهری. درآمد ۴٬۰۰۰ دلار در روز بازی؛ نگهداری ۳۰۰ دلار در هر نوبت. برای شهرهای پرجمعیت مناسب است.","hotel":"🏨 خدمات اقامت و پذیرایی از بازرگانان. درآمد ۶٬۰۰۰ دلار در روز بازی؛ نگهداری ۵۰۰ دلار در هر نوبت. در مراکز تجاری و شهرهای مهم کاربرد دارد.","highway":"🛣️ اتصال مناطق و تسهیل جابه‌جایی زمینی. زیرساخت +۲؛ نگهداری در هزینه عمومی راه‌ها منظور می‌شود. توسعه زیرساخت در اقتصاد کشور اثرگذار است.","railway":"🚆 جابه‌جایی سریع کالا و نیرو در کشور. زیرساخت +۳؛ نگهداری از هزینه عمومی زیرساخت محاسبه می‌شود. برای کشور پهناور و صنعتی ارزشمند است.","station":"🚉 ایستگاه خدمات مسافر و بار در شبکه ریلی. درآمد ۲٬۰۰۰ دلار در روز بازی. به‌تنهایی جای خط راه‌آهن را نمی‌گیرد.","airport":"🛫 ارتباط هوایی و خدمات فرودگاهی. درآمد ۱۲٬۰۰۰ دلار در روز بازی؛ نگهداری ۱٬۰۰۰ دلار در هر نوبت. دارایی اقتصادی است؛ هواپیماهای نظامی جداگانه حساب می‌شوند.","port":"⚓ واردات و صادرات دریایی. درآمد ۹٬۰۰۰ دلار در روز بازی؛ نگهداری ۸۰۰ دلار در هر نوبت. برای کشور ساحلی و تجارت خارجی مهم است.","wheat_farm":"🌾 تولید غذای پایه. تولید ۲۵۰ واحد غله در روز بازی؛ غله برای مصرف کشور و تجارت با کشورهای دچار کمبود کاربرد دارد.","plateau_farm":"🌱 مزرعه مناطق فلات با بازده کمتر. تولید ۱۶۰ واحد غله در روز بازی؛ گزینه‌ای ارزان‌تر برای گسترش کشاورزی.","grain_silo":"🏚️ انبار و مدیریت ذخایر غله. در نسخه فعلی سطح سیلو ثبت می‌شود اما سقف ذخیره‌سازی جداگانه اعمال نشده؛ بنابراین فعلاً اثر ظرفیت مستقل ندارد.","coal_power":"⚡ تولید تا ۵۰۰ واحد برق در روز بازی؛ نگهداری ۷۰۰ دلار در هر نوبت و مصرف زغال. کمبود زغال، تولید را محدود می‌کند.","hydro_power":"💧 تولید ۶۵۰ واحد برق در روز بازی؛ نگهداری ۵۰۰ دلار در هر نوبت. در این نسخه شرط جغرافیایی رودخانه/سد هنوز کنترل نمی‌شود.","oil_power":"🛢️ تولید ۴۲۰ واحد برق در روز بازی؛ نگهداری ۶۵۰ دلار در هر نوبت. به سوخت نفتی وابسته است.","arms_factory":"🏭 پیش‌نیاز تولید سلاح‌های فهرست کشور. ساخت: ۹۰٬۰۰۰ دلار + ۵۰۰ آهن + ۳۵۰ زغال؛ نگهداری ۶۰۰ دلار در هر نوبت. قیمت تولید هر سلاح جداگانه است."};
-const storeIncomeDaily={gold_mine:9000,iron_mine:6500,coal_mine:5000,oil_refinery:8500,housing:1800,admin:2500,commercial:4000,hotel:6000,highway:1200,railway:2500,station:2000,airport:12000,port:9000,wheat_farm:1800,plateau_farm:1200,grain_silo:700,coal_power:4000,hydro_power:5000,oil_power:3800,arms_factory:6500};
-const storeItemDetail=x=>(storeDetails[x[0]]||"📌 کاربرد و هزینه در توضیحات این کالا آمده است.")+"\n💵 درآمد نقدی پایه: "+money(storeIncomeDaily[x[0]]||0)+" در هر روز بازی (هر نوبت سه‌ساعته یک‌هشتم این مبلغ؛ متناسب با سطح سازه).";
-const militaryDetails={army:"🪖 زمینی: واحد لشکر/تیپ برای دفاع و عملیات زمینی. هزینه هر واحد ۲۸٬۰۰۰ دلار؛ نگهداری ۹۰۰ دلار در هر نوبت. اعداد مقیاس بازی‌اند، نه شمار سرباز واقعی.",air:"✈️ هوایی: گروه هوایی برای پشتیبانی و برتری هوایی. هزینه هر گروه ۱۴٬۰۰۰ دلار؛ نگهداری ۴۵۰ دلار در هر نوبت. یک گروه نماینده چند هواپیما در مقیاس بازی است.",navy:"⚓ دریایی: واحد ناوگانی برای حفاظت مسیرهای آبراهی و قدرت دریایی. هزینه هر واحد ۱۸۰٬۰۰۰ دلار؛ نگهداری ۱٬۴۰۰ دلار در هر نوبت. تعدادها مقیاس بازی‌اند.",defense:"🛡️ پدافند: آتشبار دفاع هوایی برای حفاظت از شهرها و تأسیسات. هزینه هر آتشبار ۹٬۰۰۰ دلار؛ نگهداری ۳۰۰ دلار در هر نوبت."};
-const findStoreItem=id=>storeItems().find(x=>x[0]===id);
-const getCountryWeapons=id=>countryWeapons[id]||[];
-const weaponCategory=w=>/هواپیما|جنگنده|بالون|هوایی|هواگرد/.test(w[1])?"air":/ناو|زیردریایی|کشتی|دریایی/.test(w[1])?"navy":"land";
-const weaponCategoryInfo={land:{name:"🪖 نیروی زمینی",desc:"تفنگ، مسلسل و توپخانه‌ی زمینی"},air:{name:"✈️ نیروی هوایی",desc:"هواگردها و تجهیزات هوایی"},navy:{name:"⚓ نیروی دریایی",desc:"ناوها، زیردریایی‌ها و شناورهای جنگی"}};
-async function openStore(ctx){await edit(ctx,"<b>🏪 فروشگاه کشور</b>\nساخت پروژه نیازمند خزانه و مواد اولیه است. قیمت‌ها دلاری هستند.\nدسته را انتخاب کنید:",K([...storeCats.map(c=>[{text:c.name,callback_data:"shopcat:"+c.id}]),[{text:"🛡️ تسلیحات مخصوص کشور",callback_data:"shopweapons"}],[{text:"🏛️ بازگشت به دربار",callback_data:"m:n"}]]));}
-async function openStoreCategory(ctx,id){const c=storeCats.find(x=>x.id===id);if(!c)return openStore(ctx);const rows=c.items.map(x=>[{text:"🏷️ "+storeLabel(x)+" — "+money(x[2]),callback_data:"shopdetail:"+x[0]}]);rows.push([{text:"↩️ دسته‌ها",callback_data:"shop"},{text:"🏛️ دربار",callback_data:"m:n"}]);await edit(ctx,"<b>"+c.name+"</b>\n\nابتدا نام و قیمت پروژه‌ها را ببینید. برای مشاهده‌ی کاربرد، اثر، مواد اولیه و هزینه‌های آن، پروژه را انتخاب کنید.\n\n💵 قیمت‌ها دلاری هستند.",K(rows));}
+const storeItems = () => storeCats.flatMap((c) => c.items);
+const storeEmoji = (id) =>
+  ({
+    gold_mine: "🪙",
+    iron_mine: "⛓️",
+    coal_mine: "🪨",
+    oil_refinery: "🛢️",
+    housing: "🏘️",
+    admin: "🏛️",
+    commercial: "🏬",
+    hotel: "🏨",
+    highway: "🛣️",
+    railway: "🚆",
+    station: "🚉",
+    airport: "🛫",
+    port: "⚓",
+    wheat_farm: "🌾",
+    plateau_farm: "🌱",
+    grain_silo: "🏚️",
+    coal_power: "⚡",
+    hydro_power: "💧",
+    oil_power: "🛢️",
+    arms_factory: "🏭",
+  })[id] || "🏗️";
+const storeLabel = (x) =>
+  storeEmoji(x[0]) + " " + x[1].replace(/^[\p{Emoji_Presentation}\uFE0F\s]+/u, "");
+const weaponLabel = (w) =>
+  (/ناو|زیردریایی|کشتی|دریایی/.test(w[1])
+    ? "⚓ "
+    : /توپ|پدافند/.test(w[1])
+      ? "💣 "
+      : /مسلسل/.test(w[1])
+        ? "🔫 "
+        : "🪖 ") + w[1];
+const storeDetails = {
+  gold_mine:
+    "🪙 استخراج طلا برای ذخیره و تجارت. تولید ۳۵ واحد طلا در روز بازی؛ نگهداری ۲۵۰ دلار در هر نوبت سه‌ساعته. طلا در تجارت بین کشورها قابل عرضه است.",
+  iron_mine:
+    "⛓️ تأمین آهن برای ساختمان، راه‌آهن و تسلیحات. تولید ۱۸۰ واحد آهن در روز بازی؛ نگهداری ۲۵۰ دلار در هر نوبت. کمبود آهن ساخت‌وساز را متوقف می‌کند.",
+  coal_mine:
+    "🪨 تأمین زغال برای صنایع و نیروگاه‌ها. تولید ۲۲۰ واحد زغال در روز بازی؛ نگهداری ۲۵۰ دلار در هر نوبت. زغال در ساخت پروژه‌ها نیز مصرف می‌شود.",
+  oil_refinery:
+    "🛢️ تبدیل نفت خام به سوخت. ظرفیت تا ۱۰۰ واحد سوخت در روز بازی؛ نگهداری ۵۰۰ دلار در هر نوبت. تولید وابسته به ذخیره نفت خام است.",
+  housing:
+    "🏘️ افزایش فوری جمعیت به میزان ۱٬۰۰۰ نفر در مقیاس بازی. برای توسعه شهر و افزایش پایه مالیاتی مفید است؛ جمعیت بیشتر مصرف و تقاضا را هم بالا می‌برد.",
+  admin:
+    "🏛️ ساختمان اداره و خدمات دولتی. اثر مالیاتی +۵٪ در محاسبه درآمد ساختمان؛ درآمد واقعی به پایه مالیاتی کشور وابسته است. هزینه نگهداری جداگانه ندارد.",
+  commercial:
+    "🏬 رونق تجارت و خدمات شهری. درآمد ۴٬۰۰۰ دلار در روز بازی؛ نگهداری ۳۰۰ دلار در هر نوبت. برای شهرهای پرجمعیت مناسب است.",
+  hotel:
+    "🏨 خدمات اقامت و پذیرایی از بازرگانان. درآمد ۶٬۰۰۰ دلار در روز بازی؛ نگهداری ۵۰۰ دلار در هر نوبت. در مراکز تجاری و شهرهای مهم کاربرد دارد.",
+  highway:
+    "🛣️ اتصال مناطق و تسهیل جابه‌جایی زمینی. زیرساخت +۲؛ نگهداری در هزینه عمومی راه‌ها منظور می‌شود. توسعه زیرساخت در اقتصاد کشور اثرگذار است.",
+  railway:
+    "🚆 جابه‌جایی سریع کالا و نیرو در کشور. زیرساخت +۳؛ نگهداری از هزینه عمومی زیرساخت محاسبه می‌شود. برای کشور پهناور و صنعتی ارزشمند است.",
+  station:
+    "🚉 ایستگاه خدمات مسافر و بار در شبکه ریلی. درآمد ۲٬۰۰۰ دلار در روز بازی. به‌تنهایی جای خط راه‌آهن را نمی‌گیرد.",
+  airport:
+    "🛫 ارتباط هوایی و خدمات فرودگاهی. درآمد ۱۲٬۰۰۰ دلار در روز بازی؛ نگهداری ۱٬۰۰۰ دلار در هر نوبت. دارایی اقتصادی است؛ هواپیماهای نظامی جداگانه حساب می‌شوند.",
+  port: "⚓ واردات و صادرات دریایی. درآمد ۹٬۰۰۰ دلار در روز بازی؛ نگهداری ۸۰۰ دلار در هر نوبت. برای کشور ساحلی و تجارت خارجی مهم است.",
+  wheat_farm:
+    "🌾 تولید غذای پایه. تولید ۲۵۰ واحد غله در روز بازی؛ غله برای مصرف کشور و تجارت با کشورهای دچار کمبود کاربرد دارد.",
+  plateau_farm:
+    "🌱 مزرعه مناطق فلات با بازده کمتر. تولید ۱۶۰ واحد غله در روز بازی؛ گزینه‌ای ارزان‌تر برای گسترش کشاورزی.",
+  grain_silo:
+    "🏚️ انبار و مدیریت ذخایر غله. در نسخه فعلی سطح سیلو ثبت می‌شود اما سقف ذخیره‌سازی جداگانه اعمال نشده؛ بنابراین فعلاً اثر ظرفیت مستقل ندارد.",
+  coal_power:
+    "⚡ تولید تا ۵۰۰ واحد برق در روز بازی؛ نگهداری ۷۰۰ دلار در هر نوبت و مصرف زغال. کمبود زغال، تولید را محدود می‌کند.",
+  hydro_power:
+    "💧 تولید ۶۵۰ واحد برق در روز بازی؛ نگهداری ۵۰۰ دلار در هر نوبت. در این نسخه شرط جغرافیایی رودخانه/سد هنوز کنترل نمی‌شود.",
+  oil_power:
+    "🛢️ تولید ۴۲۰ واحد برق در روز بازی؛ نگهداری ۶۵۰ دلار در هر نوبت. به سوخت نفتی وابسته است.",
+  arms_factory:
+    "🏭 پیش‌نیاز تولید سلاح‌های فهرست کشور. ساخت: ۹۰٬۰۰۰ دلار + ۵۰۰ آهن + ۳۵۰ زغال؛ نگهداری ۶۰۰ دلار در هر نوبت. قیمت تولید هر سلاح جداگانه است.",
+};
+const storeIncomeDaily = {
+  gold_mine: 9000,
+  iron_mine: 6500,
+  coal_mine: 5000,
+  oil_refinery: 8500,
+  housing: 1800,
+  admin: 2500,
+  commercial: 4000,
+  hotel: 6000,
+  highway: 1200,
+  railway: 2500,
+  station: 2000,
+  airport: 12000,
+  port: 9000,
+  wheat_farm: 1800,
+  plateau_farm: 1200,
+  grain_silo: 700,
+  coal_power: 4000,
+  hydro_power: 5000,
+  oil_power: 3800,
+  arms_factory: 6500,
+};
+const storeItemDetail = (x) =>
+  (storeDetails[x[0]] || "📌 کاربرد و هزینه در توضیحات این کالا آمده است.") +
+  "\n💵 درآمد نقدی پایه: " +
+  money(storeIncomeDaily[x[0]] || 0) +
+  " در هر روز بازی (هر نوبت سه‌ساعته یک‌هشتم این مبلغ؛ متناسب با سطح سازه).";
+const militaryDetails = {
+  army: "🪖 زمینی: واحد لشکر/تیپ برای دفاع و عملیات زمینی. هزینه هر واحد ۲۸٬۰۰۰ دلار؛ نگهداری ۹۰۰ دلار در هر نوبت. اعداد مقیاس بازی‌اند، نه شمار سرباز واقعی.",
+  air: "✈️ هوایی: گروه هوایی برای پشتیبانی و برتری هوایی. هزینه هر گروه ۱۴٬۰۰۰ دلار؛ نگهداری ۴۵۰ دلار در هر نوبت. یک گروه نماینده چند هواپیما در مقیاس بازی است.",
+  navy: "⚓ دریایی: واحد ناوگانی برای حفاظت مسیرهای آبراهی و قدرت دریایی. هزینه هر واحد ۱۸۰٬۰۰۰ دلار؛ نگهداری ۱٬۴۰۰ دلار در هر نوبت. تعدادها مقیاس بازی‌اند.",
+  defense:
+    "🛡️ پدافند: آتشبار دفاع هوایی برای حفاظت از شهرها و تأسیسات. هزینه هر آتشبار ۹٬۰۰۰ دلار؛ نگهداری ۳۰۰ دلار در هر نوبت.",
+};
+const findStoreItem = (id) => storeItems().find((x) => x[0] === id);
+const getCountryWeapons = (id) => countryWeapons[id] || [];
+const weaponCategory = (w) =>
+  /هواپیما|جنگنده|بالون|هوایی|هواگرد/.test(w[1])
+    ? "air"
+    : /ناو|زیردریایی|کشتی|دریایی/.test(w[1])
+      ? "navy"
+      : "land";
+const weaponCategoryInfo = {
+  land: { name: "🪖 نیروی زمینی", desc: "تفنگ، مسلسل و توپخانه‌ی زمینی" },
+  air: { name: "✈️ نیروی هوایی", desc: "هواگردها و تجهیزات هوایی" },
+  navy: { name: "⚓ نیروی دریایی", desc: "ناوها، زیردریایی‌ها و شناورهای جنگی" },
+};
+async function openStore(ctx) {
+  await edit(
+    ctx,
+    "<b>🏪 فروشگاه کشور</b>\nساخت پروژه نیازمند خزانه و مواد اولیه است. قیمت‌ها دلاری هستند.\nدسته را انتخاب کنید:",
+    K([
+      ...storeCats.map((c) => [{ text: c.name, callback_data: "shopcat:" + c.id }]),
+      [{ text: "🛡️ تسلیحات مخصوص کشور", callback_data: "shopweapons" }],
+      [{ text: "🏛️ بازگشت به دربار", callback_data: "m:n" }],
+    ]),
+  );
+}
+async function openStoreCategory(ctx, id) {
+  const c = storeCats.find((x) => x.id === id);
+  if (!c) return openStore(ctx);
+  const rows = c.items.map((x) => [
+    { text: "🏷️ " + storeLabel(x) + " — " + money(x[2]), callback_data: "shopdetail:" + x[0] },
+  ]);
+  rows.push([
+    { text: "↩️ دسته‌ها", callback_data: "shop" },
+    { text: "🏛️ دربار", callback_data: "m:n" },
+  ]);
+  await edit(
+    ctx,
+    "<b>" +
+      c.name +
+      "</b>\n\nابتدا نام و قیمت پروژه‌ها را ببینید. برای مشاهده‌ی کاربرد، اثر، مواد اولیه و هزینه‌های آن، پروژه را انتخاب کنید.\n\n💵 قیمت‌ها دلاری هستند.",
+    K(rows),
+  );
+}
 
 // Game balance for the 1914 setting: production is scaled for gameplay, not literal barrels.
-const oilFields={usa:{daily:1000,reserves:1000*365*30},russia:{daily:450,reserves:450*365*30},azerbaijan:{daily:220,reserves:220*365*30},persia:{daily:180,reserves:180*365*30},mexico:{daily:160,reserves:160*365*30},romania:{daily:100,reserves:100*365*30},austria:{daily:90,reserves:90*365*30},indonesia:{daily:130,reserves:130*365*30},burma:{daily:30,reserves:30*365*30},egypt:{daily:20,reserves:20*365*30},canada:{daily:15,reserves:15*365*30},germany:{daily:10,reserves:10*365*30},venezuela:{daily:8,reserves:8*365*30},peru:{daily:5,reserves:5*365*30}};
-const oilField=id=>oilFields[id]||{daily:0,reserves:0};
-const oilStartingStock=id=>Math.max(600,oilField(id).daily*2);
-bot.command("start",async ctx=>{const p=await ensure(ctx);if(String(ctx.from.id)===ownerTelegramId){await ctx.reply("🌐 حساب شما سازمان بین‌الملل است و کشور بازیکن ندارد. پنل مدیریت: /admin",{reply_markup:adminReply()});await showAdminPanel(ctx);return;}if(p.approved){await ctx.reply("به شاه شاهان بازگشتید. از دکمه‌های منوی پایین کشور را اداره کنید.",{reply_markup:nationReply()});await say(ctx,"🏛️ دربار و کشور",nation());return;}await ctx.reply("منوی اصلی شاه شاهان — از دکمه‌های پایین استفاده کنید.",{reply_markup:mainReply()});await say(ctx,"<b>شاه شاهان</b>\n\nبازی راهبرد و اداره‌ی کشور در جهان تاریخی سال ۱۹۱۴.\n\nبرای آغاز حکومت، کشور خود را انتخاب کنید.",K([[{text:"📜 آغاز بازی",callback_data:"start"}]]));});
-bot.command("myid",async ctx=>{await ctx.reply("Telegram ID: "+ctx.from.id);});
-bot.command("menu",async ctx=>{await ensure(ctx);if(String(ctx.from.id)===ownerTelegramId){await ctx.reply("منوی سازمان بین‌الملل",{reply_markup:adminReply()});await showAdminPanel(ctx);return;}await ctx.reply("منوی اصلی شاه شاهان — از دکمه‌های پایین استفاده کنید.",{reply_markup:mainReply()});await say(ctx,"منوی اصلی شاه شاهان",main());});
-bot.command("status",async ctx=>{const p=await ready(ctx);if(p)await say(ctx,await status(p),nation());});
-bot.command("help",async ctx=>{await say(ctx,"<b>راهنمای بازی</b>\n۱) کشور را انتخاب و تأسیس کنید.\n۲) مالیات، تولید، خدمات و ارتش را از دربار اداره کنید.\n۳) هر سه ساعت درآمد کشور به خزانه اضافه و منابع بر اساس جمعیت، دارایی‌ها و جغرافیا مصرف می‌شوند؛ هزینه‌ی نقدی روزانه ندارید.\n۴) با دیگر فرمانروایان تجارت و پیمان برقرار کنید.",main());});
-bot.callbackQuery(/^shop$/,async ctx=>{await ctx.answerCallbackQuery();const p=await ready(ctx);if(p)await openStore(ctx);});
-bot.callbackQuery(/^shopcat:(mining|buildings|transport|agriculture|energy|military)$/,async ctx=>{await ctx.answerCallbackQuery();const p=await ready(ctx);if(p)await openStoreCategory(ctx,ctx.match[1]);});
-bot.callbackQuery(/^shopweapons$/,async ctx=>{await ctx.answerCallbackQuery();const p=await ready(ctx);if(!p)return;await edit(ctx,"<b>🛡️ صنایع و بازار تسلیحات</b>\n\nسلاح‌های بومی کشور در دسته‌ی مربوط تولید می‌شوند. سلاح خارجی فقط از کشورهایی که آن را در انبار دارند خریداری می‌شود.",K([[{text:"🪖 نیروی زمینی",callback_data:"weaponcat:land"},{text:"✈️ نیروی هوایی",callback_data:"weaponcat:air"}],[{text:"⚓ نیروی دریایی",callback_data:"weaponcat:navy"}],[{text:"🛒 خرید از کشورهای دیگر",callback_data:"weaponmarket"}],[{text:"📦 عرضه‌ی سلاح از انبار",callback_data:"weaponlist"}],[{text:"🏭 کارخانه تسلیحات",callback_data:"shopdetail:arms_factory"}],[{text:"↩️ فروشگاه",callback_data:"shop"}]]));});
-bot.callbackQuery(/^weaponcat:(land|air|navy)$/,async ctx=>{await ctx.answerCallbackQuery();const p=await ready(ctx);if(!p)return;const cat=ctx.match[1],list=getCountryWeapons(p.country_id).filter(w=>weaponCategory(w)===cat),rows=list.map(w=>[{text:weaponLabel(w)+" — "+money(w[2]),callback_data:"weaponinfo:"+w[0]}]);if(!rows.length)rows.push([{text:"📭 سلاح بومی قابل تولید در این دسته ثبت نشده است.",callback_data:"noop"}]);rows.push([{text:"↩️ دسته‌های تسلیحاتی",callback_data:"shopweapons"}]);await edit(ctx,"<b>"+weaponCategoryInfo[cat].name+"</b>\n\n"+weaponCategoryInfo[cat].desc+"\n\nفقط سلاح‌های بومی ثبت‌شده برای کشور شما در اینجا قابل تولید هستند.",K(rows));});
-bot.callbackQuery(/^shopdetail:([a-z_]+)$/,async ctx=>{await ctx.answerCallbackQuery();const p=await ready(ctx);if(!p)return;const item=findStoreItem(ctx.match[1]);if(!item){await say(ctx,"این پروژه در فروشگاه نیست.");return;}const materials=Object.entries(item[3]).map(([r,n])=>resourceNames[r]+": "+fmt(n)).join("، ")||"مواد اضافی ندارد";const cat=storeCats.find(c=>c.items.some(x=>x[0]===item[0]));await edit(ctx,"<b>🏗️ "+storeLabel(item)+"</b>\n\n💵 <b>قیمت:</b> "+money(item[2])+"\n📖 <b>کاربرد:</b> "+storeItemDetail(item)+"\n📈 <b>اثر/تولید:</b> "+item[4]+"\n🧱 <b>مواد اولیه:</b> "+materials+"\n🔧 <b>هزینه‌های دوره‌ای:</b> پس از ساخت در گزارش مالی و وضعیت کشور محاسبه می‌شود.\n\nبا زدن دکمه‌ی تأیید، هزینه از خزانه و مواد از انبار کم شده و پروژه ساخته می‌شود.",K([[{text:"✅ تأیید ساخت · "+money(item[2]),callback_data:"shopbuy:"+item[0]}],[{text:"↩️ بازگشت به فهرست",callback_data:"shopcat:"+(cat?.id||"buildings")}],[{text:"🏪 فروشگاه",callback_data:"shop"}]]));});bot.callbackQuery(/^shopbuy:([a-z_]+)$/,async ctx=>{await ctx.answerCallbackQuery();const p=await ready(ctx);if(!p)return;const item=findStoreItem(ctx.match[1]);if(!item){await say(ctx,"این کالا در فروشگاه نیست.",nation());return;}const client=await pool.connect();try{await client.query("BEGIN");const row=(await client.query("SELECT treasury,grain,coal,iron,cloth,oil_stock FROM game_players WHERE telegram_id=$1 FOR UPDATE",[ctx.from.id])).rows[0];const shortage=Object.entries(item[3]).filter(([r,n])=>Number(row[r]||0)<n);if(Number(row.treasury)<item[2]||shortage.length){await client.query("ROLLBACK");await say(ctx,"خزانه یا مواد اولیه برای ساخت کافی نیست.\nقیمت: "+money(item[2])+"\n"+(shortage.length?"کمبود: "+shortage.map(([r,n])=>resourceNames[r]+" "+fmt(n-Number(row[r]||0))).join("، "):"موجودی پول کافی نیست."),K([[{text:"🏪 فروشگاه",callback_data:"shop"}],[{text:"🏛️ دربار",callback_data:"m:n"}]]));return;}const sets=["treasury=treasury-$2"],args=[ctx.from.id,item[2]];let idx=3;for(const [r,n] of Object.entries(item[3])){sets.push(r+"="+r+"-$"+idx);args.push(n);idx++;}await client.query("UPDATE game_players SET "+sets.join(",")+" WHERE telegram_id=$1",args);await client.query("INSERT INTO game_buildings(telegram_id,building_key,level) VALUES($1,$2,1) ON CONFLICT(telegram_id,building_key) DO UPDATE SET level=game_buildings.level+1",[ctx.from.id,item[0]]);await client.query("UPDATE game_players SET population=population+$2,infrastructure=infrastructure+$3 WHERE telegram_id=$1",[ctx.from.id,item[0]==="housing"?1000:0,item[0]==="highway"?2:item[0]==="railway"?3:0]);await client.query("INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,$3,$4)",[ctx.from.id,"ساخت "+item[1],-item[2],Number(row.treasury)-item[2]]);await client.query("COMMIT");await edit(ctx,"<b>✅ پروژه ساخته شد</b>\n\n🏗️ "+storeLabel(item)+"\n📖 "+storeItemDetail(item)+"\n\n📈 اثر ثبت‌شده: "+item[4]+"\n💵 هزینه ساخت پرداخت‌شده: "+money(item[2])+"\n🧱 مواد مصرف‌شده: "+(Object.entries(item[3]).map(([r,n])=>resourceNames[r]+": "+fmt(n)).join("، ")||"مواد اضافی ندارد")+"\n💰 خزانه پس از پرداخت: "+money(Number(row.treasury)-item[2])+"\n\n🔧 هزینه‌های نگهداری/درآمد دوره‌ای در بخش وضعیت کشور و گزارش مالی قابل مشاهده است.",K([[{text:"🏪 ادامه ساخت",callback_data:"shopcat:"+storeCats.find(c=>c.items.some(x=>x[0]===item[0])).id}],[{text:"🛡️ تسلیحات",callback_data:"shopweapons"}],[{text:"🏛️ دربار",callback_data:"m:n"}]]));}catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}});
-bot.callbackQuery(/^weaponlist$/,async ctx=>{await ctx.answerCallbackQuery();const p=await ready(ctx);if(!p)return;const r=await pool.query("SELECT weapon_key,quantity,damaged FROM game_weapon_stock WHERE telegram_id=$1 AND quantity>COALESCE(damaged,0) ORDER BY weapon_key",[ctx.from.id]);const list=getCountryWeapons(p.country_id),rows=r.rows.map(x=>{const w=list.find(z=>z[0]===x.weapon_key)||Object.values(countryWeapons).flat().find(z=>z[0]===x.weapon_key);return w?[{text:weaponLabel(w)+" ×"+(Number(x.quantity)-Number(x.damaged||0))+" سالم · عرضه یک واحد",callback_data:"weaponoffer:"+x.weapon_key}]:null;}).filter(Boolean);if(!rows.length)rows.push([{text:"📭 انبار تسلیحات شما خالی است.",callback_data:"noop"}]);rows.push([{text:"↩️ بازار تسلیحات",callback_data:"shopweapons"}]);await edit(ctx,"<b>📦 عرضه‌ی تسلیحات از انبار</b>\n\nبا انتخاب هر سلاح، یک واحد از انبار برای فروش عرضه می‌شود. قیمت فروش ۱۲۵٪ قیمت پایه‌ی تولید است و پس از معامله به خزانه‌ی شما واریز می‌شود.",K(rows));});
-bot.callbackQuery(/^weaponoffer:([a-z0-9_]+)$/,async ctx=>{await ctx.answerCallbackQuery();const p=await ready(ctx);if(!p)return;const key=ctx.match[1],w=Object.values(countryWeapons).flat().find(z=>z[0]===key);if(!w){await say(ctx,"سلاح معتبر نیست.");return;}const client=await pool.connect();try{await client.query("BEGIN");const stock=(await client.query("SELECT quantity,damaged FROM game_weapon_stock WHERE telegram_id=$1 AND weapon_key=$2 FOR UPDATE",[ctx.from.id,key])).rows[0];if(!stock||Number(stock.quantity)-Number(stock.damaged||0)<1){await client.query("ROLLBACK");await say(ctx,"این سلاح در انبار شما موجود نیست.");return;}const price=Math.round(Number(w[2])*1.25);await client.query("UPDATE game_weapon_stock SET quantity=quantity-1 WHERE telegram_id=$1 AND weapon_key=$2",[ctx.from.id,key]);await client.query("INSERT INTO game_weapon_market(seller_id,weapon_key,quantity,unit_price) VALUES($1,$2,1,$3)",[ctx.from.id,key,price]);await client.query("COMMIT");await say(ctx,"📨 یک واحد "+weaponLabel(w)+" با قیمت "+money(price)+" برای فروش عرضه شد.",K([[{text:"🛒 مشاهده‌ی بازار",callback_data:"weaponmarket"}],[{text:"📦 انبار",callback_data:"weaponlist"}]]));}catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}});
-bot.callbackQuery(/^weaponmarket$/,async ctx=>{await ctx.answerCallbackQuery();const p=await ready(ctx);if(!p)return;const r=await pool.query("SELECT m.id,m.seller_id,m.weapon_key,m.quantity,m.unit_price,g.country_id,g.display_name FROM game_weapon_market m JOIN game_players g ON g.telegram_id=m.seller_id WHERE m.status='open' AND m.seller_id<>$1 ORDER BY m.created_at LIMIT 30",[ctx.from.id]);const rows=r.rows.map(x=>{const w=Object.values(countryWeapons).flat().find(z=>z[0]===x.weapon_key);return w?[{text:weaponLabel(w)+" · "+(country(x.country_id)?.[1]||x.display_name)+" · "+money(x.unit_price),callback_data:"weaponmarketbuy:"+x.id}]:null;}).filter(Boolean);if(!rows.length)rows.push([{text:"📭 فعلاً سلاحی برای خرید عرضه نشده است.",callback_data:"noop"}]);rows.push([{text:"📦 عرضه از انبار خود",callback_data:"weaponlist"}],[{text:"↩️ تسلیحات",callback_data:"shopweapons"}]);await edit(ctx,"<b>🛒 بازار بین‌المللی تسلیحات</b>\n\nسلاح‌های عرضه‌شده توسط دیگر کشورها را بخرید. مبلغ معامله مستقیم به خزانه‌ی فروشنده واریز می‌شود.",K(rows));});
-bot.callbackQuery(/^weaponmarketbuy:(\d+)$/,async ctx=>{await ctx.answerCallbackQuery();const p=await ready(ctx);if(!p)return;const client=await pool.connect();try{await client.query("BEGIN");const offer=(await client.query("SELECT * FROM game_weapon_market WHERE id=$1 AND status='open' FOR UPDATE",[Number(ctx.match[1])])).rows[0];if(!offer||Number(offer.seller_id)===Number(ctx.from.id)){await client.query("ROLLBACK");await say(ctx,"این عرضه دیگر فعال نیست.");return;}const buyer=(await client.query("SELECT treasury FROM game_players WHERE telegram_id=$1 FOR UPDATE",[ctx.from.id])).rows[0];if(!buyer||Number(buyer.treasury)<Number(offer.unit_price)){await client.query("ROLLBACK");await say(ctx,"خزانه برای خرید این سلاح کافی نیست.");return;}const seller=(await client.query("SELECT treasury FROM game_players WHERE telegram_id=$1 FOR UPDATE",[offer.seller_id])).rows[0];await client.query("UPDATE game_players SET treasury=treasury-$2 WHERE telegram_id=$1",[ctx.from.id,offer.unit_price]);await client.query("UPDATE game_players SET treasury=treasury+$2 WHERE telegram_id=$1",[offer.seller_id,offer.unit_price]);await client.query("INSERT INTO game_weapon_stock(telegram_id,weapon_key,quantity) VALUES($1,$2,$3) ON CONFLICT(telegram_id,weapon_key) DO UPDATE SET quantity=game_weapon_stock.quantity+EXCLUDED.quantity",[ctx.from.id,offer.weapon_key,offer.quantity]);await client.query("UPDATE game_weapon_market SET status='sold' WHERE id=$1",[offer.id]);const w=Object.values(countryWeapons).flat().find(z=>z[0]===offer.weapon_key);await client.query("INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,$3,$4)",[ctx.from.id,"خرید سلاح از کشور دیگر: "+(w?.[1]||offer.weapon_key),-Number(offer.unit_price),Number(buyer.treasury)-Number(offer.unit_price)]);await client.query("INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,$3,$4)",[offer.seller_id,"فروش سلاح به کشور دیگر: "+(w?.[1]||offer.weapon_key),Number(offer.unit_price),Number(seller.treasury)+Number(offer.unit_price)]);await client.query("COMMIT");await say(ctx,"✅ خرید انجام شد.\n\nسلاح به انبار تسلیحات شما اضافه شد.\nپرداخت: "+money(offer.unit_price)+"\nخزانه‌ی شما: "+money(Number(buyer.treasury)-Number(offer.unit_price)),K([[{text:"🛒 بازار تسلیحات",callback_data:"weaponmarket"}],[{text:"🛡️ تسلیحات",callback_data:"shopweapons"}]]));}catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}});
-bot.callbackQuery(/^weaponinfo:([a-z0-9_]+)$/,async ctx=>{await ctx.answerCallbackQuery();const p=await ready(ctx);if(!p)return;const w=getCountryWeapons(p.country_id).find(x=>x[0]===ctx.match[1]);if(!w){await say(ctx,"این سلاح برای کشور شما تعریف نشده است.");return;}const use=/ناو|زیردریایی|کشتی/.test(w[1])?"قدرت دریایی و کنترل آبراه‌ها":/توپ/.test(w[1])?"پشتیبانی آتش زمینی":/مسلسل/.test(w[1])?"آتش پشتیبانی و دفاع موضعی":"تجهیز نیروهای زمینی";await edit(ctx,"<b>🛡️ "+weaponLabel(w)+"</b>\n\n💵 <b>قیمت هر واحد:</b> "+money(w[2])+"\n📌 <b>کاربرد:</b> "+use+"\n🏭 <b>پیش‌نیاز:</b> کارخانه تسلیحات فعال\n📦 <b>محل تحویل:</b> انبار تسلیحات کشور\n🔧 <b>نگهداری:</b> تجهیزات مصرف‌شده در نیروها هزینه نگهداری دارند؛ موجودی انبار به‌تنهایی نیروی فعال محسوب نمی‌شود.\n\nبرای تولید یک واحد، تأیید کنید.",K([[{text:"✅ تأیید تولید · "+money(w[2]),callback_data:"weaponbuy:"+w[0]}],[{text:"↩️ فهرست تسلیحات",callback_data:"shopweapons"}]]));});bot.callbackQuery(/^weaponbuy:([a-z0-9_]+)$/,async ctx=>{await ctx.answerCallbackQuery();const p=await ready(ctx);if(!p)return;const w=getCountryWeapons(p.country_id).find(x=>x[0]===ctx.match[1]);if(!w){await say(ctx,"این سلاح برای کشور شما تعریف نشده است.",nation());return;}const client=await pool.connect();try{await client.query("BEGIN");const row=(await client.query("SELECT treasury FROM game_players WHERE telegram_id=$1 FOR UPDATE",[ctx.from.id])).rows[0],factory=(await client.query("SELECT level FROM game_buildings WHERE telegram_id=$1 AND building_key='arms_factory' FOR UPDATE",[ctx.from.id])).rows[0];if(!factory||Number(factory.level)<1){await client.query("ROLLBACK");await say(ctx,"برای تولید سلاح ابتدا کارخانه تسلیحات بسازید.",K([[{text:"🏭 ساخت کارخانه",callback_data:"shopbuy:arms_factory"}],[{text:"↩️ تسلیحات",callback_data:"shopweapons"}]]));return;}if(Number(row.treasury)<w[2]){await client.query("ROLLBACK");await say(ctx,"خزانه برای تولید این سلاح کافی نیست.",nation());return;}await client.query("UPDATE game_players SET treasury=treasury-$2 WHERE telegram_id=$1",[ctx.from.id,w[2]]);await client.query("INSERT INTO game_weapon_stock(telegram_id,weapon_key,quantity) VALUES($1,$2,1) ON CONFLICT(telegram_id,weapon_key) DO UPDATE SET quantity=game_weapon_stock.quantity+1",[ctx.from.id,w[0]]);await client.query("INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,$3,$4)",[ctx.from.id,"تولید "+w[1],-w[2],Number(row.treasury)-w[2]]);await client.query("COMMIT");await edit(ctx,"🛡️ یک واحد "+weaponLabel(w)+" به انبار تسلیحات افزوده شد.\nهزینه: "+money(w[2])+"\nخزانه: "+money(Number(row.treasury)-w[2]),K([[{text:"🛡️ ادامه تسلیحات",callback_data:"shopweapons"}],[{text:"🏛️ دربار",callback_data:"m:n"}]]));}catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}});
-
-bot.callbackQuery(/^start$/,async ctx=>{await ctx.answerCallbackQuery();await chooseCountry(ctx);});
-bot.callbackQuery(/^cc:(all|europe|asia|africa|north_america|south_america|oceania)$/,async ctx=>{await ctx.answerCallbackQuery();await countryMenu(ctx,ctx.match[1],0,true);});
-bot.callbackQuery(/^cp:(all|europe|asia|africa|north_america|south_america|oceania):(\d+)$/,async ctx=>{await ctx.answerCallbackQuery();await countryMenu(ctx,ctx.match[1],Number(ctx.match[2]),true);});
-bot.callbackQuery(/^cs$/,async ctx=>{await ctx.answerCallbackQuery();pendingCountrySearch.add(ctx.from.id);await ctx.reply("🔎 <b>جستجوی کشور</b>\n\nنام کشور یا بخشی از نام آن را ارسال کنید. برای لغو، /cancel را بفرستید.",{parse_mode:"HTML",reply_markup:{force_reply:true,selective:true}});});
-bot.callbackQuery(/^noop$/,async ctx=>{await ctx.answerCallbackQuery();});
-bot.command("cancel",async ctx=>{pendingCountrySearch.delete(ctx.from.id);pendingTradeInput.delete(ctx.from.id);await say(ctx,"عملیات جاری لغو شد.",main());});
-bot.on("message:text",async ctx=>{const menuText=ctx.message.text.trim();if(String(ctx.from.id)===ownerTelegramId){if(menuText==="🌐 پنل سازمان بین‌الملل"||menuText==="🏠 منوی اصلی"){await ctx.reply("منوی سازمان بین‌الملل",{reply_markup:adminReply()});await showAdminPanel(ctx);return;}if(menuText==="🪪 درخواست‌های کشور"){await ctx.reply("درخواست‌های کشور:",{reply_markup:K([[{text:"🪪 باز کردن درخواست‌ها",callback_data:"intlrequests"}]])});return;}if(menuText==="🔍 بازرسی"){await ctx.reply("بازرسی کشورها:",{reply_markup:K([[{text:"🔍 فهرست بازیکنان",callback_data:"intlplayers"}]])});return;}if(menuText==="💳 وام‌دهی"){await ctx.reply("وام‌دهی:",{reply_markup:K([[{text:"💳 دفتر وام‌ها",callback_data:"intlloans"}]])});return;}if(menuText==="📦 افزودن منابع"){await ctx.reply("افزودن منابع:",{reply_markup:K([[{text:"📦 انتخاب کشور",callback_data:"intlresources"}]])});return;}}if(menuText==="🏛️ دربار و کشور"){const p=await ready(ctx);if(p){await ctx.reply("دربار و کشور — دکمه‌های پایین را برای ورود به بخش‌ها بزنید.",{reply_markup:nationReply()});await say(ctx,"🏛️ دربار و کشور",nation());}return;}if(menuText==="🏪 فروشگاه"){const p=await ready(ctx);if(p)await openStore(ctx);return;}if(menuText==="🏠 منوی اصلی"){if(String(ctx.from.id)===ownerTelegramId){await ctx.reply("منوی سازمان بین‌الملل",{reply_markup:adminReply()});await showAdminPanel(ctx);return;}await ctx.reply("منوی اصلی شاه شاهان",{reply_markup:mainReply()});await say(ctx,"منوی اصلی شاه شاهان",main());return;}if(menuText==="📚 راهنما"){await ctx.reply("راهنمای شاه شاهان\n۱) کشور را انتخاب و تأسیس کنید.\n۲) اقتصاد و خدمات را از دربار اداره کنید.\n۳) هر سه ساعت تسویه‌ی مالی انجام می‌شود.\n۴) با دیگر کشورها تجارت و پیمان برقرار کنید.",{parse_mode:"HTML",reply_markup:mainReply()});return;}if(menuText==="📜 تسویه‌ی نوبت"){const p=await ready(ctx);if(p){const result=await settleOne(ctx.from.id);await ctx.reply(result?`📜 تسویه‌ی نوبت\nتعداد: ${result.ticks}\nدرآمد سازه‌ها: ${money(result.buildingIncome)}\nتغییر خزانه: ${money(result.net)}\nمانده: ${money(result.balance)}`:"هنوز زمان تسویه‌ی سه‌ساعته نرسیده است.",{reply_markup:nationReply()});}return;}const menuMap={"📊 وضعیت کشور":"status","💰 خزانه":"money","🧾 مالیات":"tax","🏭 تولید":"industry","👥 جمعیت":"people","🛡️ ارتش":"army","🤝 دیپلماسی":"diplomacy","🛒 تجارت و بورس":"stocks","⚙️ تنظیمات":"settings","🎯 ستاد توسعه و اقدامات راهبردی":"strategy"};if(menuMap[menuText]){const p=await ready(ctx);if(!p)return;const k=menuMap[menuText];if(k==="strategy"){await ctx.reply("<b>🎯 ستاد توسعه و اقدامات راهبردی</b>\n\nاقدامات راهبردی کشور را انتخاب کنید.",{parse_mode:"HTML",reply_markup:strategicMenu()});return;}if(k==="status"){await ctx.reply(await status(p),{parse_mode:"HTML",reply_markup:nationReply()});return;}if(k==="money"){const d=calc(p);await ctx.reply(`<b>💰 خزانه و دفتر حساب</b>\nمانده: ${money(p.treasury)}\nدرآمد روزانه: ${money(d.income)}\nهزینه‌ی روزانه: ${money(d.expense)}`,{parse_mode:"HTML",reply_markup:nationReply()});await ctx.reply("دفتر حساب:",{reply_markup:K([[{text:"📒 دفتر حساب",callback_data:"ledger"}]])});return;}if(k==="tax"){await ctx.reply(`<b>🧾 مالیات و تعرفه</b>\nمالیات: ${p.tax_rate}٪ | تعرفه: ${p.tariff}٪`,{parse_mode:"HTML",reply_markup:nationReply()});await ctx.reply("تنظیم مالیات و تعرفه:",{reply_markup:K([[{text:"➖ مالیات",callback_data:"adj:tax:-1"},{text:"➕ مالیات",callback_data:"adj:tax:1"}],[{text:"➖ تعرفه",callback_data:"adj:tariff:-1"},{text:"➕ تعرفه",callback_data:"adj:tariff:1"}]])});return;}if(k==="industry"){await ctx.reply(`<b>🏭 تولید و منابع</b>\nصنعت: ${p.industry} | کشاورزی: ${p.agriculture}\nغله: ${p.grain} | زغال: ${p.coal} | آهن: ${p.iron} | پارچه: ${p.cloth}`,{parse_mode:"HTML",reply_markup:nationReply()});await ctx.reply("توسعه‌ی تولید:",{reply_markup:K([[{text:"🏭 توسعه‌ی صنعت",callback_data:"build:industry"}],[{text:"🌾 توسعه‌ی کشاورزی",callback_data:"build:agriculture"}],[{text:"🛤 بهبود زیرساخت",callback_data:"build:infrastructure"}]])});return;}if(k==="people"){await ctx.reply(`<b>👥 جمعیت و خدمات</b>\nجمعیت: ${fmt(p.population)}\nآموزش: ${p.education} | سلامت: ${p.health}\nحقوق متوسط: ${money(p.wage)}\nخدمات عمومی با منابع کشور پشتیبانی می‌شود؛ هزینه‌ی نقدی روزانه ندارد.`,{parse_mode:"HTML",reply_markup:nationReply()});await ctx.reply("تنظیم حقوق و خدمات:",{reply_markup:K([[{text:"➖ حقوق",callback_data:"adj:wage:-10"},{text:"➕ حقوق",callback_data:"adj:wage:10"}],[{text:"➖ خدمات",callback_data:"adj:service_budget:-100"},{text:"➕ خدمات",callback_data:"adj:service_budget:100"}]])});return;}if(k==="army"){await ctx.reply(`<b>🛡️ نیروهای مسلح</b>\n🪖 زمینی: ${fmt(p.army)} واحد لشکر/تیپ\n✈️ هوایی: ${fmt(p.air_force||0)} گروه هوایی\n⚓ دریایی: ${fmt(p.navy)} واحد ناوگانی\n🛡️ پدافند: ${fmt(p.air_defense||0)} آتشبار\n🎖️ روحیه: ${p.morale}٪`,{parse_mode:"HTML",reply_markup:nationReply()});await ctx.reply("🧭 <b>راهنمای تجهیز نیروها</b>\n\n"+Object.values(militaryDetails).join("\n\n")+"\n\n👇 نوع تجهیز را انتخاب کنید:",{parse_mode:"HTML",reply_markup:K([[{text:"🪖 واحد زمینی — $28,000",callback_data:"mil:army"}],[{text:"✈️ گروه هوایی — $14,000",callback_data:"mil:air"}],[{text:"⚓ واحد ناوگانی — $180,000",callback_data:"mil:navy"}],[{text:"🛡️ آتشبار پدافند — $9,000",callback_data:"mil:defense"}]])});return;}if(k==="diplomacy"){const incoming=(await pool.query("SELECT COUNT(*)::int AS n FROM game_relations WHERE other_id=$1 AND relation LIKE 'proposal_%'",[ctx.from.id])).rows[0].n;const contracts=(await pool.query("SELECT COUNT(*)::int AS n FROM game_trade_contracts WHERE (recipient_id=$1 OR proposer_id=$1) AND status='pending'",[ctx.from.id])).rows[0].n;await ctx.reply("<b>🌐 دیپلماسی و روابط بین‌الملل</b>\n\n📨 پیشنهادهای دیپلماتیک در انتظار: "+incoming+"\n📋 قراردادهای تجاری در انتظار: "+contracts+"\n\nاز بخش موردنظر انتخاب کنید:",{parse_mode:"HTML",reply_markup:K([[{text:"📈 بورس بین‌المللی کالاها · نفت، طلا و غلات",callback_data:"n:stocks"}],[{text:"📋 قراردادها و پیمان‌های من · پیگیری",callback_data:"tc:center"}],[{text:"📜 پیشنهاد قرارداد تجاری",callback_data:"tradeoffer"}],[{text:"🏅 خرید، فروش و انتقال تسلیحات",callback_data:"shopweapons"}],[{text:"🚩 مأموریت راهبردی · اعزام هیئت",callback_data:"dipmissions"}],[{text:"✉️ پیشنهادهای دیپلماتیک دریافتی",callback_data:"dipinbox"}],[{text:"📜 دفتر روابط و سوابق مذاکرات",callback_data:"diprelations"}],[{text:"🏛️ سفارت‌ها و ارتقای روابط",callback_data:"dipembassies"}],[{text:"🤝 اتحادها و تحریم‌های اقتصادی",callback_data:"dipcountries"}],[{text:"↩️ بازگشت به دربار",callback_data:"m:n"}]])});return;}if(k==="stocks"){await ctx.reply("🛒 تجارت و بورس کشورها",{reply_markup:nationReply()});await say(ctx,"🛒 بازار بین کشورها",K([[{text:"📈 ورود به بورس و کالا",callback_data:"n:stocks"}],[{text:"📜 مرکز قراردادهای تجاری",callback_data:"tc:center"}]]));return;}if(k==="settings"){await ctx.reply("⚙️ تنظیمات اداره",{reply_markup:nationReply()});await ctx.reply("مقادیر اداره:",{reply_markup:K([[{text:"➖ مالیات",callback_data:"adj:tax:-1"},{text:"➕ مالیات",callback_data:"adj:tax:1"}],[{text:"➖ تعرفه",callback_data:"adj:tariff:-1"},{text:"➕ تعرفه",callback_data:"adj:tariff:1"}],[{text:"➖ حقوق",callback_data:"adj:wage:-10"},{text:"➕ حقوق",callback_data:"adj:wage:10"}],[{text:"➖ خدمات",callback_data:"adj:service_budget:-100"},{text:"➕ خدمات",callback_data:"adj:service_budget:100"}]])});return;}}const tradeState=pendingTradeInput.get(ctx.from.id);if(tradeState?.marketAsset&&!ctx.message.text.startsWith("/")){const val=Number(ctx.message.text.trim().replace(/[٬,]/g,""));if(!Number.isSafeInteger(val)||val<=0){await ctx.reply("لطفاً یک عدد صحیح مثبت وارد کنید.");return;}const p=await ready(ctx);if(!p){pendingTradeInput.delete(ctx.from.id);return;}if(tradeState.step==="quantity"){const h=tradeState.assetType==="stock"?(await pool.query("SELECT shares AS qty FROM game_stock_holdings WHERE telegram_id=$1 AND symbol=$2",[ctx.from.id,tradeState.symbol])).rows[0]:(await pool.query("SELECT units AS qty FROM game_commodity_holdings WHERE telegram_id=$1 AND symbol=$2",[ctx.from.id,tradeState.symbol])).rows[0];if(!h||val>Number(h.qty)){await ctx.reply("موجودی کافی نیست. حداکثر مقدار قابل عرضه: "+fmt(h?.qty||0));return;}tradeState.quantity=val;tradeState.step="price";pendingTradeInput.set(ctx.from.id,tradeState);await ctx.reply("<b>مرحله ۲ از ۲ — قیمت فروش</b>\nمقدار: "+fmt(val)+"\nقیمت دلاری هر واحد را وارد کنید. ارزش کل سفارش: مقدار × قیمت.",{parse_mode:"HTML",reply_markup:{force_reply:true,selective:true}});return;}if(tradeState.step==="price"){if(val>100000000){await ctx.reply("قیمت واحد خیلی بالاست؛ مبلغ پایین‌تری وارد کنید.");return;}const client=await pool.connect();try{await client.query("BEGIN");if(tradeState.assetType==="stock"){const h=(await client.query("SELECT shares FROM game_stock_holdings WHERE telegram_id=$1 AND symbol=$2 FOR UPDATE",[ctx.from.id,tradeState.symbol])).rows[0];if(!h||Number(h.shares)<tradeState.quantity){await client.query("ROLLBACK");pendingTradeInput.delete(ctx.from.id);await ctx.reply("موجودی سهام تغییر کرده؛ سفارش لغو شد.");return;}await client.query("UPDATE game_stock_holdings SET shares=shares-$3 WHERE telegram_id=$1 AND symbol=$2",[ctx.from.id,tradeState.symbol,tradeState.quantity]);}else{const h=(await client.query("SELECT units FROM game_commodity_holdings WHERE telegram_id=$1 AND symbol=$2 FOR UPDATE",[ctx.from.id,tradeState.symbol])).rows[0];if(!h||Number(h.units)<tradeState.quantity){await client.query("ROLLBACK");pendingTradeInput.delete(ctx.from.id);await ctx.reply("موجودی کالا تغییر کرده؛ سفارش لغو شد.");return;}await client.query("UPDATE game_commodity_holdings SET units=units-$3 WHERE telegram_id=$1 AND symbol=$2",[ctx.from.id,tradeState.symbol,tradeState.quantity]);}const o=(await client.query("INSERT INTO game_exchange_orders(seller_id,asset_type,symbol,quantity,unit_price) VALUES($1,$2,$3,$4,$5) RETURNING id",[ctx.from.id,tradeState.assetType,tradeState.symbol,tradeState.quantity,val])).rows[0];await client.query("COMMIT");pendingTradeInput.delete(ctx.from.id);await ctx.reply("📤 سفارش فروش به بورس کشورها ثبت شد.\n\nنماد: "+tradeState.symbol+"\nمقدار: "+fmt(tradeState.quantity)+"\nقیمت واحد: "+money(val)+"\nارزش کل: "+money(tradeState.quantity*val)+"\n\nدارایی تا فروش یا لغو سفارش در امانت بازار است.",{reply_markup:K([[{text:"📈 مشاهده‌ی سفارش‌ها",callback_data:"n:stocks"}],[{text:"💼 پشتوانه بورسی",callback_data:"assetportfolio"}]])});}catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}return;}}if(tradeState&&tradeState.step?.startsWith("contract_")&&!ctx.message.text.startsWith("/")){const val=Number(ctx.message.text.trim().replace(/[٬,]/g,""));if(!Number.isSafeInteger(val)||val<=0){await ctx.reply("لطفاً عدد صحیح مثبت وارد کنید.");return;}const p=await ready(ctx);if(!p){pendingTradeInput.delete(ctx.from.id);return;}if(tradeState.step==="contract_offer_qty"){if(val>Number(tradeState.offer_resource==="cash"?p.treasury:p[tradeState.offer_resource])){await ctx.reply("موجودی کافی نیست؛ حداکثر "+fmt(tradeState.offer_resource==="cash"?p.treasury:p[tradeState.offer_resource])+" وارد کنید.");return;}tradeState.offer_quantity=val;tradeState.step="contract_choose_want";pendingTradeInput.set(ctx.from.id,tradeState);await edit(ctx,"مرحله ۲: منبعی را که در مقابل می‌خواهید دریافت کنید انتخاب کنید.",K([[{text:"🌾 غله",callback_data:"tc:want:grain"},{text:"🪨 زغال",callback_data:"tc:want:coal"}],[{text:"⛓ آهن",callback_data:"tc:want:iron"},{text:"🧵 پارچه",callback_data:"tc:want:cloth"}],[{text:"🛢 نفت",callback_data:"tc:want:oil"},{text:"🪙 طلا",callback_data:"tc:want:gold_stock"}],[{text:"💵 دلار نقدی",callback_data:"tc:want:cash"}]]));return;}if(tradeState.step==="contract_want_qty"){tradeState.want_quantity=val;tradeState.step="contract_choose_route";pendingTradeInput.set(ctx.from.id,tradeState);await edit(ctx,"مرحله ۳: مسیر انتقال را انتخاب کنید.\n\n🚢 دریایی: ارزان‌ترین (۱ دلار به‌ازای هر واحد)\n🚆 زمینی: متوسط (۲ دلار به‌ازای هر واحد)\n✈️ هوایی: سریع‌ترین و گران‌ترین (۴ دلار به‌ازای هر واحد)",K([[{text:"🚢 دریایی",callback_data:"tc:route:sea"}],[{text:"🚆 زمینی",callback_data:"tc:route:land"}],[{text:"✈️ هوایی",callback_data:"tc:route:air"}]]));return;}}if(tradeState&&!ctx.message.text.startsWith("/")){const val=Number(ctx.message.text.trim().replace(/[٬,]/g,""));if(!Number.isSafeInteger(val)||val<=0){await ctx.reply("لطفاً یک عدد صحیح مثبت ارسال کنید.");return;}const p=await ready(ctx);if(!p){pendingTradeInput.delete(ctx.from.id);return;}if(tradeState.step==="quantity"){if(val>Number(p[tradeState.resource])){await ctx.reply("موجودی کافی نیست. مقدار کمتر از "+fmt(p[tradeState.resource])+" وارد کنید.");return;}tradeState.quantity=val;tradeState.step="price";pendingTradeInput.set(ctx.from.id,tradeState);await ctx.reply("<b>مرحله ۳ از ۳ — قیمت واحد</b>\nمقدار: "+fmt(val)+" "+resourceNames[tradeState.resource]+"\nقیمت هر واحد را به دلار وارد کنید. مبلغ کل: تعداد × قیمت واحد.",{parse_mode:"HTML",reply_markup:{force_reply:true,selective:true}});return;}if(tradeState.step==="price"){if(val>100000000){await ctx.reply("قیمت واحد بیش از حد بزرگ است؛ مبلغ کمتری وارد کنید.");return;}const client=await pool.connect();try{await client.query("BEGIN");const locked=(await client.query("SELECT "+tradeState.resource+" AS stock FROM game_players WHERE telegram_id=$1 FOR UPDATE",[ctx.from.id])).rows[0];if(!locked||Number(locked.stock)<tradeState.quantity){await client.query("ROLLBACK");pendingTradeInput.delete(ctx.from.id);await ctx.reply("موجودی منبع تغییر کرده و کافی نیست. دوباره عرضه را آغاز کنید.");return;}await client.query("UPDATE game_players SET "+tradeState.resource+"="+tradeState.resource+"-$2 WHERE telegram_id=$1",[ctx.from.id,tradeState.quantity]);const offer=(await client.query("INSERT INTO game_trade(seller_id,resource,quantity,unit_price) VALUES($1,$2,$3,$4) RETURNING id",[ctx.from.id,tradeState.resource,tradeState.quantity,val])).rows[0];await client.query("COMMIT");pendingTradeInput.delete(ctx.from.id);await ctx.reply("📦 پیشنهاد در بازار ثبت شد.\n\nمنبع: "+resourceNames[tradeState.resource]+"\nمقدار: "+fmt(tradeState.quantity)+"\nقیمت واحد: "+money(val)+"\nارزش کل: "+money(tradeState.quantity*val)+"\n\nمنابع تا زمان فروش در امانت بازار نگه داشته می‌شوند.",{reply_markup:K([[{text:"🛒 مشاهده‌ی بازار",callback_data:"n:trade"}],[{text:"🏛️ دربار",callback_data:"m:n"}]])});}catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}return;}}if(!pendingCountrySearch.has(ctx.from.id)||ctx.message.text.startsWith("/"))return;pendingCountrySearch.delete(ctx.from.id);const q=ctx.message.text.trim().toLocaleLowerCase("fa");const matches=countries.filter(c=>(c[1]+" "+c[0]+" "+c[2]).toLocaleLowerCase("fa").includes(q)).sort((a,b)=>a[1].localeCompare(b[1],"fa")).slice(0,20);if(!matches.length){await say(ctx,"کشوری با این عبارت پیدا نشد. دوباره جستجو کنید.",K([[{text:"🔎 جستجوی دوباره",callback_data:"cs"}],[{text:"↩️ قاره‌ها",callback_data:"start"}]]));return;}const occupiedRows=(await pool.query("SELECT country_id FROM game_players WHERE approved=TRUE AND country_id=ANY($1::text[])",[matches.map(c=>c[0])])).rows;const occupied=new Set(occupiedRows.map(x=>x.country_id));const rows=matches.map(c=>[{text:(occupied.has(c[0])?"🔒 ":"🌍 ")+c[1],callback_data:occupied.has(c[0])?"lockedcountry:"+c[0]:"c:"+c[0]}]);rows.push([{text:"🔎 جستجوی دوباره",callback_data:"cs"}],[{text:"↩️ قاره‌ها",callback_data:"start"}]);await say(ctx,"<b>نتایج جستجو</b>\n\nنتایج: "+matches.length,K(rows));});
-bot.callbackQuery(/^lockedcountry:(.+)$/,async ctx=>{await ctx.answerCallbackQuery({text:"🔒 این کشور در اختیار یک بازیکن است و امکان درخواست آن وجود ندارد.",show_alert:true});});
-bot.callbackQuery(/^c:(.+)$/,async ctx=>{await ctx.answerCallbackQuery();if(String(ctx.from.id)===ownerTelegramId){await say(ctx,"حساب سازمان بین‌الملل کشور انتخاب نمی‌کند؛ از /admin برای مدیریت بازی استفاده کنید.");return;}const c=country(ctx.match[1]);if(!c)return;const occupied=(await pool.query("SELECT telegram_id FROM game_players WHERE country_id=$1 AND approved=TRUE LIMIT 1",[c[0]])).rows[0];if(occupied){await say(ctx,"🔒 این کشور در اختیار بازیکن دیگری است و نمی‌توانید برای آن درخواست بدهید.",K([[{text:"🌍 انتخاب کشور دیگر",callback_data:"start"}]]));return;}await pool.query("UPDATE game_players SET selected_country_id=$2 WHERE telegram_id=$1 AND approved=FALSE",[ctx.from.id,c[0]]);await say(ctx,"<b>تأیید انتخاب کشور</b>\n\nآیا می‌خواهید درخواست تصاحب این کشور را برای مدیر بازی ارسال کنید؟\n\nنام و مشخصات کشور تا زمان تأیید نمایش داده نمی‌شود.",K([[{text:"✅ تأیید و ارسال درخواست",callback_data:"request_country"}],[{text:"🔄 انتخاب دوباره",callback_data:"start"}]]));});
-bot.callbackQuery(/^request_country$/,async ctx=>{await ctx.answerCallbackQuery();const p=await get(ctx.from.id);if(!p||p.approved||!p.selected_country_id){await say(ctx,"ابتدا یک کشور انتخاب کنید.",K([[{text:"انتخاب کشور",callback_data:"start"}]]));return;}const pending=(await pool.query("SELECT id FROM game_country_requests WHERE telegram_id=$1 AND status='pending' ORDER BY id DESC LIMIT 1",[ctx.from.id])).rows[0];if(pending){await say(ctx,"درخواست شما قبلاً ارسال شده و در انتظار بررسی مدیر است.");return;}const c=country(p.selected_country_id);if(!c)return;const occupied=(await pool.query("SELECT telegram_id FROM game_players WHERE country_id=$1 AND approved=TRUE LIMIT 1",[c[0]])).rows[0];if(occupied){await pool.query("UPDATE game_players SET selected_country_id=NULL WHERE telegram_id=$1",[ctx.from.id]);await say(ctx,"🔒 این کشور همین حالا به بازیکن دیگری واگذار شده است. لطفاً کشور دیگری انتخاب کنید.",K([[{text:"🌍 انتخاب کشور دیگر",callback_data:"start"}]]));return;}const req=(await pool.query("INSERT INTO game_country_requests(telegram_id,country_id) VALUES($1,$2) RETURNING id",[ctx.from.id,c[0]])).rows[0];const playerName=[ctx.from.first_name,ctx.from.last_name].filter(Boolean).join(" ")||"Player";try{await bot.api.sendMessage(ownerTelegramId,"🏛 درخواست تصاحب کشور — شاه شاهان\n\n👤 بازیکن: "+playerName+"\n🆔 شناسه: "+ctx.from.id+"\n🌐 کشور: "+c[1]+"\n👑 فرمانروا: "+c[2]+"\n🏙 پایتخت: "+c[3]+"\n👥 جمعیت: "+fmt(c[4])+"\n💵 خزانه‌ی آغازین: "+money(c[5]),{reply_markup:K([[{text:"✅ تأیید و واگذاری",callback_data:"approve_country:"+req.id}],[{text:"❌ رد درخواست",callback_data:"reject_country:"+req.id}]])});}catch(e){await pool.query("UPDATE game_country_requests SET status='delivery_failed',processed_at=NOW() WHERE id=$1",[req.id]);await say(ctx,"ارسال درخواست به مدیر بازی انجام نشد. لطفاً بعداً تلاش کنید.");return;}await say(ctx,"📨 درخواست شما برای مدیر بازی ارسال شد. پس از بررسی، نتیجه اعلام می‌شود.");});
-bot.callbackQuery(/^approve_country:(\d+)$/,async ctx=>{await ctx.answerCallbackQuery();if(String(ctx.from.id)!==ownerTelegramId){await say(ctx,"این عملیات فقط برای مدیر بازی مجاز است.");return;}const id=Number(ctx.match[1]),client=await pool.connect();try{await client.query("BEGIN");const req=(await client.query("SELECT * FROM game_country_requests WHERE id=$1 FOR UPDATE",[id])).rows[0];if(!req||req.status!=="pending"){await client.query("ROLLBACK");await say(ctx,"این درخواست قبلاً بررسی شده یا وجود ندارد.");return;}const c=country(req.country_id);if(!c){await client.query("ROLLBACK");await say(ctx,"کشور پیدا نشد.");return;}const taken=(await client.query("SELECT telegram_id FROM game_players WHERE country_id=$1 AND approved=TRUE AND telegram_id<>$2 LIMIT 1",[c[0],req.telegram_id])).rows[0];if(taken){await client.query("UPDATE game_country_requests SET status='rejected',processed_at=NOW() WHERE id=$1",[id]);await client.query("COMMIT");try{await bot.api.sendMessage(req.telegram_id,"❌ این کشور قبلاً واگذار شده است؛ درخواست رد شد.");}catch{}await say(ctx,"کشور قبلاً واگذار شده بود؛ درخواست رد شد.");return;}await client.query("UPDATE game_players SET country_id=$2,ruler=$3,government=$4,population=$5,treasury=$6,oil_field_level=$7,oil_reserves=$8,oil_stock=$9,oil_initialized=TRUE,approved=TRUE,last_settlement=NOW() WHERE telegram_id=$1",[req.telegram_id,c[0],c[2],c[1],c[4],c[5],oilField(c[0]).daily,oilField(c[0]).reserves,oilStartingStock(c[0])]);await client.query("UPDATE game_country_requests SET status='approved',processed_at=NOW() WHERE id=$1",[id]);await client.query("INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,'خزانه‌ی آغاز حکومت',$2,$2)",[req.telegram_id,c[5]]);await client.query("COMMIT");try{await bot.api.sendMessage(req.telegram_id,"✅ درخواست کشور شما تأیید شد.\n\nحکومت شما در "+c[1]+" آغاز شد.",{reply_markup:nation()});}catch{}await edit(ctx,"✅ درخواست تأیید شد و کشور واگذار شد.");}catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}});
-bot.callbackQuery(/^reject_country:(\d+)$/,async ctx=>{await ctx.answerCallbackQuery();if(String(ctx.from.id)!==ownerTelegramId){await say(ctx,"این عملیات فقط برای مدیر بازی مجاز است.");return;}const id=Number(ctx.match[1]);const req=(await pool.query("UPDATE game_country_requests SET status='rejected',processed_at=NOW() WHERE id=$1 AND status='pending' RETURNING telegram_id",[id])).rows[0];if(!req){await say(ctx,"این درخواست قبلاً بررسی شده یا وجود ندارد.");return;}try{await bot.api.sendMessage(req.telegram_id,"❌ درخواست تصاحب کشور شما رد شد. می‌توانید کشور دیگری انتخاب کنید.",{reply_markup:K([[{text:"🌍 انتخاب کشور دیگر",callback_data:"start"}]])});}catch{}await edit(ctx,"❌ درخواست رد شد. بازیکن مطلع شد.");});bot.callbackQuery(/^m:(main|n)$/,async ctx=>{await ctx.answerCallbackQuery();await edit(ctx,ctx.match[1]==="n"?"<b>🏛️ دربار و کشور</b>\nبخش مورد نظر را انتخاب کنید.":"منوی اصلی شاه شاهان",ctx.match[1]==="n"?nation():main());});
-bot.callbackQuery(/^help$/,async ctx=>{await ctx.answerCallbackQuery();await edit(ctx,"<b>راهنمای شاه شاهان</b>\nکشور تاریخی انتخاب کنید، خزانه را مدیریت کنید و با تصمیم‌های مرحله‌ای بر آینده‌ی حکومت اثر بگذارید.",main());});
-bot.callbackQuery(/^n:(status|money|tax|industry|people|army|diplomacy|trade|settings|stocks|commodities|strategy)$/,async ctx=>{
-await ctx.answerCallbackQuery();const p=await ready(ctx);if(!p)return;let s=ctx.match[1];if(s==="trade")s="stocks";const d=calc(p);
-if(s==="strategy"){await pool.query("INSERT INTO game_maneuver_stats(owner_id) VALUES($1) ON CONFLICT(owner_id) DO NOTHING",[ctx.from.id]);const m=(await pool.query("SELECT readiness,CASE WHEN last_maneuver_date=CURRENT_DATE THEN maneuvers_today ELSE 0 END AS maneuvers_today FROM game_maneuver_stats WHERE owner_id=$1",[ctx.from.id])).rows[0],bases=Number((await pool.query("SELECT COUNT(*)::int n FROM game_strategic_bases WHERE owner_id=$1",[ctx.from.id])).rows[0].n),navies=Number((await pool.query("SELECT COALESCE(SUM(units),0)::int n FROM game_naval_deployments WHERE owner_id=$1 AND status='active'",[ctx.from.id])).rows[0].n);return edit(ctx,"<b>🎯 ستاد توسعه و اقدامات راهبردی</b>\n━━━━━━━━━━━━━━━━━━\n\n🛡️ آمادگی رزمی فعلی: "+fmt(m.readiness)+"٪\n🎖️ مانورهای برگزارشده امروز: "+Number(m.maneuvers_today)+" از 1\n🏗️ پایگاه‌های عملیاتی: "+fmt(bases)+"\n⚓ واحدهای ناوگان مستقر: "+fmt(navies)+"\n\nاقدامات راهبردی کشور را انتخاب کنید.",strategicMenu());}
-if(s==="status")return edit(ctx,await status(p),nation());
-if(s==="money")return edit(ctx,`<b>💰 خزانه و دفتر حساب</b>\nمانده: ${money(p.treasury)}\nدرآمد روزانه‌ی قابل دریافت: ${money(d.income)}\n\n💡 هزینه‌ی نقدی روزانه وجود ندارد؛ خزانه برای ارتقای کشور، ساخت سازه‌ها و خرید استفاده می‌شود. منابع در هر نوبت بر اساس جمعیت و دارایی‌ها مصرف می‌شوند.`,K([[{text:"📒 دفتر حساب",callback_data:"ledger"}],[{text:"🏗️ ارتقای کشور",callback_data:"shop"}],[{text:"↩️ بازگشت",callback_data:"m:n"}]]));
-if(s==="tax")return edit(ctx,`<b>🧾 مالیات و تعرفه</b>\nمالیات: ${p.tax_rate}٪ | تعرفه: ${p.tariff}٪\n\nمالیات بیشتر درآمد را افزایش می‌دهد اما ثبات و مشروعیت را کاهش می‌دهد.`,K([[{text:"➖ مالیات",callback_data:"adj:tax:-1"},{text:"➕ مالیات",callback_data:"adj:tax:1"}],[{text:"➖ تعرفه",callback_data:"adj:tariff:-1"},{text:"➕ تعرفه",callback_data:"adj:tariff:1"}],[{text:"↩️ بازگشت",callback_data:"m:n"}]]));
-if(s==="industry")return edit(ctx,`<b>🏭 تولید و منابع</b>\nصنعت: ${p.industry} | کشاورزی: ${p.agriculture}\nغله: ${resourceAmount("grain",p.grain)} | زغال‌سنگ: ${resourceAmount("coal",p.coal)} | آهن: ${resourceAmount("iron",p.iron)} | پارچه: ${resourceAmount("cloth",p.cloth)}\n🛢 نفت خام: ${resourceAmount("oil_stock",p.oil_stock||0)}\nتولید نفت خام: ${resourceAmount("oil_stock",d.oilProduction)} در روز | مصرف نفت خام: ${resourceAmount("oil_stock",d.oilConsumption)} در روز\n\nتوسعه‌ی هر واحد نیازمند خزانه و مواد اولیه است.`,K([[{text:"🏭 صنعت",callback_data:"build:industry"},{text:"🌾 کشاورزی",callback_data:"build:agriculture"}],[{text:"🛤 زیرساخت",callback_data:"build:infrastructure"},{text:"📦 عرضه‌ی منابع",callback_data:"tradeoffer"}],[{text:"↩️ دربار",callback_data:"m:n"},{text:"🏠 خانه",callback_data:"m:main"}]]));
-if(s==="people")return edit(ctx,`<b>👥 جمعیت و خدمات</b>\nجمعیت: ${fmt(p.population)}\nآموزش: ${p.education} | سلامت: ${p.health}\nحقوق متوسط: ${money(p.wage)}\nبودجه‌ی خدمات روزانه: ${money(p.service_budget)}`,K([[{text:"➖ حقوق",callback_data:"adj:wage:-10"},{text:"➕ حقوق",callback_data:"adj:wage:10"}],[{text:"➖ خدمات",callback_data:"adj:service_budget:-100"},{text:"➕ خدمات",callback_data:"adj:service_budget:100"}],[{text:"↩️ بازگشت",callback_data:"m:n"}]]));
-if(s==="army")return edit(ctx,`<b>🛡️ ارتش و ناوگان</b>\nارتش: ${p.army} | ناوگان: ${p.navy}\nروحیه: ${p.morale}٪\nمصرف دوره‌ای: غله، نفت، زغال و تجهیزات بر اساس اندازه‌ی نیروها؛ هزینه‌ی نقدی روزانه ندارد.`,K([[{text:"🪖 جذب ارتش",callback_data:"mil:army"}],[{text:"⚓ ساخت ناوگان",callback_data:"mil:navy"}],[{text:"🔧 تعمیر تسلیحات آسیب‌دیده",callback_data:"weaponrepair"}],[{text:"↩️ بازگشت",callback_data:"m:n"}]]));
-if(s==="settings")return edit(ctx,"<b>⚙️ تنظیمات اداره</b>\nمقادیر مالیات، تعرفه، حقوق و بودجه‌ی خدمات را با دکمه‌های + و − تغییر دهید.",K([[{text:"➖ مالیات",callback_data:"adj:tax:-1"},{text:"➕ مالیات",callback_data:"adj:tax:1"}],[{text:"➖ تعرفه",callback_data:"adj:tariff:-1"},{text:"➕ تعرفه",callback_data:"adj:tariff:1"}],[{text:"➖ حقوق",callback_data:"adj:wage:-10"},{text:"➕ حقوق",callback_data:"adj:wage:10"}],[{text:"➖ خدمات",callback_data:"adj:service_budget:-100"},{text:"➕ خدمات",callback_data:"adj:service_budget:100"}],[{text:"↩️ بازگشت",callback_data:"m:n"}]]));
-if(s==="diplomacy"){const incoming=(await pool.query("SELECT COUNT(*)::int AS n FROM game_relations WHERE other_id=$1 AND relation LIKE 'proposal_%'",[ctx.from.id])).rows[0].n;const contracts=(await pool.query("SELECT COUNT(*)::int AS n FROM game_trade_contracts WHERE (recipient_id=$1 OR proposer_id=$1) AND status='pending'",[ctx.from.id])).rows[0].n;return edit(ctx,"<b>🌐 دیپلماسی و روابط بین‌الملل</b>\n\n📨 پیشنهادهای دیپلماتیک در انتظار: "+incoming+"\n📋 قراردادهای تجاری در انتظار: "+contracts+"\n\nاز بخش موردنظر انتخاب کنید:",K([[{text:"📈 بورس بین‌المللی کالاها · نفت، طلا و غلات",callback_data:"n:stocks"}],[{text:"📋 قراردادها و پیمان‌های من · پیگیری",callback_data:"tc:center"}],[{text:"📜 پیشنهاد قرارداد تجاری",callback_data:"tradeoffer"}],[{text:"🏅 خرید، فروش و انتقال تسلیحات",callback_data:"shopweapons"}],[{text:"🚩 مأموریت راهبردی · اعزام هیئت",callback_data:"dipmissions"}],[{text:"✉️ پیشنهادهای دیپلماتیک دریافتی",callback_data:"dipinbox"}],[{text:"📜 دفتر روابط و سوابق مذاکرات",callback_data:"diprelations"}],[{text:"🏛️ سفارت‌ها و ارتقای روابط",callback_data:"dipembassies"}],[{text:"🤝 اتحادها و تحریم‌های اقتصادی",callback_data:"dipcountries"}],[{text:"↩️ بازگشت به دربار",callback_data:"m:n"}]]));}
-if(s==="commodities")return edit(ctx,"بازار نفت، طلا و غلات اکنون در بورس کالا ادغام شده است.",K([[{text:"📈 ورود به بورس و کالا",callback_data:"n:stocks"}],[{text:"↩️ بازگشت به دربار",callback_data:"m:n"}]]));if(s==="stocks"){const r=await pool.query("SELECT t.*,p.display_name,p.country_id FROM game_trade t JOIN game_players p ON p.telegram_id=t.seller_id JOIN game_relations rel ON rel.player_id=$1 AND rel.other_id=t.seller_id AND rel.relation='trade_pact' WHERE t.status='open' AND t.seller_id<>$1 ORDER BY t.id DESC LIMIT 20",[ctx.from.id]);const own=await pool.query("SELECT id,resource,quantity,unit_price FROM game_trade WHERE status='open' AND seller_id=$1 ORDER BY id DESC LIMIT 10",[ctx.from.id]);const rows=r.rows.map(t=>[{text:(country(t.country_id)?.[1]||t.display_name)+" | "+resourceLabel(t.resource)+" ×"+fmt(t.quantity)+" | "+money(t.unit_price)+"/واحد",callback_data:"buy:"+t.id}]);rows.push([{text:"📜 قرارداد تجاری جدید",callback_data:"tradeoffer"},{text:"📨 قراردادهای دریافتی",callback_data:"tc:inbox"}]);for(const t of own.rows)rows.push([{text:"📤 محصول من: "+resourceLabel(t.resource)+" ×"+fmt(t.quantity)+" — لغو",callback_data:"tradecancel:"+t.id}]);if(!r.rows.length)rows.unshift([{text:"هنوز محصولی از سوی کشورها عرضه نشده",callback_data:"noop"}]);rows.push([{text:"🔄 تازه‌سازی",callback_data:"n:stocks"},{text:"↩️ دربار",callback_data:"m:n"}]);return edit(ctx,"<b>🌐 بازار تجارت و بورس کشورها</b>\n\nدر این بورس فقط محصولات و منابعی نمایش داده می‌شود که کشورهای بازیکنان خودشان عرضه کرده‌اند. هیچ کالایی از سیستم یا بازار پایه فروخته نمی‌شود.\n\nبرای خرید، محصول یک کشور را انتخاب کنید؛ برای فروش، محصول کشور خود را عرضه کنید.",K(rows));}
+const oilFields = {
+  usa: { daily: 1000, reserves: 1000 * 365 * 30 },
+  russia: { daily: 450, reserves: 450 * 365 * 30 },
+  azerbaijan: { daily: 220, reserves: 220 * 365 * 30 },
+  persia: { daily: 180, reserves: 180 * 365 * 30 },
+  mexico: { daily: 160, reserves: 160 * 365 * 30 },
+  romania: { daily: 100, reserves: 100 * 365 * 30 },
+  austria: { daily: 90, reserves: 90 * 365 * 30 },
+  indonesia: { daily: 130, reserves: 130 * 365 * 30 },
+  burma: { daily: 30, reserves: 30 * 365 * 30 },
+  egypt: { daily: 20, reserves: 20 * 365 * 30 },
+  canada: { daily: 15, reserves: 15 * 365 * 30 },
+  germany: { daily: 10, reserves: 10 * 365 * 30 },
+  venezuela: { daily: 8, reserves: 8 * 365 * 30 },
+  peru: { daily: 5, reserves: 5 * 365 * 30 },
+};
+const oilField = (id) => oilFields[id] || { daily: 0, reserves: 0 };
+const oilStartingStock = (id) => Math.max(600, oilField(id).daily * 2);
+bot.command("start", async (ctx) => {
+  const p = await ensure(ctx);
+  if (String(ctx.from.id) === ownerTelegramId) {
+    await ctx.reply("🌐 حساب شما سازمان بین‌الملل است و کشور بازیکن ندارد. پنل مدیریت: /admin", {
+      reply_markup: adminReply(),
+    });
+    await showAdminPanel(ctx);
+    return;
+  }
+  if (p.approved) {
+    await ctx.reply("به شاه شاهان بازگشتید. از دکمه‌های منوی پایین کشور را اداره کنید.", {
+      reply_markup: nationReply(),
+    });
+    await say(ctx, "🏛️ دربار و کشور", nation());
+    return;
+  }
+  await ctx.reply("منوی اصلی شاه شاهان — از دکمه‌های پایین استفاده کنید.", {
+    reply_markup: mainReply(),
+  });
+  await say(
+    ctx,
+    "<b>شاه شاهان</b>\n\nبازی راهبرد و اداره‌ی کشور در جهان تاریخی سال ۱۹۱۴.\n\nبرای آغاز حکومت، کشور خود را انتخاب کنید.",
+    K([[{ text: "📜 آغاز بازی", callback_data: "start" }]]),
+  );
 });
-bot.callbackQuery(/^commodity:([A-Z]+)$/,async ctx=>{await ctx.answerCallbackQuery();const p=await ready(ctx);if(!p)return;await refreshCommodities();const r=await pool.query("SELECT c.*,COALESCE(h.units,0) AS units FROM game_commodities c LEFT JOIN game_commodity_holdings h ON h.symbol=c.symbol AND h.telegram_id=$1 WHERE c.symbol=$2",[ctx.from.id,ctx.match[1]]);const x=r.rows[0];if(!x){await say(ctx,"کالا پیدا نشد.",nation());return;}await edit(ctx,"<b>"+x.name+"</b>\\nقیمت هر واحد: "+money(x.price)+"\\nتغییر: "+x.change_pct+"٪\\nموجودی شما: "+fmt(x.units),K([[{text:"🟢 خرید از بازار پایه",callback_data:"commoditybuy:"+x.symbol}],[{text:"📤 عرضه به کشورهای دیگر",callback_data:"exoffer:commodity:"+x.symbol}],[{text:"🔴 فروش به بازار پایه",callback_data:"commoditysell:"+x.symbol}],[{text:"↩️ بازگشت به بازار بورس و کالا",callback_data:"n:stocks"}]]));});
-bot.callbackQuery(/^commoditybuy:([A-Z]+)$/,async ctx=>{await ctx.answerCallbackQuery();const p=await ready(ctx);if(!p)return;const client=await pool.connect();try{await client.query("BEGIN");const c=(await client.query("SELECT * FROM game_commodities WHERE symbol=$1 FOR UPDATE",[ctx.match[1]])).rows[0];const pl=(await client.query("SELECT treasury FROM game_players WHERE telegram_id=$1 FOR UPDATE",[ctx.from.id])).rows[0];if(!c||!pl||Number(pl.treasury)<Number(c.price)){await client.query("ROLLBACK");await say(ctx,"کالا موجود نیست یا خزانه برای خرید کافی نیست.",nation());return;}const bal=Number(pl.treasury)-Number(c.price);await client.query("UPDATE game_players SET treasury=$2 WHERE telegram_id=$1",[ctx.from.id,bal]);await client.query("INSERT INTO game_commodity_holdings(telegram_id,symbol,units) VALUES($1,$2,1) ON CONFLICT(telegram_id,symbol) DO UPDATE SET units=game_commodity_holdings.units+1",[ctx.from.id,c.symbol]);await client.query("INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,$3,$4)",[ctx.from.id,"خرید کالای "+c.symbol,-Number(c.price),bal]);await client.query("COMMIT");await say(ctx,"خرید انجام شد؛ "+money(c.price)+" از خزانه کسر شد.",K([[{text:"🛢️ ادامه در بازار کالا",callback_data:"n:commodities"}],[{text:"🏛️ بازگشت به دربار",callback_data:"m:n"}]]));}catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}});
-bot.callbackQuery(/^commoditysell:([A-Z]+)$/,async ctx=>{await ctx.answerCallbackQuery();const p=await ready(ctx);if(!p)return;const client=await pool.connect();try{await client.query("BEGIN");const c=(await client.query("SELECT * FROM game_commodities WHERE symbol=$1 FOR UPDATE",[ctx.match[1]])).rows[0];const h=(await client.query("SELECT units FROM game_commodity_holdings WHERE telegram_id=$1 AND symbol=$2 FOR UPDATE",[ctx.from.id,ctx.match[1]])).rows[0];const pl=(await client.query("SELECT treasury FROM game_players WHERE telegram_id=$1 FOR UPDATE",[ctx.from.id])).rows[0];if(!c||!h||Number(h.units)<1||!pl){await client.query("ROLLBACK");await say(ctx,"برای فروش، موجودی کافی ندارید.",nation());return;}const bal=Number(pl.treasury)+Number(c.price);await client.query("UPDATE game_commodity_holdings SET units=units-1 WHERE telegram_id=$1 AND symbol=$2",[ctx.from.id,c.symbol]);await client.query("UPDATE game_players SET treasury=$2 WHERE telegram_id=$1",[ctx.from.id,bal]);await client.query("INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,$3,$4)",[ctx.from.id,"فروش کالای "+c.symbol,Number(c.price),bal]);await client.query("COMMIT");await say(ctx,"فروش انجام شد؛ "+money(c.price)+" به خزانه افزوده شد.",K([[{text:"🛢️ ادامه در بازار کالا",callback_data:"n:commodities"}],[{text:"🏛️ بازگشت به دربار",callback_data:"m:n"}]]));}catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}});
-bot.callbackQuery(/^commodityportfolio$/,async ctx=>{await ctx.answerCallbackQuery();return edit(ctx,"سبد کالاها و سهام در بخش پشتوانه بورسی من یکپارچه شده است.",K([[{text:"💼 پشتوانه بورسی من",callback_data:"assetportfolio"}],[{text:"📈 بورس و کالا",callback_data:"n:stocks"}],[{text:"🏛️ بازگشت به دربار",callback_data:"m:n"}]]));});
-bot.callbackQuery(/^stock:([A-Z]+)$/,async ctx=>{await ctx.answerCallbackQuery();const p=await ready(ctx);if(!p)return;await refreshStocks();const r=await pool.query("SELECT s.*,COALESCE(h.shares,0) AS shares FROM game_stocks s LEFT JOIN game_stock_holdings h ON h.symbol=s.symbol AND h.telegram_id=$1 WHERE s.symbol=$2",[ctx.from.id,ctx.match[1]]);const x=r.rows[0];if(!x){await say(ctx,"نماد پیدا نشد.",nation());return;}await edit(ctx,"<b>"+x.name+" ("+x.symbol+")</b>\\nقیمت هر سهم: "+money(x.price)+"\\nتغییر: "+x.change_pct+"٪\\nسهام شما: "+fmt(x.shares),K([[{text:"🟢 خرید از بازار پایه",callback_data:"stockbuy:"+x.symbol}],[{text:"📤 عرضه به کشورهای دیگر",callback_data:"exoffer:stock:"+x.symbol}],[{text:"🔴 فروش به بازار پایه",callback_data:"stocksell:"+x.symbol}],[{text:"↩️ بازگشت به بورس",callback_data:"n:stocks"}]]));});
-bot.callbackQuery(/^stockbuy:([A-Z]+)$/,async ctx=>{await ctx.answerCallbackQuery();const p=await ready(ctx);if(!p)return;const client=await pool.connect();try{await client.query("BEGIN");const st=(await client.query("SELECT * FROM game_stocks WHERE symbol=$1 FOR UPDATE",[ctx.match[1]])).rows[0];const pl=(await client.query("SELECT treasury FROM game_players WHERE telegram_id=$1 FOR UPDATE",[ctx.from.id])).rows[0];if(!st||!pl||Number(pl.treasury)<Number(st.price)){await client.query("ROLLBACK");await say(ctx,"نماد در دسترس نیست یا خزانه برای خرید سهم کافی نیست.",nation());return;}await client.query("UPDATE game_players SET treasury=treasury-$2 WHERE telegram_id=$1",[ctx.from.id,st.price]);await client.query("INSERT INTO game_stock_holdings(telegram_id,symbol,shares) VALUES($1,$2,1) ON CONFLICT(telegram_id,symbol) DO UPDATE SET shares=game_stock_holdings.shares+1",[ctx.from.id,st.symbol]);await client.query("INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,$3,$4)",[ctx.from.id,"خرید سهم "+st.symbol,-Number(st.price),Number(pl.treasury)-Number(st.price)]);await client.query("COMMIT");await say(ctx,"✅ یک سهم "+st.symbol+" خریداری شد؛ مبلغ "+money(st.price)+" از خزانه کسر شد.",K([[{text:"📈 ادامه در بورس",callback_data:"n:stocks"}],[{text:"🏛 بازگشت به دربار",callback_data:"m:n"}]]));}catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}});
-bot.callbackQuery(/^stocksell:([A-Z]+)$/,async ctx=>{await ctx.answerCallbackQuery();const p=await ready(ctx);if(!p)return;const client=await pool.connect();try{await client.query("BEGIN");const st=(await client.query("SELECT * FROM game_stocks WHERE symbol=$1 FOR UPDATE",[ctx.match[1]])).rows[0];const h=(await client.query("SELECT shares FROM game_stock_holdings WHERE telegram_id=$1 AND symbol=$2 FOR UPDATE",[ctx.from.id,ctx.match[1]])).rows[0];if(!st||!h||Number(h.shares)<1){await client.query("ROLLBACK");await say(ctx,"برای فروش، سهمی از این نماد در سبد شما نیست.",nation());return;}await client.query("UPDATE game_stock_holdings SET shares=shares-1 WHERE telegram_id=$1 AND symbol=$2",[ctx.from.id,st.symbol]);await client.query("UPDATE game_players SET treasury=treasury+$2 WHERE telegram_id=$1",[ctx.from.id,st.price]);const balance=Number(p.treasury)+Number(st.price);await client.query("INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,$3,$4)",[ctx.from.id,"فروش سهم "+st.symbol,Number(st.price),balance]);await client.query("COMMIT");await say(ctx,"✅ یک سهم "+st.symbol+" فروخته شد؛ "+money(st.price)+" به خزانه افزوده شد.",K([[{text:"📈 ادامه در بورس",callback_data:"n:stocks"}],[{text:"🏛 بازگشت به دربار",callback_data:"m:n"}]]));}catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}});
-bot.callbackQuery(/^exorders$/,async ctx=>{await ctx.answerCallbackQuery();const r=await pool.query("SELECT o.*,p.display_name,p.country_id,COALESCE(st.name,cm.name) AS asset_name FROM game_exchange_orders o JOIN game_players p ON p.telegram_id=o.seller_id LEFT JOIN game_stocks st ON o.asset_type='stock' AND st.symbol=o.symbol LEFT JOIN game_commodities cm ON o.asset_type='commodity' AND cm.symbol=o.symbol WHERE o.status='open' AND o.seller_id<>$1 ORDER BY o.id DESC LIMIT 20",[ctx.from.id]);const rows=r.rows.map(o=>[{text:`${country(o.country_id)?.[1]||o.display_name} | ${o.asset_name} ×${fmt(o.quantity)} | ${money(o.unit_price)}/واحد`,callback_data:"exbuy:"+o.id}]);if(!rows.length)rows.push([{text:"هنوز سفارش فعالی ثبت نشده",callback_data:"noop"}]);rows.push([{text:"↻ بازگشت به بورس",callback_data:"n:stocks"}],[{text:"🏛 دربار",callback_data:"m:n"}]);return edit(ctx,"<b>🌐 سفارش‌های فعال کشورها</b>\nخرید از کشور دیگر: انتخاب سفارش و پرداخت از خزانه‌ی شما.",K(rows));});
-bot.callbackQuery(/^exoffer:(stock|commodity):([A-Z]+)$/,async ctx=>{await ctx.answerCallbackQuery();const p=await ready(ctx);if(!p)return;const type=ctx.match[1],symbol=ctx.match[2];const h=type==="stock"?(await pool.query("SELECT shares AS qty FROM game_stock_holdings WHERE telegram_id=$1 AND symbol=$2",[ctx.from.id,symbol])).rows[0]:(await pool.query("SELECT units AS qty FROM game_commodity_holdings WHERE telegram_id=$1 AND symbol=$2",[ctx.from.id,symbol])).rows[0];if(!h||Number(h.qty)<1){await say(ctx,"برای عرضه، ابتدا باید این سهم یا کالا را در پشتوانه‌ی خود داشته باشید.",K([[{text:"💼 پشتوانه بورسی من",callback_data:"assetportfolio"}],[{text:"📈 بورس",callback_data:"n:stocks"}]]));return;}pendingTradeInput.set(ctx.from.id,{step:"quantity",marketAsset:true,assetType:type,symbol});await ctx.reply("<b>مرحله ۱ از ۲ — مقدار سفارش فروش</b>\nموجودی شما: "+fmt(h.qty)+"\nچند واحد را برای فروش به کشورهای دیگر عرضه می‌کنید؟",{parse_mode:"HTML",reply_markup:{force_reply:true,selective:true}});});
-bot.callbackQuery(/^exbuy:(\d+)$/,async ctx=>{await ctx.answerCallbackQuery();const p=await ready(ctx);if(!p)return;const client=await pool.connect();try{await client.query("BEGIN");const o=(await client.query("SELECT * FROM game_exchange_orders WHERE id=$1 AND status='open' FOR UPDATE",[Number(ctx.match[1])])).rows[0];if(!o||Number(o.seller_id)===Number(ctx.from.id)){await client.query("ROLLBACK");await say(ctx,"این سفارش دیگر در دسترس نیست.",nation());return;}const buyer=(await client.query("SELECT treasury,country_id FROM game_players WHERE telegram_id=$1 FOR UPDATE",[ctx.from.id])).rows[0];const total=Number(o.quantity)*Number(o.unit_price);if(!buyer||Number(buyer.treasury)<total){await client.query("ROLLBACK");await say(ctx,"خزانه‌ی کشور برای خرید این سفارش کافی نیست.",nation());return;}const seller=(await client.query("SELECT country_id FROM game_players WHERE telegram_id=$1 FOR UPDATE",[o.seller_id])).rows[0];await client.query("UPDATE game_players SET treasury=treasury-$2 WHERE telegram_id=$1",[ctx.from.id,total]);await client.query("UPDATE game_players SET treasury=treasury+$2 WHERE telegram_id=$1",[o.seller_id,total]);if(o.asset_type==="stock")await client.query("INSERT INTO game_stock_holdings(telegram_id,symbol,shares) VALUES($1,$2,$3) ON CONFLICT(telegram_id,symbol) DO UPDATE SET shares=game_stock_holdings.shares+EXCLUDED.shares",[ctx.from.id,o.symbol,o.quantity]);else await client.query("INSERT INTO game_commodity_holdings(telegram_id,symbol,units) VALUES($1,$2,$3) ON CONFLICT(telegram_id,symbol) DO UPDATE SET units=game_commodity_holdings.units+EXCLUDED.units",[ctx.from.id,o.symbol,o.quantity]);await client.query("UPDATE game_exchange_orders SET status='sold' WHERE id=$1",[o.id]);await client.query("INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,$3,$4)",[ctx.from.id,"خرید "+o.symbol+" از "+(country(seller?.country_id)?.[1]||"کشور دیگر"),-total,Number(buyer.treasury)-total]);const sellerBal=(await client.query("SELECT treasury FROM game_players WHERE telegram_id=$1",[o.seller_id])).rows[0];await client.query("INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,$3,$4)",[o.seller_id,"فروش "+o.symbol+" به "+(country(buyer.country_id)?.[1]||"کشور دیگر"),total,sellerBal.treasury]);await client.query("COMMIT");await say(ctx,"🤝 معامله‌ی بورسی بین کشورها انجام شد.\n\nخریدار: "+(country(buyer.country_id)?.[1]||"کشور شما")+"\nفروشنده: "+(country(seller?.country_id)?.[1]||"کشور دیگر")+"\nنماد: "+o.symbol+" ×"+fmt(o.quantity)+"\nمبلغ: "+money(total),K([[{text:"📈 ادامه‌ی بورس",callback_data:"n:stocks"}],[{text:"🏛 دربار",callback_data:"m:n"}]]));}catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}});
-bot.callbackQuery(/^excancel:(\d+)$/,async ctx=>{await ctx.answerCallbackQuery();const p=await ready(ctx);if(!p)return;const client=await pool.connect();try{await client.query("BEGIN");const o=(await client.query("SELECT * FROM game_exchange_orders WHERE id=$1 AND seller_id=$2 AND status='open' FOR UPDATE",[Number(ctx.match[1]),ctx.from.id])).rows[0];if(!o){await client.query("ROLLBACK");await say(ctx,"سفارش دیگر فعال نیست.",nation());return;}if(o.asset_type==="stock")await client.query("INSERT INTO game_stock_holdings(telegram_id,symbol,shares) VALUES($1,$2,$3) ON CONFLICT(telegram_id,symbol) DO UPDATE SET shares=game_stock_holdings.shares+EXCLUDED.shares",[ctx.from.id,o.symbol,o.quantity]);else await client.query("INSERT INTO game_commodity_holdings(telegram_id,symbol,units) VALUES($1,$2,$3) ON CONFLICT(telegram_id,symbol) DO UPDATE SET units=game_commodity_holdings.units+EXCLUDED.units",[ctx.from.id,o.symbol,o.quantity]);await client.query("UPDATE game_exchange_orders SET status='cancelled' WHERE id=$1",[o.id]);await client.query("COMMIT");await say(ctx,"سفارش لغو شد و دارایی به پشتوانه‌ی شما برگشت.",K([[{text:"📈 بورس و کالا",callback_data:"n:stocks"}],[{text:"💼 پشتوانه بورسی",callback_data:"assetportfolio"}]]));}catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}});
-bot.callbackQuery(/^assetportfolio$/,async ctx=>{await ctx.answerCallbackQuery();const p=await ready(ctx);if(!p)return;const a=await pool.query("SELECT s.name,s.symbol,h.shares AS qty,s.price,h.shares*s.price AS value,'سهام' AS kind FROM game_stock_holdings h JOIN game_stocks s ON s.symbol=h.symbol WHERE h.telegram_id=$1 AND h.shares>0",[ctx.from.id]);const b=await pool.query("SELECT c.name,c.symbol,h.units AS qty,c.price,h.units*c.price AS value,'کالا' AS kind FROM game_commodity_holdings h JOIN game_commodities c ON c.symbol=h.symbol WHERE h.telegram_id=$1 AND h.units>0",[ctx.from.id]);const all=[...a.rows,...b.rows].sort((x,y)=>Number(y.value)-Number(x.value));const total=all.reduce((n,x)=>n+Number(x.value),0);await edit(ctx,all.length?"<b>💼 پشتوانه بورسی من</b>\\nارزش کل: "+money(total)+"\\n\\n"+all.map(x=>x.kind+" — "+x.name+" ("+x.symbol+")\\nمقدار: "+fmt(x.qty)+" | ارزش: "+money(x.value)).join("\\n\\n"):"<b>💼 پشتوانه بورسی من</b>\\nهنوز سهام یا کالایی در سبد شما نیست.",K([[{text:"📈 بازگشت به بورس و کالا",callback_data:"n:stocks"}],[{text:"🏛️ بازگشت به دربار",callback_data:"m:n"}]]));});bot.callbackQuery(/^portfolio$/,async ctx=>{await ctx.answerCallbackQuery();return edit(ctx,"سبد سهام و کالا در بخش پشتوانه بورسی من یکپارچه شده است.",K([[{text:"💼 پشتوانه بورسی من",callback_data:"assetportfolio"}],[{text:"📈 بورس و کالا",callback_data:"n:stocks"}],[{text:"🏛️ بازگشت به دربار",callback_data:"m:n"}]]));});
-bot.callbackQuery(/^adj:(tax|tariff|wage|service_budget):(-?\d+)$/,async ctx=>{await ctx.answerCallbackQuery();const p=await ready(ctx);if(!p)return;const f=ctx.match[1],delta=Number(ctx.match[2]),lim={tax:[0,60],tariff:[0,50],wage:[10,10000],service_budget:[0,10000000]}[f],v=Math.max(lim[0],Math.min(lim[1],Number(p[f])+delta));const q=f==="tax"&&delta>0?"UPDATE game_players SET tax_rate=$2,stability=GREATEST(0,stability-1),legitimacy=GREATEST(0,legitimacy-1) WHERE telegram_id=$1":`UPDATE game_players SET ${f}=$2 WHERE telegram_id=$1`;await pool.query(q,[ctx.from.id,v]);await say(ctx,"تغییر سیاست ثبت شد.\n\n"+await status(await get(ctx.from.id)),nation());});
-bot.callbackQuery(/^build:(industry|agriculture|infrastructure)$/,async ctx=>{await ctx.answerCallbackQuery();const p=await ready(ctx);if(!p)return;const f=ctx.match[1],cost=f==="industry"?5000:f==="agriculture"?3500:6000,need=f==="industry"?{iron:100,coal:150}:f==="agriculture"?{}:{iron:50};if(Number(p.treasury)<cost||Object.entries(need).some(([r,q])=>p[r]<q)){await say(ctx,"خزانه یا مواد اولیه کافی نیست.",nation());return;}const changes=[f+"="+f+"+1","treasury=treasury-"+cost,...Object.entries(need).map(([r,q])=>r+"="+r+"-"+q)];await pool.query("UPDATE game_players SET "+changes.join(",")+" WHERE telegram_id=$1",[ctx.from.id]);await pool.query("INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,$3,$4)",[ctx.from.id,"پروژه‌ی توسعه‌ی "+f,-cost,p.treasury-cost]);await say(ctx,"پروژه تکمیل و هزینه در دفتر حساب ثبت شد.",nation());});
-bot.callbackQuery(/^mil:(army|navy|air|defense)$/,async ctx=>{await ctx.answerCallbackQuery();const p=await ready(ctx);if(!p)return;const type=ctx.match[1],cfg={army:["army",28000,"🪖 یک واحد زمینی"],navy:["navy",180000,"⚓ یک شناور"],air:["air_force",14000,"✈️ یک هواپیما"],defense:["air_defense",9000,"🛡️ یک قبضه پدافند"]}[type],field=cfg[0],cost=cfg[1];if(Number(p.treasury)<cost){await say(ctx,"💰 خزانه برای این تجهیز کافی نیست.",nation());return;}await pool.query(`UPDATE game_players SET ${field}=${field}+1,treasury=treasury-$2 WHERE telegram_id=$1`,[ctx.from.id,cost]);await pool.query("INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,$3,$4)",[ctx.from.id,"تجهیز نیرو: "+cfg[2],-cost,Number(p.treasury)-cost]);await say(ctx,"✅ افزوده شد: "+cfg[2]+"\n💵 هزینه: "+money(cost)+"\n💰 خزانه: "+money(Number(p.treasury)-cost),nation());});
-bot.callbackQuery(/^ledger$/,async ctx=>{await ctx.answerCallbackQuery();const r=await pool.query("SELECT description,amount,balance FROM game_ledger WHERE telegram_id=$1 ORDER BY id DESC LIMIT 15",[ctx.from.id]);await edit(ctx,r.rows.length?"<b>📒 دفتر حساب</b>\n\n"+r.rows.map(x=>x.description+"\n"+money(x.amount)+" | مانده "+money(x.balance)).join("\n\n"):"دفتر حساب خالی است.",back());});
-bot.callbackQuery(/^partnertrade:(\d+)$/,async ctx=>{await ctx.answerCallbackQuery();const p=await ready(ctx);if(!p)return;const other=Number(ctx.match[1]),target=await get(other),rel=(await pool.query("SELECT relation FROM game_relations WHERE player_id=$1 AND other_id=$2",[ctx.from.id,other])).rows[0];if(!target?.approved||rel?.relation!=="trade_pact"){await say(ctx,"برای تجارت مستقیم با این کشور، ابتدا پیمان تجاری را از وزارت امور خارجه بپذیرید.",K([[{text:"📦 پیشنهاد پیمان تجاری",callback_data:"dipoffer:trade_pact:"+other}],[{text:"↩️ پرونده دیپلماتیک",callback_data:"dip:"+other}]]));return;}const r=await pool.query("SELECT id,resource,quantity,unit_price FROM game_trade WHERE seller_id=$1 AND status='open' ORDER BY id DESC LIMIT 20",[other]);const rows=r.rows.map(x=>[{text:resourceLabel(x.resource)+" ×"+fmt(x.quantity)+" · "+money(x.unit_price)+"/واحد",callback_data:"buy:"+x.id}]);if(!rows.length)rows.push([{text:"📭 این کشور هنوز کالایی عرضه نکرده است.",callback_data:"noop"}]);rows.push([{text:"📤 عرضه‌ی منابع شما",callback_data:"tradeoffer"}],[{text:"🔄 تازه‌سازی",callback_data:"partnertrade:"+other}],[{text:"↩️ پرونده دیپلماتیک",callback_data:"dip:"+other}]);await edit(ctx,"<b>🛒 تجارت دوجانبه</b>\n\nکشور شریک: "+(country(target.country_id)?.[1]||target.display_name)+"\n🤝 پیمان تجاری فعال است.\n\nفقط پیشنهادهای همین کشور نمایش داده می‌شود. برای معامله، پیشنهاد کالا را انتخاب کنید یا منابع خود را عرضه کنید.",K(rows));});
-bot.callbackQuery(/^tc:center$/,async ctx=>{await ctx.answerCallbackQuery();const p=await ready(ctx);if(!p)return;const [incoming,outgoing]=await Promise.all([pool.query("SELECT COUNT(*)::int AS n FROM game_trade_contracts WHERE recipient_id=$1 AND status='pending'",[ctx.from.id]),pool.query("SELECT COUNT(*)::int AS n FROM game_trade_contracts WHERE proposer_id=$1 AND status='pending'",[ctx.from.id])]);await edit(ctx,"<b>📜 مرکز قراردادهای تجاری</b>\n\n📨 قراردادهای دریافتی: "+incoming.rows[0].n+"\n📤 پیشنهادهای ارسال‌شده و در انتظار پاسخ: "+outgoing.rows[0].n+"\n\nاز یک بخش وارد شوید:",K([[{text:"✍️ ایجاد و ارسال قرارداد",callback_data:"tradeoffer"}],[{text:"📨 بررسی قراردادهای دریافتی",callback_data:"tc:inbox"}],[{text:"↩️ بازار تجارت",callback_data:"n:trade"}]]));});
-bot.callbackQuery(/^tradeoffer$/,async ctx=>{await ctx.answerCallbackQuery();const p=await ready(ctx);if(!p)return;const rows=Object.keys(continentNames).map(k=>[{text:continentNames[k],callback_data:"tc:continent:"+k}]);rows.push([{text:"↩️ بازار تجارت",callback_data:"n:trade"}]);await edit(ctx,"<b>📜 پیشنهاد قرارداد تجاری</b>\n\nابتدا قاره را انتخاب کنید؛ سپس فهرست کشورها بر اساس قاره نمایش داده می‌شود.",K(rows));});
-bot.callbackQuery(/^tc:continent:(europe|asia|africa|north_america|south_america|oceania)$/,async ctx=>{await ctx.answerCallbackQuery();const p=await ready(ctx);if(!p)return;const region=ctx.match[1],ids=(await pool.query("SELECT country_id FROM game_players WHERE approved=TRUE AND telegram_id<>$1 AND country_id IS NOT NULL",[ctx.from.id])).rows.map(x=>x.country_id),active=new Set(ids),list=countries.filter(c=>continentOf(c[0])===region&&active.has(c[0])).sort((a,b)=>a[1].localeCompare(b[1],"fa")),rows=[];for(let i=0;i<list.length;i+=2)rows.push(list.slice(i,i+2).map(c=>({text:c[1],callback_data:"tc:country:"+c[0]})));if(!rows.length)rows.push([{text:"در این قاره کشور بازیکن فعالی نیست",callback_data:"noop"}]);rows.push([{text:"↩️ بازگشت به قاره‌ها",callback_data:"tradeoffer"}],[{text:"↩️ بازار تجارت",callback_data:"n:trade"}]);return edit(ctx,"<b>📜 پیشنهاد قرارداد تجاری</b>\nقاره: "+continentNames[region]+"\n\nفقط نام کشورها نمایش داده می‌شود. کشور موردنظر را انتخاب کنید:",K(rows));});
-bot.callbackQuery(/^tc:country:([a-z0-9_]+)$/,async ctx=>{await ctx.answerCallbackQuery();const p=await ready(ctx);if(!p)return;const id=ctx.match[1],c=country(id);if(!c){await say(ctx,"کشور انتخاب‌شده معتبر نیست.");return;}const target=(await pool.query("SELECT telegram_id FROM game_players WHERE approved=TRUE AND country_id=$1 AND telegram_id<>$2 LIMIT 1",[id,ctx.from.id])).rows[0];if(!target){await say(ctx,"این کشور بازیکن فعال ندارد؛ کشور دیگری انتخاب کنید.");return;}return edit(ctx,"<b>کشور طرف قرارداد</b>\n\n🌍 "+c[1]+"\n\nبرای ادامه، کشور را انتخاب کنید:",K([[{text:c[1],callback_data:"tc:partner:"+target.telegram_id}],[{text:"↩️ بازگشت به فهرست کشورها",callback_data:"tc:continent:"+continentOf(id)}]]));});
-bot.callbackQuery(/^tc:partner:(\d+)$/,async ctx=>{await ctx.answerCallbackQuery();const p=await ready(ctx);if(!p)return;const other=Number(ctx.match[1]),target=await get(other),rel=(await pool.query("SELECT relation FROM game_relations WHERE player_id=$1 AND other_id=$2",[ctx.from.id,other])).rows[0];if(!target?.approved||rel?.relation!=="trade_pact"){await say(ctx,"برای قرارداد تجاری باید ابتدا پیمان تجاری با این کشور فعال باشد.",K([[{text:"📦 پیشنهاد پیمان تجاری",callback_data:"dipoffer:trade_pact:"+other}],[{text:"↩️ بازگشت",callback_data:"n:trade"}]]));return;}pendingTradeInput.set(ctx.from.id,{step:"contract_offer_qty",partner:other});await edit(ctx,"<b>📜 قرارداد با "+(country(target.country_id)?.[1]||target.display_name)+"</b>\n\nمرحله ۱: منبعی را که شما می‌فرستید انتخاب کنید.",K([[{text:"🌾 غله",callback_data:"tc:offer:grain"},{text:"🪨 زغال",callback_data:"tc:offer:coal"}],[{text:"⛓ آهن",callback_data:"tc:offer:iron"},{text:"🧵 پارچه",callback_data:"tc:offer:cloth"}],[{text:"🛢 نفت",callback_data:"tc:offer:oil"},{text:"🪙 طلا",callback_data:"tc:offer:gold_stock"}],[{text:"💵 دلار نقدی",callback_data:"tc:offer:cash"}],[{text:"لغو",callback_data:"n:trade"}]]));});
-bot.callbackQuery(/^tc:offer:(grain|coal|iron|cloth|oil|gold_stock|cash)$/,async ctx=>{await ctx.answerCallbackQuery();const st=pendingTradeInput.get(ctx.from.id);if(!st?.partner)return;st.offer_resource=ctx.match[1];st.step="contract_offer_qty";pendingTradeInput.set(ctx.from.id,st);await ctx.reply("مقدار "+resourceNames[st.offer_resource]+" که می‌فرستید را عددی وارد کنید. موجودی شما: "+fmt(st.offer_resource==="cash"?(await get(ctx.from.id)).treasury:(await get(ctx.from.id))[st.offer_resource]),{reply_markup:{force_reply:true,selective:true}});});
-bot.callbackQuery(/^tc:want:(grain|coal|iron|cloth|oil|gold_stock|cash)$/,async ctx=>{await ctx.answerCallbackQuery();const st=pendingTradeInput.get(ctx.from.id);if(!st?.partner||!st.offer_quantity)return;if(ctx.match[1]===st.offer_resource){await say(ctx,"برای جلوگیری از انتقال مبهم، منبع دریافتی باید با منبع ارسالی متفاوت باشد.");return;}st.want_resource=ctx.match[1];st.step="contract_want_qty";pendingTradeInput.set(ctx.from.id,st);await ctx.reply("مقدار "+resourceNames[st.want_resource]+" را که در ازای کالا می‌خواهید دریافت کنید، وارد کنید.",{reply_markup:{force_reply:true,selective:true}});});
-bot.callbackQuery(/^tc:route:(sea|land|air)$/,async ctx=>{await ctx.answerCallbackQuery();const st=pendingTradeInput.get(ctx.from.id);if(!st?.partner||!st.want_quantity)return;st.transport=ctx.match[1];st.transit_cost=st.want_quantity*({sea:1,land:2,air:4}[st.transport]);st.step="contract_payer";pendingTradeInput.set(ctx.from.id,st);await edit(ctx,"<b>مرحله ۴ — پرداخت ترانزیت</b>\n\nمسیر: "+({sea:"🚢 دریایی — ارزان‌ترین",land:"🚆 زمینی — قیمت متوسط",air:"✈️ هوایی — گران‌ترین"}[st.transport])+"\nهزینه‌ی برآوردی: "+money(st.transit_cost)+"\n\nچه کسی هزینه‌ی حمل را می‌پردازد؟",K([[{text:"📤 فرستنده / فروشنده",callback_data:"tc:payer:seller"}],[{text:"📥 گیرنده / خریدار",callback_data:"tc:payer:buyer"}],[{text:"لغو",callback_data:"n:trade"}]]));});
-bot.callbackQuery(/^tc:payer:(seller|buyer)$/,async ctx=>{await ctx.answerCallbackQuery();const st=pendingTradeInput.get(ctx.from.id);if(!st?.partner||!st.transport)return;st.transit_payer=ctx.match[1];st.step="contract_confirm";pendingTradeInput.set(ctx.from.id,st);await edit(ctx,"<b>📋 پیش‌نمایش قرارداد</b>\n\nشما می‌فرستید: "+resourceNames[st.offer_resource]+" × "+fmt(st.offer_quantity)+"\nدر مقابل دریافت: "+resourceNames[st.want_resource]+" × "+fmt(st.want_quantity)+"\nمسیر: "+({sea:"دریایی",land:"زمینی",air:"هوایی"}[st.transport])+"\nترانزیت: "+money(st.transit_cost)+" — پرداخت توسط "+(st.transit_payer==="seller"?"فرستنده":"گیرنده")+"\n\nبا ارسال، کالاهای ارسالی شما تا قبول یا رد پیشنهاد رزرو می‌شوند.",K([[{text:"📨 ارسال قرارداد",callback_data:"tc:send"}],[{text:"❌ لغو",callback_data:"n:trade"}]]));});
-bot.callbackQuery(/^tc:send$/,async ctx=>{await ctx.answerCallbackQuery();const st=pendingTradeInput.get(ctx.from.id);if(!st||st.step!=="contract_confirm")return;const blocked=(await pool.query("SELECT EXISTS(SELECT 1 FROM game_sanctions WHERE active=TRUE AND ((issuer_id=$1 AND target_id=$2) OR (issuer_id=$2 AND target_id=$1))) AS blocked",[ctx.from.id,st.partner])).rows[0]?.blocked;if(blocked){pendingTradeInput.delete(ctx.from.id);await say(ctx,"🚫 به‌دلیل تحریم اقتصادی، قرارداد با این کشور قابل ارسال نیست.");return;}const client=await pool.connect();try{await client.query("BEGIN");const p=(await client.query("SELECT "+(st.offer_resource==="cash"?"treasury":st.offer_resource)+" AS stock FROM game_players WHERE telegram_id=$1 FOR UPDATE",[ctx.from.id])).rows[0];if(!p||Number(p.stock)<st.offer_quantity){await client.query("ROLLBACK");pendingTradeInput.delete(ctx.from.id);await say(ctx,"موجودی برای رزرو قرارداد کافی نیست. دوباره پیشنهاد بسازید.");return;}await client.query("UPDATE game_players SET "+(st.offer_resource==="cash"?"treasury":st.offer_resource)+"="+(st.offer_resource==="cash"?"treasury":st.offer_resource)+"-$2 WHERE telegram_id=$1",[ctx.from.id,st.offer_quantity]);const c=(await client.query("INSERT INTO game_trade_contracts(proposer_id,recipient_id,offer_resource,offer_quantity,want_resource,want_quantity,transport,transit_payer,transit_cost) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id",[ctx.from.id,st.partner,st.offer_resource,st.offer_quantity,st.want_resource,st.want_quantity,st.transport,st.transit_payer,st.transit_cost])).rows[0];await client.query("COMMIT");pendingTradeInput.delete(ctx.from.id);await say(ctx,"📨 قرارداد شماره "+c.id+" ارسال شد؛ کالاهای پیشنهادی رزرو شدند.",K([[{text:"📜 مرکز قراردادهای تجاری",callback_data:"tc:center"}],[{text:"↩️ بازار",callback_data:"n:trade"}]]));try{await bot.api.sendMessage(st.partner,"📨 یک قرارداد تجاری جدید از کشور دیگر دریافت کردید. برای بررسی وارد بخش قراردادها شوید.");}catch{}}catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}});
-bot.callbackQuery(/^tc:inbox$/,async ctx=>{await ctx.answerCallbackQuery();const p=await ready(ctx);if(!p)return;const r=await pool.query("SELECT c.*,p.country_id,p.display_name FROM game_trade_contracts c JOIN game_players p ON p.telegram_id=c.proposer_id WHERE c.recipient_id=$1 AND c.status='pending' ORDER BY c.id DESC LIMIT 20",[ctx.from.id]);const rows=r.rows.map(x=>[{text:"📜 #"+x.id+" · "+(country(x.country_id)?.[1]||x.display_name),callback_data:"tc:view:"+x.id}]);if(!rows.length)rows.push([{text:"قرارداد دریافتی ندارید",callback_data:"noop"}]);rows.push([{text:"↩️ بازار",callback_data:"n:trade"}]);await edit(ctx,"<b>📨 قراردادهای تجاری دریافتی</b>",K(rows));});
-bot.callbackQuery(/^tc:view:(\d+)$/,async ctx=>{await ctx.answerCallbackQuery();const x=(await pool.query("SELECT c.*,p.country_id,p.display_name FROM game_trade_contracts c JOIN game_players p ON p.telegram_id=c.proposer_id WHERE c.id=$1 AND c.recipient_id=$2 AND c.status='pending'",[Number(ctx.match[1]),ctx.from.id])).rows[0];if(!x){await say(ctx,"این قرارداد دیگر فعال نیست.");return;}await edit(ctx,"<b>📜 قرارداد شماره "+x.id+"</b>\n\nطرف قرارداد: "+(country(x.country_id)?.[1]||x.display_name)+"\nارسال: "+resourceLabel(x.offer_resource)+" × "+fmt(x.offer_quantity)+"\nدرخواست در مقابل: "+resourceLabel(x.want_resource)+" × "+fmt(x.want_quantity)+"\nمسیر: "+({sea:"🚢 دریایی",land:"🚆 زمینی",air:"✈️ هوایی"}[x.transport])+"\nهزینه‌ی ترانزیت: "+money(x.transit_cost)+" — پرداخت توسط "+(x.transit_payer==="seller"?"فرستنده":"گیرنده")+"\n\nبا قبول قرارداد، کالاها و هزینه‌ی ترانزیت طبق توافق منتقل می‌شوند.",K([[{text:"✅ قبول و اجرای قرارداد",callback_data:"tc:accept:"+x.id}],[{text:"❌ رد قرارداد",callback_data:"tc:reject:"+x.id}],[{text:"↩️ قراردادها",callback_data:"tc:inbox"}]]));});
-bot.callbackQuery(/^tc:reject:(\d+)$/,async ctx=>{await ctx.answerCallbackQuery();const id=Number(ctx.match[1]),client=await pool.connect();try{await client.query("BEGIN");const x=(await client.query("SELECT * FROM game_trade_contracts WHERE id=$1 AND recipient_id=$2 AND status='pending' FOR UPDATE",[id,ctx.from.id])).rows[0];if(!x){await client.query("ROLLBACK");await say(ctx,"قرارداد دیگر فعال نیست.");return;}await client.query("UPDATE game_players SET "+(x.offer_resource==="cash"?"treasury":x.offer_resource)+"="+(x.offer_resource==="cash"?"treasury":x.offer_resource)+"+$2 WHERE telegram_id=$1",[x.proposer_id,x.offer_quantity]);await client.query("UPDATE game_trade_contracts SET status='rejected' WHERE id=$1",[id]);await client.query("COMMIT");await say(ctx,"قرارداد رد شد؛ کالای رزروشده به فرستنده بازگشت.");try{await bot.api.sendMessage(x.proposer_id,"❌ قرارداد تجاری شماره "+id+" رد شد و کالای رزروشده به ذخایر شما برگشت.");}catch{}}catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}});
-bot.callbackQuery(/^tc:accept:(\d+)$/,async ctx=>{await ctx.answerCallbackQuery();const id=Number(ctx.match[1]),client=await pool.connect();try{await client.query("BEGIN");const x=(await client.query("SELECT * FROM game_trade_contracts WHERE id=$1 AND recipient_id=$2 AND status='pending' FOR UPDATE",[id,ctx.from.id])).rows[0];if(!x){await client.query("ROLLBACK");await say(ctx,"قرارداد دیگر فعال نیست.");return;}const blocked=(await client.query("SELECT EXISTS(SELECT 1 FROM game_sanctions WHERE active=TRUE AND ((issuer_id=$1 AND target_id=$2) OR (issuer_id=$2 AND target_id=$1))) AS blocked",[ctx.from.id,x.proposer_id])).rows[0]?.blocked;if(blocked){await client.query("ROLLBACK");await say(ctx,"🚫 اجرای این قرارداد به‌دلیل تحریم اقتصادی ممنوع است.");return;}const buyer=(await client.query("SELECT "+(x.want_resource==="cash"?"treasury":x.want_resource)+" AS stock,treasury FROM game_players WHERE telegram_id=$1 FOR UPDATE",[ctx.from.id])).rows[0];const seller=(await client.query("SELECT treasury FROM game_players WHERE telegram_id=$1 FOR UPDATE",[x.proposer_id])).rows[0];if(!buyer||Number(buyer.stock)<Number(x.want_quantity)||(x.want_resource==="cash"&&x.transit_payer==="buyer"&&Number(buyer.treasury)<Number(x.want_quantity)+Number(x.transit_cost))){await client.query("ROLLBACK");await say(ctx,"منابع یا خزانه‌ی شما برای اجرای قرارداد و هزینه‌ی ترانزیت کافی نیست.");return;}const payerId=x.transit_payer==="seller"?x.proposer_id:ctx.from.id;const payer=payerId===Number(ctx.from.id)?buyer:seller;if(!payer||Number(payer.treasury)<Number(x.transit_cost)){await client.query("ROLLBACK");await say(ctx,"خزانه‌ی طرف پرداخت‌کننده برای هزینه‌ی ترانزیت کافی نیست.");return;}if(x.want_resource==="cash"){await client.query("UPDATE game_players SET treasury=treasury-$2 WHERE telegram_id=$1",[ctx.from.id,x.want_quantity]);await client.query("UPDATE game_players SET treasury=treasury+$2 WHERE telegram_id=$1",[x.proposer_id,x.want_quantity]);}else{await client.query("UPDATE game_players SET "+x.want_resource+"="+x.want_resource+"-$2 WHERE telegram_id=$1",[ctx.from.id,x.want_quantity]);await client.query("UPDATE game_players SET "+x.want_resource+"="+x.want_resource+"+$2 WHERE telegram_id=$1",[x.proposer_id,x.want_quantity]);}if(x.offer_resource==="cash"){await client.query("UPDATE game_players SET treasury=treasury+$2 WHERE telegram_id=$1",[ctx.from.id,x.offer_quantity]);}else{await client.query("UPDATE game_players SET "+x.offer_resource+"="+x.offer_resource+"+$2 WHERE telegram_id=$1",[ctx.from.id,x.offer_quantity]);}await client.query("UPDATE game_players SET treasury=treasury-$2 WHERE telegram_id=$1",[payerId,x.transit_cost]);await client.query("UPDATE game_trade_contracts SET status='completed' WHERE id=$1",[id]);await client.query("COMMIT");await say(ctx,"✅ قرارداد اجرا شد!\n\nدریافت شما: "+resourceLabel(x.offer_resource)+" × "+fmt(x.offer_quantity)+"\nارسال شما: "+resourceLabel(x.want_resource)+" × "+fmt(x.want_quantity)+"\nترانزیت پرداخت‌شده: "+money(x.transit_cost),K([[{text:"📨 قراردادهای دریافتی",callback_data:"tc:inbox"}],[{text:"🛒 بازار",callback_data:"n:trade"}]]));try{await bot.api.sendMessage(x.proposer_id,"✅ قرارداد تجاری شماره "+id+" اجرا شد. کالای مورد توافق به ذخایر شما منتقل شد.");}catch{}}catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}});
-bot.callbackQuery(/^sell:(grain|coal|iron|cloth|oil|gold_stock)$/,async ctx=>{await ctx.answerCallbackQuery();const p=await ready(ctx);if(!p)return;const res=ctx.match[1];pendingTradeInput.set(ctx.from.id,{step:"quantity",resource:res});await ctx.reply("<b>مرحله ۲ از ۳ — مقدار عرضه</b>\nمنبع: "+resourceNames[res]+"\nموجودی کشور: "+fmt(p[res])+"\n\nمقدار موردنظر برای فروش را به عدد ارسال کنید.",{parse_mode:"HTML",reply_markup:{force_reply:true,selective:true}});});
-bot.callbackQuery(/^buy:(\d+)$/,async ctx=>{await ctx.answerCallbackQuery();const p=await ready(ctx);if(!p)return;const client=await pool.connect();try{await client.query("BEGIN");const t=(await client.query("SELECT * FROM game_trade WHERE id=$1 AND status='open' FOR UPDATE",[Number(ctx.match[1])])).rows[0];if(!t||Number(t.seller_id)===Number(ctx.from.id)){await client.query("ROLLBACK");await say(ctx,"پیشنهاد دیگر موجود نیست.",nation());return;}const pact=(await client.query("SELECT relation FROM game_relations WHERE player_id=$1 AND other_id=$2",[ctx.from.id,t.seller_id])).rows[0];if(pact?.relation!=="trade_pact"){await client.query("ROLLBACK");await say(ctx,"برای تجارت با این کشور باید پیمان تجاری دوطرفه داشته باشید. از وزارت امور خارجه پیشنهاد پیمان بفرستید و پس از پذیرش، بازار را تازه‌سازی کنید.",K([[{text:"🤝 وزارت امور خارجه",callback_data:"n:diplomacy"}],[{text:"↩️ بازار",callback_data:"n:trade"}]]));return;}const blocked=(await client.query("SELECT EXISTS(SELECT 1 FROM game_sanctions WHERE active=TRUE AND ((issuer_id=$1 AND target_id=$2) OR (issuer_id=$2 AND target_id=$1))) AS blocked",[ctx.from.id,t.seller_id])).rows[0]?.blocked;if(blocked){await client.query("ROLLBACK");await say(ctx,"🚫 معامله به‌دلیل تحریم اقتصادی مسدود است.");return;}const total=Number(t.quantity)*Number(t.unit_price);const buyer=(await client.query("SELECT treasury,country_id FROM game_players WHERE telegram_id=$1 FOR UPDATE",[ctx.from.id])).rows[0];if(!buyer||Number(buyer.treasury)<total){await client.query("ROLLBACK");await say(ctx,"خزانه برای خرید کافی نیست.",nation());return;}const seller=(await client.query("SELECT country_id FROM game_players WHERE telegram_id=$1 FOR UPDATE",[t.seller_id])).rows[0];await client.query("UPDATE game_players SET treasury=treasury-$2,"+t.resource+"="+t.resource+"+$3 WHERE telegram_id=$1",[ctx.from.id,total,t.quantity]);await client.query("UPDATE game_players SET treasury=treasury+$2 WHERE telegram_id=$1",[t.seller_id,total]);await client.query("UPDATE game_trade SET status='sold',buyer_id=$2 WHERE id=$1",[t.id,ctx.from.id]);await client.query("INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,$3,$4)",[ctx.from.id,"خرید "+resourceLabel(t.resource)+" از "+(country(seller?.country_id)?.[1]||"کشور دیگر"),-total,Number(buyer.treasury)-total]);await client.query("INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,$3,$4)",[t.seller_id,"فروش "+resourceLabel(t.resource)+" به "+(country(buyer.country_id)?.[1]||"کشور دیگر"),total,Number((await client.query("SELECT treasury FROM game_players WHERE telegram_id=$1",[t.seller_id])).rows[0].treasury)]);await client.query("COMMIT");await say(ctx,"🤝 معامله‌ی بین کشورها انجام شد.\n\nخریدار: "+(country(buyer.country_id)?.[1]||"کشور شما")+"\nفروشنده: "+(country(seller?.country_id)?.[1]||"کشور فروشنده")+"\nکالا: "+resourceLabel(t.resource)+" ×"+fmt(t.quantity)+"\nمبلغ پرداختی: "+money(total),K([[{text:"🛒 ادامه‌ی تجارت",callback_data:"n:stocks"}],[{text:"🏛 بازگشت به دربار",callback_data:"m:n"}]]));}catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}});
-bot.callbackQuery(/^tradecancel:(\d+)$/,async ctx=>{await ctx.answerCallbackQuery();const p=await ready(ctx);if(!p)return;const client=await pool.connect();try{await client.query("BEGIN");const t=(await client.query("SELECT * FROM game_trade WHERE id=$1 AND seller_id=$2 AND status='open' FOR UPDATE",[Number(ctx.match[1]),ctx.from.id])).rows[0];if(!t){await client.query("ROLLBACK");await say(ctx,"این پیشنهاد دیگر فعال نیست.",nation());return;}await client.query("UPDATE game_players SET "+t.resource+"="+t.resource+"+$2 WHERE telegram_id=$1",[ctx.from.id,t.quantity]);await client.query("UPDATE game_trade SET status='cancelled' WHERE id=$1",[t.id]);await client.query("COMMIT");await say(ctx,"پیشنهاد لغو شد و منابع به خزانه‌ی کشور بازگشت.",K([[{text:"🛒 بازار تجارت",callback_data:"n:trade"}],[{text:"🏛️ دربار",callback_data:"m:n"}]]));}catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}});
-bot.callbackQuery(/^dipsanction:(\d+)$/,async ctx=>{await ctx.answerCallbackQuery();const p=await ready(ctx);if(!p)return;const other=Number(ctx.match[1]),target=await get(other);if(other===ctx.from.id||!target?.approved){await say(ctx,"کشور هدف معتبر نیست.");return;}const active=(await pool.query("SELECT active FROM game_sanctions WHERE issuer_id=$1 AND target_id=$2",[ctx.from.id,other])).rows[0]?.active;if(active){await pool.query("UPDATE game_sanctions SET active=FALSE WHERE issuer_id=$1 AND target_id=$2",[ctx.from.id,other]);await pool.query("INSERT INTO game_diplomacy_log(player_id,other_id,event,details) VALUES($1,$2,'sanction_lifted','تحریم اقتصادی لغو شد')",[ctx.from.id,other]);await edit(ctx,"✅ تحریم اقتصادی لغو شد. تجارت دوباره ممکن است، مگر اینکه تحریم دیگری فعال باشد.",K([[{text:"↩️ وزارت امور خارجه",callback_data:"n:diplomacy"}],[{text:"📂 پرونده کشور",callback_data:"dip:"+other}]]));try{await bot.api.sendMessage(other,"✅ تحریم اقتصادی علیه کشور شما لغو شد.");}catch{}return;}await pool.query("INSERT INTO game_sanctions(issuer_id,target_id,active) VALUES($1,$2,TRUE) ON CONFLICT(issuer_id,target_id) DO UPDATE SET active=TRUE,created_at=NOW()",[ctx.from.id,other]);await pool.query("INSERT INTO game_diplomacy_log(player_id,other_id,event,details) VALUES($1,$2,'sanction','تحریم اقتصادی اعمال شد؛ تجارت دوجانبه مسدود شد')",[ctx.from.id,other]);await edit(ctx,"🚫 تحریم اقتصادی اعمال شد؛ تجارت و قراردادهای مستقیم با این کشور مسدود است.",K([[{text:"↩️ وزارت امور خارجه",callback_data:"n:diplomacy"}],[{text:"📂 پرونده کشور",callback_data:"dip:"+other}]]));try{await bot.api.sendMessage(other,"🚫 یک کشور علیه شما تحریم اقتصادی اعمال کرد؛ تجارت دوجانبه مسدود شد.");}catch{}});
-bot.callbackQuery(/^dip:(\d+)$/,async ctx=>{await ctx.answerCallbackQuery();const other=Number(ctx.match[1]),target=await get(other);if(!target?.approved||other===ctx.from.id){await say(ctx,"کشور در دسترس نیست.");return;}const rel=(await pool.query("SELECT relation,trust FROM game_relations WHERE player_id=$1 AND other_id=$2",[ctx.from.id,other])).rows[0]||{relation:"neutral",trust:0};const labels={alliance:"🤝 اتحاد",nonaggression:"🕊 عدم تعرض",trade_pact:"📦 پیمان تجاری",neutral:"⚪ عادی",proposal_alliance:"📨 پیشنهاد اتحاد",proposal_nonaggression:"📨 پیشنهاد عدم تعرض",proposal_trade_pact:"📨 پیشنهاد تجاری",war:"⚔️ جنگ"};await edit(ctx,"<b>🤝 پرونده‌ی دیپلماتیک</b>\n\n🏳️ کشور: "+(country(target.country_id)?.[1]||target.display_name)+"\n👑 فرمانروا: "+target.display_name+"\n📊 رابطه: "+(labels[rel.relation]||rel.relation)+"\n💗 اعتماد: "+rel.trust+"/100\n\n🤝 اتحاد: اعلام همکاری سیاسی و افزایش اعتماد.\n🕊 عدم تعرض: تعهد سیاسی؛ حمله‌ی نظامی این پیمان را نقض کرده و رابطه به وضعیت جنگ می‌رود.\n📦 پیمان تجاری: توافق برای همکاری اقتصادی؛ معامله همچنان از بازار منابع انجام می‌شود.\n\n🏛️ سفارت: "+Number((await pool.query("SELECT level FROM game_embassies WHERE player_id=$1 AND other_id=$2",[ctx.from.id,other])).rows[0]?.level||0)+"/3\n\nنوع پیشنهاد یا اقدام را انتخاب کنید:\n\n• اتحاد: افزایش اعتماد و همکاری سیاسی.\n• عدم تعرض: پیمان دوطرفه؛ حمله، پیمان را نقض می‌کند.\n• تجاری: همکاری اقتصادی؛ خریدوفروش همچنان از بازار انجام می‌شود.\n• جنگ: با حمله آغاز می‌شود؛ برای پایان، آتش‌بس پیشنهاد دهید.\n• اعتماد: از ۰ تا ۱۰۰؛ با مذاکرات و پیمان‌ها تغییر می‌کند.",K([[{text:"🤝 پیشنهاد اتحاد",callback_data:"dipoffer:alliance:"+other}],[{text:"🕊 پیشنهاد عدم تعرض",callback_data:"dipoffer:nonaggression:"+other}],[{text:"📦 پیمان و قرارداد تجاری",callback_data:"dipcommerce:"+other}],[{text:"🕊️ پیشنهاد آتش‌بس",callback_data:"dipoffer:ceasefire:"+other}],[{text:"🧹 لغو پیمان",callback_data:"dipbreak:"+other}],[{text:"⚔️ حمله به کشور",callback_data:"battlechoose:"+other}],[{text:"↩️ فهرست کشورها",callback_data:"n:diplomacy"}]]));});
-bot.callbackQuery(/^dipcountries$/,async ctx=>{await ctx.answerCallbackQuery();const r=await pool.query("SELECT p.telegram_id,p.display_name,p.country_id,COALESCE(g.relation,'neutral') AS relation,EXISTS(SELECT 1 FROM game_sanctions s WHERE s.issuer_id=$1 AND s.target_id=p.telegram_id AND s.active=TRUE) AS sanctioned FROM game_players p LEFT JOIN game_relations g ON g.player_id=$1 AND g.other_id=p.telegram_id WHERE p.approved=TRUE AND p.telegram_id<>$1 ORDER BY p.display_name LIMIT 30",[ctx.from.id]);const rows=[];for(const x of r.rows){rows.push([{text:"🌐 "+(country(x.country_id)?.[1]||x.display_name)+" · "+({alliance:"🤝 متحد",nonaggression:"🕊 عدم تعرض",trade_pact:"📦 تجاری",neutral:"⚪ عادی"}[x.relation]||"📨 "+keyLabel(x.relation))+(x.sanctioned?" · 🚫 تحریم":"") ,callback_data:"dip:"+x.telegram_id}]);rows.push([{text:"🤝 اتحاد",callback_data:"dipoffer:alliance:"+x.telegram_id},{text:x.sanctioned?"✅ لغو تحریم":"🚫 تحریم",callback_data:"dipsanction:"+x.telegram_id}]);}if(!rows.length)rows.push([{text:"⏳ کشور دیگری فعال نیست",callback_data:"noop"}]);rows.push([{text:"↩️ دیپلماسی",callback_data:"n:diplomacy"}]);return edit(ctx,"<b>🤝 اتحادها و تحریم‌های اقتصادی</b>\n\nکشور را انتخاب کنید. تحریم، تجارت مستقیم و قراردادهای تجاری را مسدود می‌کند.",K(rows));});
-bot.callbackQuery(/^dipmissions$/,async ctx=>{await ctx.answerCallbackQuery();const p=await ready(ctx);if(!p)return;const r=await pool.query("SELECT telegram_id,display_name,country_id FROM game_players WHERE approved=TRUE AND telegram_id<>$1 ORDER BY display_name LIMIT 30",[ctx.from.id]);const rows=r.rows.map(x=>[{text:"🕊️ اعزام هیئت به "+(country(x.country_id)?.[1]||x.display_name)+" · $5,000",callback_data:"dipmission:"+x.telegram_id}]);if(!rows.length)rows.push([{text:"کشور دیگری برای اعزام هیئت وجود ندارد",callback_data:"noop"}]);rows.push([{text:"↩️ دیپلماسی",callback_data:"n:diplomacy"}]);return edit(ctx,"<b>🚩 مأموریت‌های راهبردی</b>\n\nاعزام هیئت دیپلماتیک به کشور دیگر، هزینه‌ی $5,000 دارد و اعتماد دوطرفه را ۵ واحد افزایش می‌دهد.",K(rows));});
-bot.callbackQuery(/^dipembassies$/,async ctx=>{await ctx.answerCallbackQuery();const p=await ready(ctx);if(!p)return;const r=await pool.query("SELECT p.telegram_id,p.display_name,p.country_id,COALESCE(e.level,0) AS level FROM game_players p LEFT JOIN game_embassies e ON e.player_id=$1 AND e.other_id=p.telegram_id WHERE p.approved=TRUE AND p.telegram_id<>$1 ORDER BY p.display_name LIMIT 30",[ctx.from.id]);const rows=r.rows.map(x=>[{text:"🏛️ "+(country(x.country_id)?.[1]||x.display_name)+" · سفارت "+x.level+"/3",callback_data:"dipembassy:"+x.telegram_id}]);if(!rows.length)rows.push([{text:"کشور دیگری برای سفارت وجود ندارد",callback_data:"noop"}]);rows.push([{text:"↩️ دیپلماسی",callback_data:"n:diplomacy"}]);return edit(ctx,"<b>🏛️ سفارت‌ها و ارتقای روابط</b>\n\nساخت یا ارتقای سفارت: $25,000 و ۱۰۰ آهن؛ هر سطح اعتماد را ۸ واحد افزایش می‌دهد. حداکثر سطح: ۳.",K(rows));});
-bot.callbackQuery(/^dipmission:(\d+)$/,async ctx=>{await ctx.answerCallbackQuery();const p=await ready(ctx);if(!p)return;const other=Number(ctx.match[1]);if(other===ctx.from.id||!(await get(other))?.approved){await say(ctx,"کشور مقصد معتبر نیست.");return;}const client=await pool.connect();try{await client.query("BEGIN");const me=(await client.query("SELECT treasury FROM game_players WHERE telegram_id=$1 FOR UPDATE",[ctx.from.id])).rows[0];if(!me||Number(me.treasury)<5000){await client.query("ROLLBACK");await say(ctx,"برای اعزام هیئت به $5,000 نیاز دارید.");return;}await client.query("UPDATE game_players SET treasury=treasury-5000 WHERE telegram_id=$1",[ctx.from.id]);for(const [a,b] of [[ctx.from.id,other],[other,ctx.from.id]])await client.query("INSERT INTO game_relations(player_id,other_id,relation,trust) VALUES($1,$2,'neutral',5) ON CONFLICT(player_id,other_id) DO UPDATE SET trust=LEAST(100,game_relations.trust+5)",[a,b]);await client.query("INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,'اعزام هیئت دیپلماتیک',-5000,$2)",[ctx.from.id,Number(me.treasury)-5000]);await client.query("INSERT INTO game_diplomacy_log(player_id,other_id,event,details) VALUES($1,$2,'mission','هیئت دیپلماتیک اعزام شد')",[ctx.from.id,other]);await client.query("COMMIT");try{await bot.api.sendMessage(other,"🕊️ یک هیئت دیپلماتیک از سوی "+((await get(ctx.from.id))?.display_name||"کشوری")+" اعزام شد؛ اعتماد روابط افزایش یافت.");}catch{}await edit(ctx,"🕊️ هیئت دیپلماتیک اعزام شد.\n💵 هزینه: $5,000\n💗 اعتماد دوطرفه: +5",K([[{text:"↩️ پرونده‌ی دیپلماتیک",callback_data:"dip:"+other}],[{text:"📜 دفتر روابط",callback_data:"diprelations"}]]));}catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}});
-bot.callbackQuery(/^dipembassy:(\d+)$/,async ctx=>{await ctx.answerCallbackQuery();const p=await ready(ctx);if(!p)return;const other=Number(ctx.match[1]);if(other===ctx.from.id||!(await get(other))?.approved){await say(ctx,"کشور مقصد معتبر نیست.");return;}const client=await pool.connect();try{await client.query("BEGIN");const me=(await client.query("SELECT treasury,iron FROM game_players WHERE telegram_id=$1 FOR UPDATE",[ctx.from.id])).rows[0],e=(await client.query("SELECT level FROM game_embassies WHERE player_id=$1 AND other_id=$2 FOR UPDATE",[ctx.from.id,other])).rows[0],level=Number(e?.level||0);if(level>=3){await client.query("ROLLBACK");await say(ctx,"سفارت به حداکثر سطح ۳ رسیده است.");return;}if(!me||Number(me.treasury)<25000||Number(me.iron)<100){await client.query("ROLLBACK");await say(ctx,"برای ساخت/ارتقای سفارت به $25,000 و 100 آهن نیاز دارید.");return;}await client.query("UPDATE game_players SET treasury=treasury-25000,iron=iron-100 WHERE telegram_id=$1",[ctx.from.id]);await client.query("INSERT INTO game_embassies(player_id,other_id,level) VALUES($1,$2,1) ON CONFLICT(player_id,other_id) DO UPDATE SET level=LEAST(3,game_embassies.level+1)",[ctx.from.id,other]);await client.query("INSERT INTO game_relations(player_id,other_id,relation,trust) VALUES($1,$2,'neutral',8) ON CONFLICT(player_id,other_id) DO UPDATE SET trust=LEAST(100,game_relations.trust+8)",[ctx.from.id,other]);await client.query("INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,'ساخت یا ارتقای سفارت',-25000,$2)",[ctx.from.id,Number(me.treasury)-25000]);await client.query("INSERT INTO game_diplomacy_log(player_id,other_id,event,details) VALUES($1,$2,'embassy',$3)",[ctx.from.id,other,"سفارت سطح "+(level+1)]);await client.query("COMMIT");await edit(ctx,"🏛️ سفارت ساخته/ارتقا یافت.\n📈 سطح: "+(level+1)+"/3\n💵 هزینه: $25,000\n⛓ آهن: 100\n💗 اعتماد: +8",K([[{text:"↩️ پرونده‌ی دیپلماتیک",callback_data:"dip:"+other}]]));}catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}});
-bot.callbackQuery(/^diplog:(\d+)$/,async ctx=>{await ctx.answerCallbackQuery();const other=Number(ctx.match[1]),r=await pool.query("SELECT details,created_at FROM game_diplomacy_log WHERE player_id=$1 AND other_id=$2 ORDER BY id DESC LIMIT 12",[ctx.from.id,other]);const lines=r.rows.map(x=>"• "+x.details+" — "+new Date(x.created_at).toLocaleString("fa-IR"));await edit(ctx,"<b>📜 تاریخچه‌ی مذاکرات</b>\n\n"+(lines.join("\n")||"هنوز اقدام دیپلماتیکی ثبت نشده است."),K([[{text:"↩️ پرونده‌ی دیپلماتیک",callback_data:"dip:"+other}]]));});
-bot.callbackQuery(/^dipbreak:(\d+)$/,async ctx=>{await ctx.answerCallbackQuery();const other=Number(ctx.match[1]),rel=(await pool.query("SELECT relation FROM game_relations WHERE player_id=$1 AND other_id=$2",[ctx.from.id,other])).rows[0];if(!rel||!["alliance","nonaggression","trade_pact"].includes(rel.relation)){await say(ctx,"پیمان فعالی برای لغو وجود ندارد.");return;}for(const [a,b] of [[ctx.from.id,other],[other,ctx.from.id]])await pool.query("INSERT INTO game_relations(player_id,other_id,relation,trust) VALUES($1,$2,'neutral',0) ON CONFLICT(player_id,other_id) DO UPDATE SET relation='neutral',trust=GREATEST(0,game_relations.trust-10)",[a,b]);await pool.query("INSERT INTO game_diplomacy_log(player_id,other_id,event,details) VALUES($1,$2,'break','پیمان لغو شد')",[ctx.from.id,other]);try{await bot.api.sendMessage(other,"⚠️ پیمان دیپلماتیک با کشور شما لغو شد؛ اعتماد کاهش یافت.");}catch{}await edit(ctx,"پیمان لغو شد؛ اعتماد دوطرفه ۱۰ واحد کاهش یافت.",K([[{text:"↩️ پرونده‌ی دیپلماتیک",callback_data:"dip:"+other}]]));});
-bot.callbackQuery(/^battlechoose:(\d+)$/,async ctx=>{await ctx.answerCallbackQuery();const p=await ready(ctx);if(!p)return;const target=Number(ctx.match[1]);if(target===ctx.from.id||!(await get(target))?.approved){await say(ctx,"کشور هدف معتبر نیست.");return;}const r=await pool.query("SELECT weapon_key,quantity,damaged FROM game_weapon_stock WHERE telegram_id=$1 AND quantity>COALESCE(damaged,0) ORDER BY weapon_key",[ctx.from.id]);const rows=r.rows.map(x=>{const w=getCountryWeapons(p.country_id).find(z=>z[0]===x.weapon_key)||Object.values(countryWeapons).flat().find(z=>z[0]===x.weapon_key);return w?[{text:weaponLabel(w)+" · آماده: "+(Number(x.quantity)-Number(x.damaged||0)),callback_data:"battleattack:"+target+":"+x.weapon_key}]:null;}).filter(Boolean);if(!rows.length)rows.push([{text:"📭 تسلیحات سالمی برای حمله ندارید؛ تعمیر کنید یا تولید کنید.",callback_data:"weaponrepair"}]);rows.push([{text:"↩️ پرونده دیپلماتیک",callback_data:"dip:"+target}]);await edit(ctx,"<b>⚔️ انتخاب نیروی حمله</b>\n\nحمله جنگ را آغاز می‌کند و ممکن است انبار تسلیحات هر دو کشور آسیب ببیند. هزینه‌ی عملیات: $15,000 و 100 بشکه نفت.",K(rows));});
-bot.callbackQuery(/^battleattack:(\d+):([a-z0-9_]+)$/,async ctx=>{await ctx.answerCallbackQuery();const p=await ready(ctx);if(!p)return;const target=Number(ctx.match[1]),key=ctx.match[2];if(target===ctx.from.id){await say(ctx,"نمی‌توانید به کشور خودتان حمله کنید.");return;}const weapon=Object.values(countryWeapons).flat().find(x=>x[0]===key);if(!weapon){await say(ctx,"این مدل در کاتالوگ تسلیحات ثبت نشده است.");return;}const client=await pool.connect();try{await client.query("BEGIN");const ids=[Number(ctx.from.id),target].sort((a,b)=>a-b);for(const id of ids)await client.query("SELECT telegram_id FROM game_players WHERE telegram_id=$1 FOR UPDATE",[id]);const attacker=(await client.query("SELECT treasury,oil_stock,iron FROM game_players WHERE telegram_id=$1 AND approved=TRUE",[ctx.from.id])).rows[0],defender=(await client.query("SELECT telegram_id,country_id,stability,army FROM game_players WHERE telegram_id=$1 AND approved=TRUE",[target])).rows[0];const stock=(await client.query("SELECT quantity,damaged FROM game_weapon_stock WHERE telegram_id=$1 AND weapon_key=$2 FOR UPDATE",[ctx.from.id,key])).rows[0];if(!attacker||!defender||!stock||Number(stock.quantity)<=Number(stock.damaged||0)){await client.query("ROLLBACK");await say(ctx,"کشور یا تسلیحات آماده‌ی حمله موجود نیست.");return;}if(Number(attacker.treasury)<15000||Number(attacker.oil_stock)<100){await client.query("ROLLBACK");await say(ctx,"برای حمله به $15,000 خزانه و 100 بشکه نفت نیاز دارید.");return;}await client.query("UPDATE game_players SET treasury=treasury-15000,oil_stock=oil_stock-100 WHERE telegram_id=$1",[ctx.from.id]);await client.query("INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,$3,$4)",[ctx.from.id,"هزینه عملیات نظامی", -15000,Number(attacker.treasury)-15000]);const enemy=(await client.query("SELECT weapon_key,quantity,damaged FROM game_weapon_stock WHERE telegram_id=$1 AND quantity>COALESCE(damaged,0) ORDER BY random() LIMIT 1 FOR UPDATE",[target])).rows[0];let damagedKey=null;if(enemy){damagedKey=enemy.weapon_key;await client.query("UPDATE game_weapon_stock SET damaged=LEAST(quantity,COALESCE(damaged,0)+1) WHERE telegram_id=$1 AND weapon_key=$2",[target,damagedKey]);}else{await client.query("UPDATE game_players SET stability=GREATEST(0,stability-5),army=GREATEST(0,army-1) WHERE telegram_id=$1",[target]);}let attackerHit=false;if(Math.random()<0.25){const own=(await client.query("SELECT quantity,damaged FROM game_weapon_stock WHERE telegram_id=$1 AND weapon_key=$2 FOR UPDATE",[ctx.from.id,key])).rows[0];if(own&&Number(own.quantity)>Number(own.damaged||0)){await client.query("UPDATE game_weapon_stock SET damaged=LEAST(quantity,COALESCE(damaged,0)+1) WHERE telegram_id=$1 AND weapon_key=$2",[ctx.from.id,key]);attackerHit=true;}}await client.query("INSERT INTO game_battles(attacker_id,defender_id,attacker_weapon,damaged_weapon,result) VALUES($1,$2,$3,$4,$5)",[ctx.from.id,target,key,damagedKey,enemy?"equipment_damaged":"stability_and_army"]);await client.query("INSERT INTO game_relations(player_id,other_id,relation,trust) VALUES($1,$2,'war',0) ON CONFLICT(player_id,other_id) DO UPDATE SET relation='war',trust=GREATEST(0,game_relations.trust-25)",[ctx.from.id,target]);await client.query("INSERT INTO game_relations(player_id,other_id,relation,trust) VALUES($1,$2,'war',0) ON CONFLICT(player_id,other_id) DO UPDATE SET relation='war',trust=GREATEST(0,game_relations.trust-25)",[target,ctx.from.id]);await client.query("COMMIT");const w=Object.values(countryWeapons).flat().find(x=>x[0]===damagedKey);await edit(ctx,"<b>⚔️ نتیجه‌ی عملیات</b>\n\n🎯 هدف: "+(country(defender.country_id)?.[1]||"کشور دشمن")+"\n🛡️ نیروی مهاجم: "+weaponLabel(weapon)+"\n"+(enemy?"💥 آسیب دید: "+weaponLabel(w)+" (یک واحد)":"💥 زرادخانه خالی بود؛ ثبات و ارتش هدف آسیب دید.")+"\n"+(attackerHit?"⚠️ ضدحمله: یک واحد از تسلیحات شما نیز آسیب دید.":"✅ تسلیحات مهاجم سالم ماند.")+"\n\n🔧 آسیب‌ها قابل تعمیر هستند و برای تعمیر به خزانه و آهن نیاز دارید.",K([[{text:"🔧 تعمیر تسلیحات",callback_data:"weaponrepair"}],[{text:"🤝 پرونده روابط",callback_data:"dip:"+target}],[{text:"🏛️ دربار",callback_data:"m:n"}]]));try{await bot.api.sendMessage(target,"⚠️ کشور شما مورد حمله قرار گرفت. "+(enemy?"یک واحد "+(w?.[1]||weaponName(damagedKey,p.country_id))+" آسیب دید.":"ثبات و ارتش کشور آسیب دید.")+" برای تعمیر تسلیحات وارد بخش ارتش شوید.");}catch{} }catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}});
-bot.callbackQuery(/^weaponrepair$/,async ctx=>{await ctx.answerCallbackQuery();const p=await ready(ctx);if(!p)return;const r=await pool.query("SELECT weapon_key,quantity,damaged FROM game_weapon_stock WHERE telegram_id=$1 AND COALESCE(damaged,0)>0 ORDER BY weapon_key",[ctx.from.id]);const rows=r.rows.map(x=>{const w=getCountryWeapons(p.country_id).find(z=>z[0]===x.weapon_key)||Object.values(countryWeapons).flat().find(z=>z[0]===x.weapon_key);return w?[{text:"🔧 "+weaponLabel(w)+" · آسیب "+x.damaged+" · "+money(Math.max(1000,Math.round(w[2]*0.2))),callback_data:"weaponrepair:"+x.weapon_key}]:null;}).filter(Boolean);if(!rows.length)rows.push([{text:"✅ تسلیحات آسیب‌دیده‌ای ندارید.",callback_data:"noop"}]);rows.push([{text:"↩️ تسلیحات",callback_data:"shopweapons"}]);await edit(ctx,"<b>🔧 تعمیر زرادخانه</b>\n\nبرای تعمیر هر واحد: 20٪ قیمت پایه (حداقل $1,000) و 50 واحد آهن. هزینه تعمیر یک‌باره است، نه روزانه.",K(rows));});
-bot.callbackQuery(/^weaponrepair:([a-z0-9_]+)$/,async ctx=>{await ctx.answerCallbackQuery();const p=await ready(ctx);if(!p)return;const key=ctx.match[1],w=getCountryWeapons(p.country_id).find(x=>x[0]===key)||Object.values(countryWeapons).flat().find(x=>x[0]===key);if(!w){await say(ctx,"سلاح نامعتبر است.");return;}const cost=Math.max(1000,Math.round(w[2]*0.2)),client=await pool.connect();try{await client.query("BEGIN");const player=(await client.query("SELECT treasury,iron FROM game_players WHERE telegram_id=$1 FOR UPDATE",[ctx.from.id])).rows[0],stock=(await client.query("SELECT quantity,damaged FROM game_weapon_stock WHERE telegram_id=$1 AND weapon_key=$2 FOR UPDATE",[ctx.from.id,key])).rows[0];if(!player||Number(player.treasury)<cost||Number(player.iron)<50||!stock||Number(stock.damaged)<1){await client.query("ROLLBACK");await say(ctx,"برای تعمیر یک واحد، خزانه‌ی کافی، 50 آهن و یک واحد آسیب‌دیده لازم است.");return;}await client.query("UPDATE game_players SET treasury=treasury-$2,iron=iron-50 WHERE telegram_id=$1",[ctx.from.id,cost]);await client.query("UPDATE game_weapon_stock SET damaged=GREATEST(0,damaged-1) WHERE telegram_id=$1 AND weapon_key=$2",[ctx.from.id,key]);await client.query("INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,$3,$4)",[ctx.from.id,"تعمیر "+w[1],-cost,Number(player.treasury)-cost]);await client.query("COMMIT");await edit(ctx,"✅ یک واحد "+weaponLabel(w)+" تعمیر شد و به وضعیت آماده برگشت.\n💵 هزینه: "+money(cost)+"\n⛓ آهن مصرف‌شده: 50",K([[{text:"🔧 تعمیر واحد دیگر",callback_data:"weaponrepair"}],[{text:"⚔️ دیپلماسی",callback_data:"n:diplomacy"}]]));}catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}});
-bot.callbackQuery(/^dipcommerce:(\d+)$/,async ctx=>{await ctx.answerCallbackQuery();const p=await ready(ctx);if(!p)return;const other=Number(ctx.match[1]),target=await get(other),rel=(await pool.query("SELECT relation FROM game_relations WHERE player_id=$1 AND other_id=$2",[ctx.from.id,other])).rows[0];if(!target?.approved||other===ctx.from.id){await say(ctx,"کشور مقصد معتبر نیست.");return;}if(rel?.relation!=="trade_pact"){await edit(ctx,"<b>📦 پیمان و قرارداد تجاری</b>\n\nبا این کشور هنوز پیمان تجاری ندارید. ابتدا پیشنهاد پیمان را ارسال کنید؛ پس از پذیرش، همین گزینه برای تنظیم قرارداد کالا فعال می‌شود.",K([[{text:"📨 پیشنهاد پیمان تجاری",callback_data:"dipoffer:trade_pact:"+other}],[{text:"↩️ پرونده دیپلماتیک",callback_data:"dip:"+other}]]));return;}await edit(ctx,"<b>📦 پیمان تجاری فعال است</b>\n\nکشور طرف قرارداد: "+(country(target.country_id)?.[1]||target.display_name)+"\nاز اینجا قرارداد کالا ایجاد کنید یا قراردادهای دریافتی را بررسی کنید.",K([[{text:"✍️ ایجاد قرارداد با این کشور",callback_data:"tc:partner:"+other}],[{text:"📨 مرکز قراردادهای تجاری",callback_data:"tc:center"}],[{text:"🛒 بازار مستقیم",callback_data:"partnertrade:"+other}],[{text:"↩️ پرونده دیپلماتیک",callback_data:"dip:"+other}]]));});
-bot.callbackQuery(/^dipoffer:(alliance|nonaggression|trade_pact|ceasefire):(\d+)$/,async ctx=>{await ctx.answerCallbackQuery();const type=ctx.match[1],other=Number(ctx.match[2]),target=await get(other),me=await get(ctx.from.id);if(other===ctx.from.id||!target?.approved){await say(ctx,"کشور مقصد معتبر نیست.");return;}const active=(await pool.query("SELECT relation FROM game_relations WHERE player_id=$1 AND other_id=$2",[ctx.from.id,other])).rows[0];if(type==="ceasefire"&&active?.relation!=="war"){await say(ctx,"آتش‌بس فقط هنگام جنگ قابل پیشنهاد است.");return;}if(["alliance","nonaggression","trade_pact"].includes(active?.relation)){await say(ctx,"با این کشور پیمان فعال دارید.");return;}const proposal="proposal_"+type;await pool.query("INSERT INTO game_relations(player_id,other_id,relation,trust) VALUES($1,$2,$3,0) ON CONFLICT(player_id,other_id) DO UPDATE SET relation=EXCLUDED.relation",[ctx.from.id,other,proposal]);const titles={alliance:"اتحاد",nonaggression:"عدم تعرض",trade_pact:"پیمان تجاری",ceasefire:"آتش‌بس"},details={alliance:"پیمان همکاری سیاسی و افزایش اعتماد دو کشور.",nonaggression:"تعهد دو کشور به عدم آغاز حمله؛ نقض آن رابطه را به جنگ می‌کشاند.",trade_pact:"پیمان همکاری تجاری؛ پس از پذیرش، قراردادهای کالا و تجارت دوجانبه فعال می‌شود.",ceasefire:"توقف جنگ و بازگشت رابطه به وضعیت عادی."};const title=titles[type],senderName=me?.display_name||"کشوری",senderCountry=country(me?.country_id)?.[1]||"کشور فرستنده";const message="📨 پیشنهاد دیپلماتیک جدید\n\n🏳️ فرستنده: "+senderCountry+"\n👤 فرمانروا: "+senderName+"\n📜 نوع پیشنهاد: "+title+"\n\n📝 جزئیات:\n"+details[type]+"\n\nمی‌توانید همین‌جا پیشنهاد را بپذیرید یا رد کنید.";try{await bot.api.sendMessage(other,message,{reply_markup:K([[{text:"✅ پذیرش "+title,callback_data:"dipanswer:accept:"+ctx.from.id+":"+type}],[{text:"❌ رد پیشنهاد",callback_data:"dipanswer:reject:"+ctx.from.id+":"+type}]])});}catch(e){console.error("Proposal notification failed:",e);}await edit(ctx,"📨 پیشنهاد «"+title+"» با جزئیات برای کشور مقصد ارسال شد.",K([[{text:"📨 مشاهده پیشنهادهای دریافتی",callback_data:"dipinbox"}],[{text:"↩️ پرونده دیپلماتیک",callback_data:"dip:"+other}]]));});
-bot.callbackQuery(/^dipanswer:(accept|reject):(\d+):(alliance|nonaggression|trade_pact|ceasefire)$/,async ctx=>{await ctx.answerCallbackQuery();const ok=ctx.match[1]==="accept",other=Number(ctx.match[2]),type=ctx.match[3],pending=(await pool.query("SELECT relation FROM game_relations WHERE player_id=$1 AND other_id=$2",[other,ctx.from.id])).rows[0];if(pending?.relation!=="proposal_"+type){await say(ctx,"این پیشنهاد دیگر فعال نیست یا قبلاً بررسی شده است.");return;}const rel=ok?(type==="ceasefire"?"neutral":type):"neutral",trust=ok?({alliance:25,nonaggression:15,trade_pact:20,ceasefire:10}[type]):0;for(const [a,b] of [[ctx.from.id,other],[other,ctx.from.id]])await pool.query("INSERT INTO game_relations(player_id,other_id,relation,trust) VALUES($1,$2,$3,$4) ON CONFLICT(player_id,other_id) DO UPDATE SET relation=EXCLUDED.relation,trust=LEAST(100,game_relations.trust+EXCLUDED.trust)",[a,b,rel,trust]);const titles={alliance:"اتحاد",nonaggression:"عدم تعرض",trade_pact:"پیمان تجاری",ceasefire:"آتش‌بس"};const result=ok?"✅ پیشنهاد "+titles[type]+" پذیرفته شد.":"❌ پیشنهاد "+titles[type]+" رد شد.";await edit(ctx,result,K([[{text:"📨 پیشنهادهای دریافتی",callback_data:"dipinbox"}],[{text:"📜 دفتر روابط",callback_data:"diprelations"}],[{text:"↩️ دیپلماسی",callback_data:"n:diplomacy"}]]));try{await bot.api.sendMessage(other,"📬 پاسخ به پیشنهاد دیپلماتیک شما:\n"+result+"\nکشور: "+(country((await get(ctx.from.id))?.country_id)?.[1]||"کشور طرف مقابل"));}catch{} });
-bot.callbackQuery(/^dipinbox$/,async ctx=>{await ctx.answerCallbackQuery();const r=await pool.query("SELECT g.player_id,p.display_name,p.country_id,g.relation FROM game_relations g JOIN game_players p ON p.telegram_id=g.player_id WHERE g.other_id=$1 AND g.relation LIKE 'proposal_%' ORDER BY p.display_name LIMIT 10",[ctx.from.id]);const titles={alliance:"اتحاد",nonaggression:"عدم تعرض",trade_pact:"پیمان تجاری",ceasefire:"آتش‌بس"},details={alliance:"همکاری سیاسی و افزایش اعتماد دو کشور.",nonaggression:"تعهد به عدم آغاز حمله؛ نقض پیمان موجب جنگ می‌شود.",trade_pact:"همکاری تجاری و امکان تنظیم قراردادهای کالا.",ceasefire:"توقف جنگ و بازگشت رابطه به وضعیت عادی."};const rows=[],texts=[];for(const x of r.rows){const type=x.relation.replace("proposal_",""),title=titles[type]||"پیمان";texts.push("📨 پیشنهاد از: "+(country(x.country_id)?.[1]||x.display_name)+"\n📜 نوع: "+title+"\n📝 جزئیات: "+(details[type]||"پیشنهاد دیپلماتیک"));rows.push([{text:"✅ پذیرش "+title+" · "+x.display_name.slice(0,18),callback_data:"dipanswer:accept:"+x.player_id+":"+type},{text:"❌ رد",callback_data:"dipanswer:reject:"+x.player_id+":"+type}]);}if(!r.rows.length)texts.push("📭 پیشنهاد معوق ندارید.");rows.push([{text:"↩️ بازگشت به دیپلماسی",callback_data:"n:diplomacy"}]);await edit(ctx,"<b>📨 پیشنهادهای دریافتی</b>\n\n"+texts.join("\n\n────────────\n\n"),K(rows));});
-bot.callbackQuery(/^diprelations$/,async ctx=>{await ctx.answerCallbackQuery();const r=await pool.query("SELECT g.other_id,p.display_name,g.relation,g.trust FROM game_relations g JOIN game_players p ON p.telegram_id=g.other_id WHERE g.player_id=$1 ORDER BY p.display_name LIMIT 30",[ctx.from.id]);const lines=r.rows.map(x=>"• "+x.display_name+" — "+({alliance:"🤝 اتحاد",nonaggression:"🕊 عدم تعرض",trade_pact:"📦 پیمان تجاری",neutral:"⚪ عادی",proposal_alliance:"📨 پیشنهاد اتحاد",proposal_nonaggression:"📨 پیشنهاد عدم تعرض",proposal_trade_pact:"📨 پیشنهاد تجاری"}[x.relation]||keyLabel(x.relation))+" | اعتماد "+x.trust+"/100");await edit(ctx,"<b>📜 دفتر روابط خارجی</b>\n\n"+(lines.join("\n")||"هنوز رابطه‌ای ثبت نشده است.")+"\n\nاعتماد فعلاً شاخص دیپلماتیک است و اثر اقتصادی/نظامی خودکار ندارد.",K([[{text:"🌐 کشورها",callback_data:"n:diplomacy"}],[{text:"↩️ دربار",callback_data:"m:n"}]]));});
-async function settleOne(id){
- const client=await pool.connect();
- try{
-  await client.query("BEGIN");
-  const row=(await client.query("SELECT * FROM game_players WHERE telegram_id=$1 FOR UPDATE",[id])).rows[0];
-  if(!row?.approved){await client.query("COMMIT");return null;}
-  const ticks=Math.min(56,Math.floor((Date.now()-new Date(row.last_settlement).getTime())/period));
-  if(ticks<1){await client.query("COMMIT");return null;}
-  const buildings=(await client.query("SELECT building_key,level FROM game_buildings WHERE telegram_id=$1",[id])).rows.reduce((o,x)=>(o[x.building_key]=Number(x.level),o),{});
-  const lv=k=>Number(buildings[k]||0),scale=ticks/8;
-  const oilProduced=Math.min(Number(row.oil_reserves||0),Math.round(Number(row.oil_field_level||0)*(1+Number(row.technology||0)/250)*scale));
-  const rawOil=Math.max(0,Number(row.oil_stock||0))+oilProduced;
-  const refineryOil=Math.min(rawOil,Math.round(lv("oil_refinery")*55*scale));
-  const fuelMade=Math.round(refineryOil*1.7);
-  const coalPowerDemand=Math.round(lv("coal_power")*120*scale);
-  const population=Number(row.population||0);
-  const coldGeo=["russia","canada","sweden","norway","finland","iceland","denmark","switzerland","mongolia","ukraine","poland","czech","hungary","serbia","romania"];
-  const aridGeo=["persia","afghanistan","saudi","oman","yemen","egypt","sudan","libya","algeria","morocco","iraq"];
-  const tropicalGeo=["india","indonesia","vietnam","burma","malaya","nigeria","ghana","kenya","uganda","congo","brazil","colombia","venezuela","philippines"];
-  const coldFactor=coldGeo.includes(row.country_id)?1.2:1;
-  const foodFactor=aridGeo.includes(row.country_id)?1.25:tropicalGeo.includes(row.country_id)?1.1:coldGeo.includes(row.country_id)?1.15:1;
-  const fuelFactor=coldGeo.includes(row.country_id)?1.25:aridGeo.includes(row.country_id)?1.1:1;
-  const grainNeed=Math.ceil(population/100000*foodFactor*scale);
-  const coalNeed=Math.ceil((Number(row.industry||0)*20+population/1000000*12*coldFactor+lv("coal_power")*120)*scale);
-  const ironNeed=Math.ceil((Number(row.industry||0)*8+lv("arms_factory")*35+lv("railway")*10)*scale);
-  const clothNeed=Math.ceil(population/100000*3*scale);
-  const electricityNeed=Math.ceil((population/10000+Number(row.industry||0)*25)*scale);
-  const oilNeed=Math.ceil((Number(row.army||0)*2+Number(row.navy||0)*10+Number(row.air_force||0)*3+Number(row.industry||0)*4)*fuelFactor*scale);
-  const grainMade=Math.round((lv("wheat_farm")*250+lv("plateau_farm")*160)*scale);
-  const goldMade=Math.round(lv("gold_mine")*35*scale);
-  const ironMade=Math.round(lv("iron_mine")*180*scale);
-  const coalMade=Math.round(lv("coal_mine")*220*scale);
-  const coalUsed=Math.min(Number(row.coal||0),coalNeed);
-  const ironUsed=Math.min(Number(row.iron||0),ironNeed);
-  const grainUsed=Math.min(Number(row.grain||0),grainNeed);
-  const clothUsed=Math.min(Number(row.cloth||0),clothNeed);
-  const electricityUsed=Math.min(Number(row.electricity_stock||0),electricityNeed);
-  const oilAvailable=Math.max(0,rawOil-refineryOil),oilConsumed=Math.min(oilAvailable,oilNeed),oilShortage=oilNeed-oilConsumed;
-  const oilStock=oilAvailable-oilConsumed;
-  const coalPowerRatio=coalPowerDemand?Math.min(1,coalUsed/coalPowerDemand):1;
-  const electricityMade=Math.round((lv("coal_power")*500*coalPowerRatio+lv("hydro_power")*650+lv("oil_power")*420)*scale);
-  const dailyBuildingIncome=lv("gold_mine")*9000+lv("iron_mine")*6500+lv("coal_mine")*5000+lv("oil_refinery")*8500+lv("housing")*1800+lv("admin")*2500+lv("commercial")*4000+lv("hotel")*6000+lv("highway")*1200+lv("railway")*2500+lv("station")*2000+lv("airport")*12000+lv("port")*9000+lv("wheat_farm")*1800+lv("plateau_farm")*1200+lv("grain_silo")*700+lv("coal_power")*4000+lv("hydro_power")*5000+lv("oil_power")*3800+lv("arms_factory")*6500;
-  const d=calc(row),earned=Math.max(0,Math.round((d.income+dailyBuildingIncome)*scale));
-  const balance=Number(row.treasury)+earned,net=earned;
-  const shortages=(grainUsed<grainNeed?1:0)+(coalUsed<coalNeed?1:0)+(ironUsed<ironNeed?1:0)+(clothUsed<clothNeed?1:0)+(electricityUsed<electricityNeed?1:0)+(oilShortage>0?1:0);
-  const stability=Math.max(0,Math.min(100,Number(row.stability||0)-(grainUsed<grainNeed?3:0)-(shortages>2?1:0)+(shortages===0?1:0)));
-  const populationChange=grainUsed<grainNeed?-Math.ceil(population*0.00001*scale):Math.round(lv("housing")*5*scale);
-  await client.query("UPDATE game_players SET treasury=$2,oil_stock=$3,oil_reserves=GREATEST(0,oil_reserves-$4),gold_stock=gold_stock+$5,iron=GREATEST(0,iron-$6)+$7,coal=GREATEST(0,coal-$8)+$9,grain=GREATEST(0,grain-$10)+$11,cloth=GREATEST(0,cloth-$12),electricity_stock=GREATEST(0,electricity_stock-$13)+$14,fuel_stock=fuel_stock+$15,population=GREATEST(1000,population+$16),stability=$17,last_settlement=last_settlement+make_interval(hours => $18::int * 3) WHERE telegram_id=$1",[id,balance,oilStock,oilProduced,goldMade,ironUsed,ironMade,coalUsed,coalMade,grainUsed,grainMade,clothUsed,electricityUsed,electricityMade,fuelMade,populationChange,stability,ticks]);
-  await client.query("INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,$3,$4)",[id,"درآمد و مصرف منابع در "+ticks+" نوبت",net,balance]);
-  await client.query("COMMIT");return {ticks,net,balance,buildingIncome:Math.round(dailyBuildingIncome*scale),grainNeed,grainUsed,coalNeed,coalUsed,ironNeed,ironUsed,clothNeed,clothUsed,electricityNeed,electricityUsed,oilNeed,oilConsumed,shortages};
- }catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
-}
-function settlementReport(result,p){const d=calc(p),scale=result.ticks/8,c=country(p.country_id),line=(label,value)=>"• "+label+": "+money(value*scale);return "<b>📜 واریز درآمد و تسویه‌ی دوره‌ای — "+(c?.[1]||p.country_id)+"</b>\n━━━━━━━━━━━━━━━━━━\n\n<b>💵 درآمد این نوبت</b>\n"+line("مالیات وصول‌شده",d.tax)+"\n"+line("درآمد صنعت و کشاورزی",d.production)+"\n"+line("درآمد تعرفه‌ها",d.tariff)+"\n• درآمد سازه‌ها: "+money(result.buildingIncome)+"\n\n<b>💰 خزانه</b>\n• واریز واقعی این نوبت: "+money(result.net)+"\n• موجودی خزانه: "+money(result.balance)+"\n\n<b>📦 تولید و مصرف منابع</b>\n• غله (تن): مصرف "+resourceAmount("grain",result.grainUsed)+" / "+resourceAmount("grain",result.grainNeed)+" | موجودی "+resourceAmount("grain",p.grain)+"\n• زغال‌سنگ (تن): مصرف "+resourceAmount("coal",result.coalUsed)+" / "+resourceAmount("coal",result.coalNeed)+" | موجودی "+resourceAmount("coal",p.coal)+"\n• آهن (تن): مصرف "+resourceAmount("iron",result.ironUsed)+" / "+resourceAmount("iron",result.ironNeed)+" | موجودی "+resourceAmount("iron",p.iron)+"\n• پارچه (طاقه): مصرف "+resourceAmount("cloth",result.clothUsed)+" / "+resourceAmount("cloth",result.clothNeed)+" | موجودی "+resourceAmount("cloth",p.cloth)+"\n• برق (مگاوات‌ساعت): مصرف "+resourceAmount("electricity_stock",result.electricityUsed)+" / "+resourceAmount("electricity_stock",result.electricityNeed)+" | موجودی "+resourceAmount("electricity_stock",p.electricity_stock)+"\n• نفت خام (بشکه): مصرف "+resourceAmount("oil_stock",result.oilConsumed)+" / "+resourceAmount("oil_stock",result.oilNeed)+" | موجودی "+resourceAmount("oil_stock",p.oil_stock)+"\n\n"+(result.shortages?"⚠️ کمبود منابع ثبت شد؛ ثبات کشور کاهش یافت.":"✅ منابع موردنیاز تأمین شد.")+"\nℹ️ درآمد به خزانه افزوده می‌شود؛ تسویه‌ی دوره‌ای هزینه‌ی نقدی از خزانه کم نمی‌کند.";}
-
-bot.callbackQuery(/^turn$/,async ctx=>{
- await ctx.answerCallbackQuery();const p=await ready(ctx);if(!p)return;
- const result=await settleOne(ctx.from.id);
- const fresh=await get(ctx.from.id);
- await edit(ctx,result?settlementReport(result,fresh):"هنوز زمان تسویه‌ی سه‌ساعته نرسیده است.",nation());
+bot.command("myid", async (ctx) => {
+  await ctx.reply("Telegram ID: " + ctx.from.id);
 });
-async function internationalAllowed(ctx){return String(ctx.from.id)===ownerTelegramId;}
-async function showAdminPanel(ctx){if(!(await internationalAllowed(ctx))){await ctx.reply("⛔ این پنل فقط برای سازمان بین‌الملل است.\nشناسه‌ی تلگرام شما: "+ctx.from.id+"\nشناسه‌ی تنظیم‌شده‌ی مدیر: "+ownerTelegramId+"\nاگر این شناسه متعلق به شماست، در Railway متغیر OWNER_TELEGRAM_ID را برابر شناسه‌ی بالا قرار دهید و Deploy کنید.");return;}await ctx.reply("<b>🌐 سازمان بین‌الملل — شاه شاهان</b>\nمدیریت بازی مستقل از هر کشور.",{parse_mode:"HTML",reply_markup:K([[{text:"🪪 درخواست‌های کشور",callback_data:"intlrequests"}],[{text:"🔍 بازرسی کشورها",callback_data:"intlplayers"}],[{text:"💳 وام‌دهی",callback_data:"intlloans"}],[{text:"📦 افزودن منابع",callback_data:"intlresources"}],[{text:"🚫 سلب کشور از بازیکن",callback_data:"intlremove"}],[{text:"⛔ مسدودسازی کامل ربات",callback_data:"intlblock"}]])});await ctx.reply("منوی اختصاصی سازمان بین‌الملل فعال شد.",{reply_markup:adminReply()});}
-bot.command("admin",async ctx=>showAdminPanel(ctx));
-bot.callbackQuery(/^intlrequests$/,async ctx=>{await ctx.answerCallbackQuery();if(!(await internationalAllowed(ctx)))return;const r=await pool.query("SELECT id,telegram_id,country_id FROM game_country_requests WHERE status='pending' ORDER BY id LIMIT 20");const rows=r.rows.map(x=>[{text:(country(x.country_id)?.[1]||x.country_id)+" · "+x.telegram_id,callback_data:"intlrequest:"+x.id}]);if(!rows.length)rows.push([{text:"درخواست معوقی نیست",callback_data:"noop"}]);rows.push([{text:"↩️ سازمان بین‌الملل",callback_data:"intlhome"}]);await edit(ctx,"<b>🪪 درخواست‌های در انتظار</b>\nدرخواست را باز کنید تا تأیید یا رد شود.",K(rows));});
-bot.callbackQuery(/^intlrequest:(\d+)$/,async ctx=>{await ctx.answerCallbackQuery();if(!(await internationalAllowed(ctx)))return;const id=Number(ctx.match[1]),req=(await pool.query("SELECT * FROM game_country_requests WHERE id=$1 AND status='pending'",[id])).rows[0];if(!req){await say(ctx,"این درخواست قبلاً بررسی شده است.");return;}const c=country(req.country_id);await edit(ctx,"<b>🪪 بررسی درخواست کشور</b>\n🆔 بازیکن: "+req.telegram_id+"\n🌍 کشور: "+(c?.[1]||req.country_id)+"\n\nدر صورت تأیید، کشور به بازیکن واگذار می‌شود.",K([[{text:"✅ تأیید و واگذاری",callback_data:"approve_country:"+id}],[{text:"❌ رد درخواست",callback_data:"reject_country:"+id}],[{text:"↩️ درخواست‌ها",callback_data:"intlrequests"}]]));});
-bot.callbackQuery(/^intlhome$/,async ctx=>{await ctx.answerCallbackQuery();if(!(await internationalAllowed(ctx)))return;await edit(ctx,"<b>🌐 سازمان بین‌الملل</b>",K([[{text:"🪪 درخواست‌ها",callback_data:"intlrequests"}],[{text:"🔍 بازرسی",callback_data:"intlplayers"}],[{text:"💳 وام",callback_data:"intlloans"}],[{text:"📦 منابع",callback_data:"intlresources"}],[{text:"🚫 سلب کشور",callback_data:"intlremove"}],[{text:"⛔ مسدودسازی ربات",callback_data:"intlblock"}]]));});
-bot.callbackQuery(/^intlplayers$/,async ctx=>{await ctx.answerCallbackQuery();if(!(await internationalAllowed(ctx)))return;const r=await pool.query("SELECT telegram_id,display_name,country_id,approved FROM game_players ORDER BY approved DESC,display_name LIMIT 25");const rows=r.rows.map(x=>[{text:(x.approved?(country(x.country_id)?.[1]||"کشور"): "بدون کشور")+" · "+x.display_name+" · "+x.telegram_id,callback_data:"intlplayer:"+x.telegram_id}]);if(!rows.length)rows.push([{text:"بازیکنی ثبت نشده",callback_data:"noop"}]);rows.push([{text:"↩️ سازمان بین‌الملل",callback_data:"intlhome"}]);await edit(ctx,"<b>🔍 فهرست بازیکنان برای بازرسی</b>",K(rows));});
-bot.callbackQuery(/^intlplayer:(\d+)$/,async ctx=>{await ctx.answerCallbackQuery();if(!(await internationalAllowed(ctx)))return;const id=ctx.match[1],p=await get(id);if(!p){await say(ctx,"بازیکن یافت نشد.");return;}const c=country(p.country_id);await edit(ctx,"<b>🔍 گزارش بازرسی</b>\n👤 "+p.display_name+"\n🆔 "+id+"\n🌍 "+(c?.[1]||"بدون کشور")+"\n💰 خزانه: "+money(p.treasury)+"\n👥 جمعیت: "+fmt(p.population)+"\n📦 منابع: غله "+fmt(p.grain)+" | زغال "+fmt(p.coal)+" | آهن "+fmt(p.iron)+" | پارچه "+fmt(p.cloth)+"\n⛔ مسدود: "+(p.bot_blocked?"بله":"خیر")+"\n\nعملیات مدیریتی مستقل:",K([[{text:"💳 وام $100,000",callback_data:"intlloan:"+id+":100000"},{text:"💳 وام $500,000",callback_data:"intlloan:"+id+":500000"}],[{text:"📦 بسته منابع",callback_data:"intlgrant:"+id}],[{text:"🚫 سلب کشور",callback_data:"intlremove:"+id}],[{text:p.bot_blocked?"🔓 رفع مسدودی":"⛔ مسدودسازی ربات",callback_data:"intlblock:"+id}],[{text:"↩️ فهرست",callback_data:"intlplayers"}]]));});
-bot.callbackQuery(/^intlloans$/,async ctx=>{await ctx.answerCallbackQuery();if(!(await internationalAllowed(ctx)))return;const r=await pool.query("SELECT p.telegram_id,p.display_name,COALESCE(SUM(l.amount),0) AS total FROM game_players p LEFT JOIN game_international_loans l ON l.player_id=p.telegram_id GROUP BY p.telegram_id,p.display_name ORDER BY p.display_name LIMIT 20");const rows=r.rows.map(x=>[{text:x.display_name+" · وام ثبت‌شده "+money(x.total),callback_data:"intlplayer:"+x.telegram_id}]);rows.push([{text:"↩️ سازمان بین‌الملل",callback_data:"intlhome"}]);await edit(ctx,"<b>💳 دفتر وام‌های سازمان بین‌الملل</b>\nانتخاب بازیکن برای ثبت وام جدید:",K(rows));});
-bot.callbackQuery(/^intlloan:(\d+):(\d+)$/,async ctx=>{await ctx.answerCallbackQuery();if(!(await internationalAllowed(ctx)))return;const id=ctx.match[1],amount=Number(ctx.match[2]),client=await pool.connect();try{await client.query("BEGIN");const p=(await client.query("SELECT treasury FROM game_players WHERE telegram_id=$1 FOR UPDATE",[id])).rows[0];if(!p){await client.query("ROLLBACK");await say(ctx,"بازیکن پیدا نشد.");return;}await client.query("UPDATE game_players SET treasury=treasury+$2 WHERE telegram_id=$1",[id,amount]);await client.query("INSERT INTO game_international_loans(player_id,admin_id,amount,reason) VALUES($1,$2,$3,'وام سازمان بین‌الملل')",[id,ctx.from.id,amount]);await client.query("INSERT INTO game_international_audit(admin_id,target_id,action,details) VALUES($1,$2,'loan',$3)",[ctx.from.id,id,String(amount)]);await client.query("INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,$3,$4)",[id,"وام سازمان بین‌الملل",amount,Number(p.treasury)+amount]);await client.query("COMMIT");await say(ctx,"✅ وام "+money(amount)+" ثبت و به خزانه‌ی بازیکن افزوده شد.");try{await bot.api.sendMessage(id,"🌐 سازمان بین‌الملل وام "+money(amount)+" به خزانه‌ی کشور شما افزود.");}catch{} }catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}});
-bot.callbackQuery(/^intlresources$/,async ctx=>{await ctx.answerCallbackQuery();if(!(await internationalAllowed(ctx)))return;const r=await pool.query("SELECT telegram_id,display_name FROM game_players ORDER BY display_name LIMIT 25");const rows=r.rows.map(x=>[{text:x.display_name+" · "+x.telegram_id,callback_data:"intlgrant:"+x.telegram_id}]);rows.push([{text:"↩️ سازمان بین‌الملل",callback_data:"intlhome"}]);await edit(ctx,"<b>📦 افزودن منابع به کشور</b>\nبازیکن را انتخاب کنید:",K(rows));});
-bot.callbackQuery(/^intlgrant:(\d+)$/,async ctx=>{await ctx.answerCallbackQuery();if(!(await internationalAllowed(ctx)))return;const id=ctx.match[1];await edit(ctx,"<b>📦 بسته‌ی منابع</b>\nبازیکن: "+id+"\nمقدار بسته‌ی حمایتی را انتخاب کنید.",K([[{text:"🌾 غله +10,000",callback_data:"intlresource:"+id+":grain:10000"},{text:"🪨 زغال +5,000",callback_data:"intlresource:"+id+":coal:5000"}],[{text:"⛓ آهن +3,000",callback_data:"intlresource:"+id+":iron:3000"},{text:"🧵 پارچه +2,000",callback_data:"intlresource:"+id+":cloth:2000"}],[{text:"🛢 نفت +5,000",callback_data:"intlresource:"+id+":oil_stock:5000"},{text:"⚡ برق +5,000",callback_data:"intlresource:"+id+":electricity_stock:5000"}],[{text:"↩️ بازگشت",callback_data:"intlplayer:"+id}]]));});
-bot.callbackQuery(/^intlresource:(\d+):(grain|coal|iron|cloth|oil_stock|electricity_stock):(\d+)$/,async ctx=>{await ctx.answerCallbackQuery();if(!(await internationalAllowed(ctx)))return;const id=ctx.match[1],col=ctx.match[2],amount=Number(ctx.match[3]);if(!["grain","coal","iron","cloth","oil_stock","electricity_stock"].includes(col))return;await pool.query("UPDATE game_players SET "+col+"=COALESCE("+col+",0)+$2 WHERE telegram_id=$1",[id,amount]);await pool.query("INSERT INTO game_international_audit(admin_id,target_id,action,details) VALUES($1,$2,'resource_grant',$3)",[ctx.from.id,id,col+" +"+amount]);await say(ctx,"✅ "+amount+" واحد "+col+" به ذخایر بازیکن افزوده شد.");try{await bot.api.sendMessage(id,"🌐 سازمان بین‌الملل "+amount+" واحد "+col+" به ذخایر کشور شما افزود.");}catch{}});
-bot.callbackQuery(/^intlremove$/,async ctx=>{await ctx.answerCallbackQuery();if(!(await internationalAllowed(ctx)))return;const r=await pool.query("SELECT telegram_id,display_name,country_id FROM game_players WHERE approved=TRUE ORDER BY display_name LIMIT 25");const rows=r.rows.map(x=>[{text:(country(x.country_id)?.[1]||"کشور")+" · "+x.display_name,callback_data:"intlremove:"+x.telegram_id}]);rows.push([{text:"↩️ سازمان بین‌الملل",callback_data:"intlhome"}]);await edit(ctx,"<b>🚫 سلب کشور</b>\nاین عملیات فقط کشور را آزاد می‌کند و دسترسی بازیکن به ربات را مسدود نمی‌کند.",K(rows));});
-bot.callbackQuery(/^intlremove:(\d+)$/,async ctx=>{await ctx.answerCallbackQuery();if(!(await internationalAllowed(ctx)))return;const id=ctx.match[1];if(id===ownerTelegramId){await say(ctx,"حساب سازمان بین‌الملل را نمی‌توان از کشور سلب کرد.");return;}await pool.query("UPDATE game_players SET approved=FALSE,country_id=NULL,ruler=NULL,government=NULL,selected_country_id=NULL,last_settlement=NOW() WHERE telegram_id=$1",[id]);await pool.query("INSERT INTO game_international_audit(admin_id,target_id,action,details) VALUES($1,$2,'country_revoke','کشور از بازیکن سلب شد')",[ctx.from.id,id]);await say(ctx,"✅ کشور از بازیکن سلب شد. دسترسی او به ربات همچنان فعال است و می‌تواند درخواست کشور دیگری بدهد.");try{await bot.api.sendMessage(id,"🌐 سازمان بین‌الملل کشور را از حساب شما سلب کرد. دسترسی ربات مسدود نشده؛ برای انتخاب کشور جدید /start را بفرستید.");}catch{}});
-bot.callbackQuery(/^intlblock$/,async ctx=>{await ctx.answerCallbackQuery();if(!(await internationalAllowed(ctx)))return;const r=await pool.query("SELECT telegram_id,display_name,bot_blocked FROM game_players ORDER BY display_name LIMIT 25");const rows=r.rows.map(x=>[{text:(x.bot_blocked?"🔓 رفع مسدودی · ":"⛔ مسدودسازی · ")+x.display_name,callback_data:"intlblock:"+x.telegram_id}]);rows.push([{text:"↩️ سازمان بین‌الملل",callback_data:"intlhome"}]);await edit(ctx,"<b>⛔ مسدودسازی کامل از ربات</b>\nاین کنترل جدا از سلب کشور است.",K(rows));});
-bot.callbackQuery(/^intlblock:(\d+)$/,async ctx=>{await ctx.answerCallbackQuery();if(!(await internationalAllowed(ctx)))return;const id=ctx.match[1];if(id===ownerTelegramId){await say(ctx,"حساب سازمان بین‌الملل قابل مسدودسازی نیست.");return;}const p=await get(id);if(!p){await say(ctx,"بازیکن یافت نشد.");return;}const blocked=!p.bot_blocked;await pool.query("UPDATE game_players SET bot_blocked=$2 WHERE telegram_id=$1",[id,blocked]);await pool.query("INSERT INTO game_international_audit(admin_id,target_id,action,details) VALUES($1,$2,'bot_block',$3)",[ctx.from.id,id,blocked?"blocked":"unblocked"]);await say(ctx,blocked?"⛔ دسترسی این بازیکن به ربات مسدود شد.":"🔓 دسترسی بازیکن به ربات آزاد شد.");});
-
-async function finalizeForeignBase(ownerId,hostCountryId){const client=await pool.connect();try{await client.query("BEGIN");const me=(await client.query("SELECT treasury,iron FROM game_players WHERE telegram_id=$1 FOR UPDATE",[ownerId])).rows[0];if(!me||Number(me.treasury)<75000||Number(me.iron)<300){await client.query("ROLLBACK");return false;}await client.query("UPDATE game_players SET treasury=treasury-75000,iron=iron-300 WHERE telegram_id=$1",[ownerId]);await client.query("INSERT INTO game_strategic_bases(owner_id,host_country_id,base_name) VALUES($1,$2,$3)",[ownerId,hostCountryId,"پایگاه عملیاتی خارجی"]);await client.query("INSERT INTO game_buildings(telegram_id,building_key,level) VALUES($1,'forward_base',1) ON CONFLICT(telegram_id,building_key) DO UPDATE SET level=game_buildings.level+1",[ownerId]);await client.query("INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,-75000,$3)",[ownerId,"ساخت پایگاه خارجی در "+(country(hostCountryId)?.[1]||hostCountryId),Number(me.treasury)-75000]);await client.query("COMMIT");return true;}catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}}
-bot.callbackQuery(/^str:basecontinent:(europe|asia|africa|north_america|south_america|oceania)$/,async ctx=>{await ctx.answerCallbackQuery();const p=await ready(ctx);if(!p)return;const region=ctx.match[1],list=countries.filter(c=>continentOf(c[0])===region&&c[0]!==p.country_id).sort((a,b)=>a[1].localeCompare(b[1],"fa")),rows=[];for(let i=0;i<list.length;i+=2)rows.push(list.slice(i,i+2).map(c=>({text:c[1],callback_data:"str:basecountry:"+c[0]})));rows.push([{text:"↩️ قاره‌ها",callback_data:"str:base"}],[{text:"↩️ ستاد راهبردی",callback_data:"n:strategy"}]);return edit(ctx,"<b>🏗️ انتخاب کشور میزبان</b>\n\nقاره: "+continentNames[region]+"\nکشور میزبان را انتخاب کنید. اگر کشور بازیکن داشته باشد، درخواست باید توسط رهبر آن کشور تأیید شود.",K(rows));});
-bot.callbackQuery(/^str:basecountry:([a-z0-9_]+)$/,async ctx=>{await ctx.answerCallbackQuery();const p=await ready(ctx);if(!p)return;const cid=ctx.match[1],c=country(cid);if(!c||cid===p.country_id){await say(ctx,"کشور میزبان معتبر نیست.");return;}const host=(await pool.query("SELECT telegram_id FROM game_players WHERE approved=TRUE AND country_id=$1 LIMIT 1",[cid])).rows[0];if(host){const q=await pool.query("INSERT INTO game_base_requests(owner_id,host_id,host_country_id) VALUES($1,$2,$3) RETURNING id",[ctx.from.id,host.telegram_id,cid]),id=q.rows[0].id;try{await bot.api.sendMessage(host.telegram_id,"🏗️ درخواست ساخت پایگاه عملیاتی خارجی\nکشور درخواست‌کننده: "+(country(p.country_id)?.[1]||p.country_id)+"\nکشور میزبان: "+c[1]+"\n\nساخت پایگاه نیازمند تأیید شماست. هزینه بر عهده کشور درخواست‌کننده است: $75,000 و 300 آهن.",{reply_markup:K([[{text:"✅ تأیید استقرار",callback_data:"baseaccept:"+id},{text:"❌ رد درخواست",callback_data:"basereject:"+id}]])});}catch{}return say(ctx,"📨 درخواست پایگاه برای "+c[1]+" ارسال شد. تا تأیید رهبر آن کشور، هزینه‌ای از خزانه کسر نمی‌شود.",strategicMenu());}const ok=await finalizeForeignBase(ctx.from.id,cid);return say(ctx,ok?"✅ پایگاه عملیاتی در "+c[1]+" ساخته شد.\nهزینه: $75,000 و 300 آهن.":"منابع کافی نیست؛ نیاز: $75,000 و 300 آهن.",strategicMenu());});
-bot.callbackQuery(/^baseaccept:(\d+)$/,async ctx=>{await ctx.answerCallbackQuery();const req=(await pool.query("SELECT * FROM game_base_requests WHERE id=$1 AND host_id=$2 AND status='pending'",[ctx.match[1],ctx.from.id])).rows[0];if(!req){await say(ctx,"این درخواست وجود ندارد یا قبلاً پاسخ داده شده.");return;}const ok=await finalizeForeignBase(req.owner_id,req.host_country_id);await pool.query("UPDATE game_base_requests SET status=$2 WHERE id=$1",[req.id,ok?"accepted":"insufficient"]);if(ok){try{await bot.api.sendMessage(req.owner_id,"✅ درخواست پایگاه عملیاتی شما در "+(country(req.host_country_id)?.[1]||req.host_country_id)+" تأیید و پایگاه ساخته شد.");}catch{}return say(ctx,"✅ درخواست تأیید شد و پایگاه ساخته شد.");}try{await bot.api.sendMessage(req.owner_id,"درخواست پایگاه پذیرفته شد، اما خزانه یا آهن کافی برای ساخت وجود نداشت.");}catch{}return say(ctx,"درخواست پذیرفته شد؛ اما کشور درخواست‌کننده منابع کافی ندارد.");});
-bot.callbackQuery(/^basereject:(\d+)$/,async ctx=>{await ctx.answerCallbackQuery();const q=await pool.query("UPDATE game_base_requests SET status='rejected' WHERE id=$1 AND host_id=$2 AND status='pending' RETURNING owner_id,host_country_id",[ctx.match[1],ctx.from.id]);if(!q.rows.length){await say(ctx,"درخواست معتبر یا در انتظار پاسخ نیست.");return;}try{await bot.api.sendMessage(q.rows[0].owner_id,"❌ درخواست پایگاه در "+(country(q.rows[0].host_country_id)?.[1]||q.rows[0].host_country_id)+" رد شد.");}catch{}return say(ctx,"درخواست رد شد.");});
-bot.callbackQuery(/^str:(exercise|exercise:begin|intel|command|nuclear|base|mybases|territory|allybases|ally:(\d+)|navy|sea:(north|baltic|med|atlantic|pacific))$/,async ctx=>{
- await ctx.answerCallbackQuery();const p=await ready(ctx);if(!p)return;const d=ctx.callbackQuery.data;
- if(d==="str:exercise"){await pool.query("INSERT INTO game_maneuver_stats(owner_id) VALUES($1) ON CONFLICT(owner_id) DO NOTHING",[ctx.from.id]);const m=(await pool.query("SELECT readiness,maneuvers_today,last_maneuver_date FROM game_maneuver_stats WHERE owner_id=$1",[ctx.from.id])).rows[0],today=new Date().toISOString().slice(0,10),done=m.last_maneuver_date&&new Date(m.last_maneuver_date).toISOString().slice(0,10)===today?Number(m.maneuvers_today):0;return edit(ctx,"<b>🎯 ستاد برگزاری مانور و تمرینات رزمی</b>\n━━━━━━━━━━━━━━━━━━\n\n🛡️ شاخص آمادگی رزمی فعلی: "+fmt(m.readiness)+"٪\n🎖️ تعداد مانورهای برگزارشده امروز: "+done+" (باقی‌مانده: "+Math.max(0,1-done)+")\n\n⚠️ هزینه پشتیبانی و لجستیک: $1,000,000\n🛢️ سوخت مصرفی: 100 بشکه نفت\n\n🏆 دستاوردهای مانور:\n• افزایش آمادگی رزمی نیروها +5٪\n• افزایش روحیه و ثبات کشور\n\nسقف مجاز: یک مانور در هر روز\n\nآیا مایل به آغاز مانور رزمی هستید؟",K([[{text:"✅ آغاز و اجرای مانور رزمی",callback_data:"str:exercise:begin"}],[{text:"↩️ بازگشت به ستاد توسعه",callback_data:"n:strategy"}]]));}
- if(d==="str:exercise:begin"){await pool.query("INSERT INTO game_maneuver_stats(owner_id) VALUES($1) ON CONFLICT(owner_id) DO NOTHING",[ctx.from.id]);const m=(await pool.query("SELECT readiness,maneuvers_today,last_maneuver_date FROM game_maneuver_stats WHERE owner_id=$1 FOR UPDATE",[ctx.from.id])).rows[0],today=m.last_maneuver_date&&new Date(m.last_maneuver_date).toISOString().slice(0,10)===new Date().toISOString().slice(0,10)?Number(m.maneuvers_today):0;if(today>=1){await say(ctx,"⛔ سهمیه مانور امروز استفاده شده است؛ فردا دوباره امکان اجرا دارید.");return;}const me=(await pool.query("SELECT treasury,oil_stock,morale,stability FROM game_players WHERE telegram_id=$1",[ctx.from.id])).rows[0];if(!me||Number(me.treasury)<1000000||Number(me.oil_stock)<100){await say(ctx,"منابع کافی نیست. نیاز: $1,000,000 و 100 بشکه نفت.");return;}await pool.query("UPDATE game_players SET treasury=treasury-1000000,oil_stock=oil_stock-100,morale=LEAST(100,morale+4),stability=LEAST(100,stability+2),legitimacy=LEAST(100,legitimacy+1) WHERE telegram_id=$1",[ctx.from.id]);await pool.query("UPDATE game_maneuver_stats SET readiness=LEAST(100,readiness+5),maneuvers_today=CASE WHEN last_maneuver_date=CURRENT_DATE THEN maneuvers_today+1 ELSE 1 END,last_maneuver_date=CURRENT_DATE WHERE owner_id=$1",[ctx.from.id]);await pool.query("INSERT INTO game_maneuver_history(owner_id,country_id) VALUES($1,$2)",[ctx.from.id,p.country_id]);await pool.query("INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,-1000000,$3)",[ctx.from.id,"اجرای مانور رزمی",Number(me.treasury)-1000000]);return say(ctx,"✅ مانور رزمی با موفقیت برگزار شد.\nآمادگی رزمی +5٪، روحیه +4، ثبات +2، مشروعیت +1.\nهزینه: $1,000,000 و 100 بشکه نفت.",strategicMenu());}
- if(d==="str:command"){const roles=["رئیس ستاد مشترک نیروهای مسلح","مدیر اطلاعات و عملیات (CIC)","فرمانده نیروی هوایی","فرمانده نیروی دریایی","فرمانده پدافند یکپارچه هوایی"];const body=roles.map((x,i)=>"<b>"+(i+1)+". "+x+"</b>\n🟢 وضعیت: فعال و در حال خدمت").join("\n\n");return edit(ctx,"<b>🏅 کادر فرماندهی و ستاد نظامی — "+(country(p.country_id)?.[1]||p.country_id)+"</b>\n━━━━━━━━━━━━━━━━━━\n\n"+body+"\n\n✅ زنجیره فرماندهی کشور فعال است؛ تمام جایگاه‌های ستادی در وضعیت آماده‌به‌خدمت قرار دارند.",K([[{text:"↩️ بازگشت به سازمان اطلاعات",callback_data:"str:intel"}],[{text:"↩️ بازگشت به ستاد راهبردی",callback_data:"n:strategy"}]]));}
-
- if(d==="str:mybases"||d==="str:territory"){const r=d==="str:mybases"?await pool.query("SELECT host_country_id,base_name FROM game_strategic_bases WHERE owner_id=$1 ORDER BY id DESC",[ctx.from.id]):await pool.query("SELECT owner_id,base_name FROM game_strategic_bases WHERE host_country_id=$1 ORDER BY id DESC",[p.country_id]);const body=r.rows.map((x,i)=>"• "+(i+1)+". "+x.base_name+" — "+(d==="str:mybases"?(country(x.host_country_id)?.[1]||keyLabel(x.host_country_id)):(Number(x.owner_id)===Number(ctx.from.id)?"متعلق به شما":"متعلق به کشور دیگر"))).join("\n");return edit(ctx,d==="str:mybases"?"<b>📍 پایگاه‌های عملیاتی من</b>\n\n"+(body||"هنوز پایگاهی ندارید."):"<b>🗺️ پایگاه‌های مستقر در خاک کشور من</b>\n\n"+(body||"در خاک کشور شما پایگاهی ثبت نشده است."),strategicMenu());}
- if(d==="str:allybases"){const r=await pool.query("SELECT r.other_id,pl.country_id,pl.display_name FROM game_relations r JOIN game_players pl ON pl.telegram_id=r.other_id WHERE r.player_id=$1 AND r.relation='alliance' AND pl.approved=TRUE",[ctx.from.id]);const rows=r.rows.map(x=>[{text:"🤝 "+(country(x.country_id)?.[1]||x.display_name),callback_data:"str:ally:"+x.other_id}]);if(!rows.length)rows.push([{text:"ابتدا اتحاد فعال برقرار کنید",callback_data:"n:diplomacy"}]);rows.push([{text:"↩️ ستاد راهبردی",callback_data:"n:strategy"}]);return edit(ctx,"<b>پایگاه در کشور متحد</b>\nهزینه: $50,000 و 250 آهن",K(rows));}
- if(d==="str:navy")return edit(ctx,"<b>⚓ گشت و استقرار ناوگان</b>\nهزینه هر واحد: $15,000 و 200 بشکه نفت.",K([[{text:"دریای شمال",callback_data:"str:sea:north"},{text:"دریای بالتیک",callback_data:"str:sea:baltic"}],[{text:"مدیترانه",callback_data:"str:sea:med"},{text:"اقیانوس اطلس",callback_data:"str:sea:atlantic"}],[{text:"اقیانوس آرام",callback_data:"str:sea:pacific"}],[{text:"↩️ ستاد راهبردی",callback_data:"n:strategy"}]]));
- if(d==="str:base"){const rows=Object.keys(continentNames).map(k=>[{text:continentNames[k],callback_data:"str:basecontinent:"+k}]);rows.push([{text:"↩️ بازگشت به ستاد راهبردی",callback_data:"n:strategy"}]);return edit(ctx,"<b>🏗️ ساخت پایگاه عملیاتی خارجی</b>\n\nقاره‌ی کشور میزبان را انتخاب کنید. ساخت پایگاه در کشور بازیکن دیگر نیازمند تأیید رهبر آن کشور است.",K(rows));}
- if(d.startsWith("str:ally:")){const ally=d.startsWith("str:ally:")?Number(d.split(":")[2]):null,host=ally?await get(ally):p;if(!host?.approved||(ally&&(await pool.query("SELECT relation FROM game_relations WHERE player_id=$1 AND other_id=$2",[ctx.from.id,ally])).rows[0]?.relation!=="alliance")){await say(ctx,"کشور مقصد معتبر نیست یا اتحاد فعال ندارید.");return;}const cost=ally?50000:75000,iron=ally?250:300,me=(await pool.query("SELECT treasury,iron FROM game_players WHERE telegram_id=$1",[ctx.from.id])).rows[0];if(!me||Number(me.treasury)<cost||Number(me.iron)<iron){await say(ctx,"منابع کافی نیست؛ نیاز: "+money(cost)+" و "+fmt(iron)+" آهن.");return;}await pool.query("UPDATE game_players SET treasury=treasury-$2,iron=iron-$3 WHERE telegram_id=$1",[ctx.from.id,cost,iron]);await pool.query("INSERT INTO game_strategic_bases(owner_id,host_country_id,base_name) VALUES($1,$2,$3)",[ctx.from.id,host.country_id,ally?"پایگاه مشترک":"پایگاه عملیاتی"]);await pool.query("INSERT INTO game_buildings(telegram_id,building_key,level) VALUES($1,'forward_base',1) ON CONFLICT(telegram_id,building_key) DO UPDATE SET level=game_buildings.level+1",[ctx.from.id]);await pool.query("INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,$3,$4)",[ctx.from.id,"ساخت پایگاه عملیاتی",-cost,Number(me.treasury)-cost]);return say(ctx,"✅ پایگاه عملیاتی ساخته شد و در دارایی‌های کشور ثبت شد.\nمحل: "+(country(host.country_id)?.[1]||host.country_id),strategicMenu());}
- if(d.startsWith("str:sea:")){const zone={north:"دریای شمال",baltic:"دریای بالتیک",med:"مدیترانه",atlantic:"اقیانوس اطلس",pacific:"اقیانوس آرام"}[d.split(":")[2]];const active=Number((await pool.query("SELECT COALESCE(SUM(units),0)::int n FROM game_naval_deployments WHERE owner_id=$1 AND status='active'",[ctx.from.id])).rows[0].n),me=(await pool.query("SELECT treasury,oil_stock,navy FROM game_players WHERE telegram_id=$1",[ctx.from.id])).rows[0];if(!me||Number(me.navy)-active<1||Number(me.treasury)<15000||Number(me.oil_stock)<200){await say(ctx,"نیاز: یک واحد ناوگان، $15,000 و 200 بشکه نفت.");return;}await pool.query("UPDATE game_players SET treasury=treasury-15000,oil_stock=oil_stock-200 WHERE telegram_id=$1",[ctx.from.id]);await pool.query("INSERT INTO game_naval_deployments(owner_id,zone,units) VALUES($1,$2,1)",[ctx.from.id,zone]);await pool.query("INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,-15000,$3)",[ctx.from.id,"گشت ناوگان در "+zone,Number(me.treasury)-15000]);return say(ctx,"⚓ گشت دریایی در "+zone+" ثبت شد. واحدهای مستقر: "+(active+1),strategicMenu());}
- const cfg={exercise:["رزمایش نظامی",20000,100,0,"UPDATE game_players SET treasury=treasury-$2,oil_stock=oil_stock-$3,morale=LEAST(100,morale+6),stability=LEAST(100,stability+2) WHERE telegram_id=$1","روحیه +6 و ثبات +2"],intel:["اطلاعات و امنیت ملی",30000,0,100,"UPDATE game_players SET treasury=treasury-$2,iron=iron-$3,technology=LEAST(100,technology+2) WHERE telegram_id=$1","فناوری +2"],command:["فرماندهی کل قوا",40000,0,150,"UPDATE game_players SET treasury=treasury-$2,iron=iron-$3,morale=LEAST(100,morale+3),legitimacy=LEAST(100,legitimacy+2) WHERE telegram_id=$1","روحیه +3 و مشروعیت +2"],nuclear:["برنامه توسعه هسته‌ای",250000,0,500,"UPDATE game_players SET treasury=treasury-$2,iron=iron-$3,coal=coal-1000,technology=LEAST(100,technology+3) WHERE telegram_id=$1","فناوری +3"]}[d.split(":")[1]];
- if(!cfg){await say(ctx,"اقدام نامعتبر است.");return;}const [title,cost,oil,iron,sql,effect]=cfg,me=(await pool.query("SELECT treasury,oil_stock,iron,coal,technology FROM game_players WHERE telegram_id=$1",[ctx.from.id])).rows[0];if(!me||Number(me.treasury)<cost||Number(me.oil_stock)<oil||Number(me.iron)<iron||(d==="str:nuclear"&&(Number(me.coal)<1000||Number(me.technology)<20))){await say(ctx,"منابع یا فناوری کافی نیست. نیاز: "+money(cost)+", نفت "+fmt(oil)+", آهن "+fmt(iron)+(d==="str:nuclear"?"، زغال 1000 و فناوری 20":""));return;}if(d==="str:exercise")await pool.query(sql,[ctx.from.id,cost,oil]);else await pool.query(sql,[ctx.from.id,cost,iron]);await pool.query("INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,$3,$4)",[ctx.from.id,"اقدام راهبردی: "+title,-cost,Number(me.treasury)-cost]);return say(ctx,"✅ "+title+" انجام شد.\nاثر: "+effect+"\nهزینه: "+money(cost),strategicMenu());
+bot.command("menu", async (ctx) => {
+  await ensure(ctx);
+  if (String(ctx.from.id) === ownerTelegramId) {
+    await ctx.reply("منوی سازمان بین‌الملل", { reply_markup: adminReply() });
+    await showAdminPanel(ctx);
+    return;
+  }
+  await ctx.reply("منوی اصلی شاه شاهان — از دکمه‌های پایین استفاده کنید.", {
+    reply_markup: mainReply(),
+  });
+  await say(ctx, "منوی اصلی شاه شاهان", main());
 });
-bot.on("callback_query:data",async ctx=>{const raw=ctx.callbackQuery?.data||"";const answer=raw.match(/^dipanswer:(accept|reject):(\d+):(alliance|nonaggression|trade_pact|ceasefire)$/);if(answer){try{await ctx.answerCallbackQuery();}catch{}const ok=answer[1]==="accept",other=Number(answer[2]),type=answer[3],pending=(await pool.query("SELECT relation FROM game_relations WHERE player_id=$1 AND other_id=$2",[other,ctx.from.id])).rows[0];if(pending?.relation!=="proposal_"+type){await say(ctx,"این پیشنهاد دیگر فعال نیست یا قبلاً بررسی شده است.");return;}const rel=ok?(type==="ceasefire"?"neutral":type):"neutral",trust=ok?({alliance:25,nonaggression:15,trade_pact:20,ceasefire:10}[type]):0;for(const [a,b] of [[ctx.from.id,other],[other,ctx.from.id]])await pool.query("INSERT INTO game_relations(player_id,other_id,relation,trust) VALUES($1,$2,$3,$4) ON CONFLICT(player_id,other_id) DO UPDATE SET relation=EXCLUDED.relation,trust=LEAST(100,game_relations.trust+EXCLUDED.trust)",[a,b,rel,trust]);const titles={alliance:"اتحاد",nonaggression:"عدم تعرض",trade_pact:"پیمان تجاری",ceasefire:"آتش‌بس"},result=ok?"✅ پیشنهاد "+titles[type]+" پذیرفته شد.":"❌ پیشنهاد "+titles[type]+" رد شد.";await say(ctx,result,K([[{text:"📨 پیشنهادهای دریافتی",callback_data:"dipinbox"}],[{text:"📜 دفتر روابط",callback_data:"diprelations"}],[{text:"↩️ دیپلماسی",callback_data:"n:diplomacy"}]]));try{await bot.api.sendMessage(other,"📬 پاسخ به پیشنهاد دیپلماتیک شما:\n"+result);}catch{}return;}try{await ctx.answerCallbackQuery({text:"منوی به‌روز بازی باز شد."});}catch{}const p=await get(ctx.from.id);if(String(ctx.from.id)===ownerTelegramId){await ctx.reply("🌐 پنل به‌روز سازمان بین‌الملل",{reply_markup:adminReply()});await showAdminPanel(ctx);return;}if(p?.approved){await ctx.reply("🔄 دکمه‌ی قبلی به نسخه‌ی فعلی بازی هدایت شد.",{reply_markup:nationReply()});await say(ctx,"🏛️ دربار و کشور — منوی فعلی",nation());}else{await ctx.reply("🔄 منوی فعلی بازی باز شد.",{reply_markup:mainReply()});await say(ctx,"منوی اصلی شاه شاهان",main());}});
- let settlementLoopRunning=false;
- setInterval(async()=>{
-  if(settlementLoopRunning)return;
-  settlementLoopRunning=true;
-  try{
-   const ids=(await pool.query("SELECT telegram_id FROM game_players WHERE approved=TRUE")).rows;
-   let cursor=0;
-   const worker=async()=>{
-    while(cursor<ids.length){
-     const row=ids[cursor++];
-     try{
-      const result=await settleOne(row.telegram_id);
-      if(result){const fresh=await get(row.telegram_id);await bot.api.sendMessage(row.telegram_id,settlementReport(result,fresh),{parse_mode:"HTML"});}
-     }catch(e){console.error("Settlement processing failed for",row.telegram_id,e);}
+bot.command("status", async (ctx) => {
+  const p = await ready(ctx);
+  if (p) await say(ctx, await status(p), nation());
+});
+bot.command("help", async (ctx) => {
+  await say(
+    ctx,
+    "<b>راهنمای بازی</b>\n۱) کشور را انتخاب و تأسیس کنید.\n۲) مالیات، تولید، خدمات و ارتش را از دربار اداره کنید.\n۳) هر سه ساعت درآمد کشور به خزانه اضافه و منابع بر اساس جمعیت، دارایی‌ها و جغرافیا مصرف می‌شوند؛ هزینه‌ی نقدی روزانه ندارید.\n۴) با دیگر فرمانروایان تجارت و پیمان برقرار کنید.",
+    main(),
+  );
+});
+bot.callbackQuery(/^shop$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const p = await ready(ctx);
+  if (p) await openStore(ctx);
+});
+bot.callbackQuery(
+  /^shopcat:(mining|buildings|transport|agriculture|energy|military)$/,
+  async (ctx) => {
+    await ctx.answerCallbackQuery();
+    const p = await ready(ctx);
+    if (p) await openStoreCategory(ctx, ctx.match[1]);
+  },
+);
+bot.callbackQuery(/^shopweapons$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const p = await ready(ctx);
+  if (!p) return;
+  await edit(
+    ctx,
+    "<b>🛡️ صنایع و بازار تسلیحات</b>\n\nسلاح‌های بومی کشور در دسته‌ی مربوط تولید می‌شوند. سلاح خارجی فقط از کشورهایی که آن را در انبار دارند خریداری می‌شود.",
+    K([
+      [
+        { text: "🪖 نیروی زمینی", callback_data: "weaponcat:land" },
+        { text: "✈️ نیروی هوایی", callback_data: "weaponcat:air" },
+      ],
+      [{ text: "⚓ نیروی دریایی", callback_data: "weaponcat:navy" }],
+      [{ text: "🛒 خرید از کشورهای دیگر", callback_data: "weaponmarket" }],
+      [{ text: "📦 عرضه‌ی سلاح از انبار", callback_data: "weaponlist" }],
+      [{ text: "🏭 کارخانه تسلیحات", callback_data: "shopdetail:arms_factory" }],
+      [{ text: "↩️ فروشگاه", callback_data: "shop" }],
+    ]),
+  );
+});
+bot.callbackQuery(/^weaponcat:(land|air|navy)$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const p = await ready(ctx);
+  if (!p) return;
+  const cat = ctx.match[1],
+    list = getCountryWeapons(p.country_id).filter((w) => weaponCategory(w) === cat),
+    rows = list.map((w) => [
+      { text: weaponLabel(w) + " — " + money(w[2]), callback_data: "weaponinfo:" + w[0] },
+    ]);
+  if (!rows.length)
+    rows.push([
+      { text: "📭 سلاح بومی قابل تولید در این دسته ثبت نشده است.", callback_data: "noop" },
+    ]);
+  rows.push([{ text: "↩️ دسته‌های تسلیحاتی", callback_data: "shopweapons" }]);
+  await edit(
+    ctx,
+    "<b>" +
+      weaponCategoryInfo[cat].name +
+      "</b>\n\n" +
+      weaponCategoryInfo[cat].desc +
+      "\n\nفقط سلاح‌های بومی ثبت‌شده برای کشور شما در اینجا قابل تولید هستند.",
+    K(rows),
+  );
+});
+bot.callbackQuery(/^shopdetail:([a-z_]+)$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const p = await ready(ctx);
+  if (!p) return;
+  const item = findStoreItem(ctx.match[1]);
+  if (!item) {
+    await say(ctx, "این پروژه در فروشگاه نیست.");
+    return;
+  }
+  const materials =
+    Object.entries(item[3])
+      .map(([r, n]) => resourceNames[r] + ": " + fmt(n))
+      .join("، ") || "مواد اضافی ندارد";
+  const cat = storeCats.find((c) => c.items.some((x) => x[0] === item[0]));
+  await edit(
+    ctx,
+    "<b>🏗️ " +
+      storeLabel(item) +
+      "</b>\n\n💵 <b>قیمت:</b> " +
+      money(item[2]) +
+      "\n📖 <b>کاربرد:</b> " +
+      storeItemDetail(item) +
+      "\n📈 <b>اثر/تولید:</b> " +
+      item[4] +
+      "\n🧱 <b>مواد اولیه:</b> " +
+      materials +
+      "\n🔧 <b>هزینه‌های دوره‌ای:</b> پس از ساخت در گزارش مالی و وضعیت کشور محاسبه می‌شود.\n\nبا زدن دکمه‌ی تأیید، هزینه از خزانه و مواد از انبار کم شده و پروژه ساخته می‌شود.",
+    K([
+      [{ text: "✅ تأیید ساخت · " + money(item[2]), callback_data: "shopbuy:" + item[0] }],
+      [{ text: "↩️ بازگشت به فهرست", callback_data: "shopcat:" + (cat?.id || "buildings") }],
+      [{ text: "🏪 فروشگاه", callback_data: "shop" }],
+    ]),
+  );
+});
+bot.callbackQuery(/^shopbuy:([a-z_]+)$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const p = await ready(ctx);
+  if (!p) return;
+  const item = findStoreItem(ctx.match[1]);
+  if (!item) {
+    await say(ctx, "این کالا در فروشگاه نیست.", nation());
+    return;
+  }
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const row = (
+      await client.query(
+        "SELECT treasury,grain,coal,iron,cloth,oil_stock FROM game_players WHERE telegram_id=$1 FOR UPDATE",
+        [ctx.from.id],
+      )
+    ).rows[0];
+    const shortage = Object.entries(item[3]).filter(([r, n]) => Number(row[r] || 0) < n);
+    if (Number(row.treasury) < item[2] || shortage.length) {
+      await client.query("ROLLBACK");
+      await say(
+        ctx,
+        "خزانه یا مواد اولیه برای ساخت کافی نیست.\nقیمت: " +
+          money(item[2]) +
+          "\n" +
+          (shortage.length
+            ? "کمبود: " +
+              shortage
+                .map(([r, n]) => resourceNames[r] + " " + fmt(n - Number(row[r] || 0)))
+                .join("، ")
+            : "موجودی پول کافی نیست."),
+        K([
+          [{ text: "🏪 فروشگاه", callback_data: "shop" }],
+          [{ text: "🏛️ دربار", callback_data: "m:n" }],
+        ]),
+      );
+      return;
     }
-   };
-   await Promise.all(Array.from({length:Math.min(5,ids.length)},()=>worker()));
-  }catch(e){console.error("Automatic settlement error:",e);}
-  finally{settlementLoopRunning=false;}
- },60000).unref();
-bot.catch(e=>console.error("Bot error",e));
-const server=http.createServer((req,res)=>{res.writeHead(200,{"content-type":"application/json"});res.end(JSON.stringify({status:"ok",game:"shah-shahanshah"}));});
-await db();server.listen(PORT,()=>console.log("Shah Shahanshah health server on",PORT));await bot.start({onStart:info=>console.log("Bot started:",info.username)});
+    const sets = ["treasury=treasury-$2"],
+      args = [ctx.from.id, item[2]];
+    let idx = 3;
+    for (const [r, n] of Object.entries(item[3])) {
+      sets.push(r + "=" + r + "-$" + idx);
+      args.push(n);
+      idx++;
+    }
+    await client.query("UPDATE game_players SET " + sets.join(",") + " WHERE telegram_id=$1", args);
+    await client.query(
+      "INSERT INTO game_buildings(telegram_id,building_key,level) VALUES($1,$2,1) ON CONFLICT(telegram_id,building_key) DO UPDATE SET level=game_buildings.level+1",
+      [ctx.from.id, item[0]],
+    );
+    await client.query(
+      "UPDATE game_players SET population=population+$2,infrastructure=infrastructure+$3 WHERE telegram_id=$1",
+      [
+        ctx.from.id,
+        item[0] === "housing" ? 1000 : 0,
+        item[0] === "highway" ? 2 : item[0] === "railway" ? 3 : 0,
+      ],
+    );
+    await client.query(
+      "INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,$3,$4)",
+      [ctx.from.id, "ساخت " + item[1], -item[2], Number(row.treasury) - item[2]],
+    );
+    await client.query("COMMIT");
+    await edit(
+      ctx,
+      "<b>✅ پروژه ساخته شد</b>\n\n🏗️ " +
+        storeLabel(item) +
+        "\n📖 " +
+        storeItemDetail(item) +
+        "\n\n📈 اثر ثبت‌شده: " +
+        item[4] +
+        "\n💵 هزینه ساخت پرداخت‌شده: " +
+        money(item[2]) +
+        "\n🧱 مواد مصرف‌شده: " +
+        (Object.entries(item[3])
+          .map(([r, n]) => resourceNames[r] + ": " + fmt(n))
+          .join("، ") || "مواد اضافی ندارد") +
+        "\n💰 خزانه پس از پرداخت: " +
+        money(Number(row.treasury) - item[2]) +
+        "\n\n🔧 هزینه‌های نگهداری/درآمد دوره‌ای در بخش وضعیت کشور و گزارش مالی قابل مشاهده است.",
+      K([
+        [
+          {
+            text: "🏪 ادامه ساخت",
+            callback_data:
+              "shopcat:" + storeCats.find((c) => c.items.some((x) => x[0] === item[0])).id,
+          },
+        ],
+        [{ text: "🛡️ تسلیحات", callback_data: "shopweapons" }],
+        [{ text: "🏛️ دربار", callback_data: "m:n" }],
+      ]),
+    );
+  } catch (e) {
+    await client.query("ROLLBACK");
+    throw e;
+  } finally {
+    client.release();
+  }
+});
+bot.callbackQuery(/^weaponlist$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const p = await ready(ctx);
+  if (!p) return;
+  const r = await pool.query(
+    "SELECT weapon_key,quantity,damaged FROM game_weapon_stock WHERE telegram_id=$1 AND quantity>COALESCE(damaged,0) ORDER BY weapon_key",
+    [ctx.from.id],
+  );
+  const list = getCountryWeapons(p.country_id),
+    rows = r.rows
+      .map((x) => {
+        const w =
+          list.find((z) => z[0] === x.weapon_key) ||
+          Object.values(countryWeapons)
+            .flat()
+            .find((z) => z[0] === x.weapon_key);
+        return w
+          ? [
+              {
+                text:
+                  weaponLabel(w) +
+                  " ×" +
+                  (Number(x.quantity) - Number(x.damaged || 0)) +
+                  " سالم · عرضه یک واحد",
+                callback_data: "weaponoffer:" + x.weapon_key,
+              },
+            ]
+          : null;
+      })
+      .filter(Boolean);
+  if (!rows.length) rows.push([{ text: "📭 انبار تسلیحات شما خالی است.", callback_data: "noop" }]);
+  rows.push([{ text: "↩️ بازار تسلیحات", callback_data: "shopweapons" }]);
+  await edit(
+    ctx,
+    "<b>📦 عرضه‌ی تسلیحات از انبار</b>\n\nبا انتخاب هر سلاح، یک واحد از انبار برای فروش عرضه می‌شود. قیمت فروش ۱۲۵٪ قیمت پایه‌ی تولید است و پس از معامله به خزانه‌ی شما واریز می‌شود.",
+    K(rows),
+  );
+});
+bot.callbackQuery(/^weaponoffer:([a-z0-9_]+)$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const p = await ready(ctx);
+  if (!p) return;
+  const key = ctx.match[1],
+    w = Object.values(countryWeapons)
+      .flat()
+      .find((z) => z[0] === key);
+  if (!w) {
+    await say(ctx, "سلاح معتبر نیست.");
+    return;
+  }
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const stock = (
+      await client.query(
+        "SELECT quantity,damaged FROM game_weapon_stock WHERE telegram_id=$1 AND weapon_key=$2 FOR UPDATE",
+        [ctx.from.id, key],
+      )
+    ).rows[0];
+    if (!stock || Number(stock.quantity) - Number(stock.damaged || 0) < 1) {
+      await client.query("ROLLBACK");
+      await say(ctx, "این سلاح در انبار شما موجود نیست.");
+      return;
+    }
+    const price = Math.round(Number(w[2]) * 1.25);
+    await client.query(
+      "UPDATE game_weapon_stock SET quantity=quantity-1 WHERE telegram_id=$1 AND weapon_key=$2",
+      [ctx.from.id, key],
+    );
+    await client.query(
+      "INSERT INTO game_weapon_market(seller_id,weapon_key,quantity,unit_price) VALUES($1,$2,1,$3)",
+      [ctx.from.id, key, price],
+    );
+    await client.query("COMMIT");
+    await say(
+      ctx,
+      "📨 یک واحد " + weaponLabel(w) + " با قیمت " + money(price) + " برای فروش عرضه شد.",
+      K([
+        [{ text: "🛒 مشاهده‌ی بازار", callback_data: "weaponmarket" }],
+        [{ text: "📦 انبار", callback_data: "weaponlist" }],
+      ]),
+    );
+  } catch (e) {
+    await client.query("ROLLBACK");
+    throw e;
+  } finally {
+    client.release();
+  }
+});
+bot.callbackQuery(/^weaponmarket$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const p = await ready(ctx);
+  if (!p) return;
+  const r = await pool.query(
+    "SELECT m.id,m.seller_id,m.weapon_key,m.quantity,m.unit_price,g.country_id,g.display_name FROM game_weapon_market m JOIN game_players g ON g.telegram_id=m.seller_id WHERE m.status='open' AND m.seller_id<>$1 ORDER BY m.created_at LIMIT 30",
+    [ctx.from.id],
+  );
+  const rows = r.rows
+    .map((x) => {
+      const w = Object.values(countryWeapons)
+        .flat()
+        .find((z) => z[0] === x.weapon_key);
+      return w
+        ? [
+            {
+              text:
+                weaponLabel(w) +
+                " · " +
+                (country(x.country_id)?.[1] || x.display_name) +
+                " · " +
+                money(x.unit_price),
+              callback_data: "weaponmarketbuy:" + x.id,
+            },
+          ]
+        : null;
+    })
+    .filter(Boolean);
+  if (!rows.length)
+    rows.push([{ text: "📭 فعلاً سلاحی برای خرید عرضه نشده است.", callback_data: "noop" }]);
+  rows.push(
+    [{ text: "📦 عرضه از انبار خود", callback_data: "weaponlist" }],
+    [{ text: "↩️ تسلیحات", callback_data: "shopweapons" }],
+  );
+  await edit(
+    ctx,
+    "<b>🛒 بازار بین‌المللی تسلیحات</b>\n\nسلاح‌های عرضه‌شده توسط دیگر کشورها را بخرید. مبلغ معامله مستقیم به خزانه‌ی فروشنده واریز می‌شود.",
+    K(rows),
+  );
+});
+bot.callbackQuery(/^weaponmarketbuy:(\d+)$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const p = await ready(ctx);
+  if (!p) return;
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const offer = (
+      await client.query(
+        "SELECT * FROM game_weapon_market WHERE id=$1 AND status='open' FOR UPDATE",
+        [Number(ctx.match[1])],
+      )
+    ).rows[0];
+    if (!offer || Number(offer.seller_id) === Number(ctx.from.id)) {
+      await client.query("ROLLBACK");
+      await say(ctx, "این عرضه دیگر فعال نیست.");
+      return;
+    }
+    const buyer = (
+      await client.query("SELECT treasury FROM game_players WHERE telegram_id=$1 FOR UPDATE", [
+        ctx.from.id,
+      ])
+    ).rows[0];
+    if (!buyer || Number(buyer.treasury) < Number(offer.unit_price)) {
+      await client.query("ROLLBACK");
+      await say(ctx, "خزانه برای خرید این سلاح کافی نیست.");
+      return;
+    }
+    const seller = (
+      await client.query("SELECT treasury FROM game_players WHERE telegram_id=$1 FOR UPDATE", [
+        offer.seller_id,
+      ])
+    ).rows[0];
+    await client.query("UPDATE game_players SET treasury=treasury-$2 WHERE telegram_id=$1", [
+      ctx.from.id,
+      offer.unit_price,
+    ]);
+    await client.query("UPDATE game_players SET treasury=treasury+$2 WHERE telegram_id=$1", [
+      offer.seller_id,
+      offer.unit_price,
+    ]);
+    await client.query(
+      "INSERT INTO game_weapon_stock(telegram_id,weapon_key,quantity) VALUES($1,$2,$3) ON CONFLICT(telegram_id,weapon_key) DO UPDATE SET quantity=game_weapon_stock.quantity+EXCLUDED.quantity",
+      [ctx.from.id, offer.weapon_key, offer.quantity],
+    );
+    await client.query("UPDATE game_weapon_market SET status='sold' WHERE id=$1", [offer.id]);
+    const w = Object.values(countryWeapons)
+      .flat()
+      .find((z) => z[0] === offer.weapon_key);
+    await client.query(
+      "INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,$3,$4)",
+      [
+        ctx.from.id,
+        "خرید سلاح از کشور دیگر: " + (w?.[1] || offer.weapon_key),
+        -Number(offer.unit_price),
+        Number(buyer.treasury) - Number(offer.unit_price),
+      ],
+    );
+    await client.query(
+      "INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,$3,$4)",
+      [
+        offer.seller_id,
+        "فروش سلاح به کشور دیگر: " + (w?.[1] || offer.weapon_key),
+        Number(offer.unit_price),
+        Number(seller.treasury) + Number(offer.unit_price),
+      ],
+    );
+    await client.query("COMMIT");
+    await say(
+      ctx,
+      "✅ خرید انجام شد.\n\nسلاح به انبار تسلیحات شما اضافه شد.\nپرداخت: " +
+        money(offer.unit_price) +
+        "\nخزانه‌ی شما: " +
+        money(Number(buyer.treasury) - Number(offer.unit_price)),
+      K([
+        [{ text: "🛒 بازار تسلیحات", callback_data: "weaponmarket" }],
+        [{ text: "🛡️ تسلیحات", callback_data: "shopweapons" }],
+      ]),
+    );
+  } catch (e) {
+    await client.query("ROLLBACK");
+    throw e;
+  } finally {
+    client.release();
+  }
+});
+bot.callbackQuery(/^weaponinfo:([a-z0-9_]+)$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const p = await ready(ctx);
+  if (!p) return;
+  const w = getCountryWeapons(p.country_id).find((x) => x[0] === ctx.match[1]);
+  if (!w) {
+    await say(ctx, "این سلاح برای کشور شما تعریف نشده است.");
+    return;
+  }
+  const use = /ناو|زیردریایی|کشتی/.test(w[1])
+    ? "قدرت دریایی و کنترل آبراه‌ها"
+    : /توپ/.test(w[1])
+      ? "پشتیبانی آتش زمینی"
+      : /مسلسل/.test(w[1])
+        ? "آتش پشتیبانی و دفاع موضعی"
+        : "تجهیز نیروهای زمینی";
+  await edit(
+    ctx,
+    "<b>🛡️ " +
+      weaponLabel(w) +
+      "</b>\n\n💵 <b>قیمت هر واحد:</b> " +
+      money(w[2]) +
+      "\n📌 <b>کاربرد:</b> " +
+      use +
+      "\n🏭 <b>پیش‌نیاز:</b> کارخانه تسلیحات فعال\n📦 <b>محل تحویل:</b> انبار تسلیحات کشور\n🔧 <b>نگهداری:</b> تجهیزات مصرف‌شده در نیروها هزینه نگهداری دارند؛ موجودی انبار به‌تنهایی نیروی فعال محسوب نمی‌شود.\n\nبرای تولید یک واحد، تأیید کنید.",
+    K([
+      [{ text: "✅ تأیید تولید · " + money(w[2]), callback_data: "weaponbuy:" + w[0] }],
+      [{ text: "↩️ فهرست تسلیحات", callback_data: "shopweapons" }],
+    ]),
+  );
+});
+bot.callbackQuery(/^weaponbuy:([a-z0-9_]+)$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const p = await ready(ctx);
+  if (!p) return;
+  const w = getCountryWeapons(p.country_id).find((x) => x[0] === ctx.match[1]);
+  if (!w) {
+    await say(ctx, "این سلاح برای کشور شما تعریف نشده است.", nation());
+    return;
+  }
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const row = (
+        await client.query("SELECT treasury FROM game_players WHERE telegram_id=$1 FOR UPDATE", [
+          ctx.from.id,
+        ])
+      ).rows[0],
+      factory = (
+        await client.query(
+          "SELECT level FROM game_buildings WHERE telegram_id=$1 AND building_key='arms_factory' FOR UPDATE",
+          [ctx.from.id],
+        )
+      ).rows[0];
+    if (!factory || Number(factory.level) < 1) {
+      await client.query("ROLLBACK");
+      await say(
+        ctx,
+        "برای تولید سلاح ابتدا کارخانه تسلیحات بسازید.",
+        K([
+          [{ text: "🏭 ساخت کارخانه", callback_data: "shopbuy:arms_factory" }],
+          [{ text: "↩️ تسلیحات", callback_data: "shopweapons" }],
+        ]),
+      );
+      return;
+    }
+    if (Number(row.treasury) < w[2]) {
+      await client.query("ROLLBACK");
+      await say(ctx, "خزانه برای تولید این سلاح کافی نیست.", nation());
+      return;
+    }
+    await client.query("UPDATE game_players SET treasury=treasury-$2 WHERE telegram_id=$1", [
+      ctx.from.id,
+      w[2],
+    ]);
+    await client.query(
+      "INSERT INTO game_weapon_stock(telegram_id,weapon_key,quantity) VALUES($1,$2,1) ON CONFLICT(telegram_id,weapon_key) DO UPDATE SET quantity=game_weapon_stock.quantity+1",
+      [ctx.from.id, w[0]],
+    );
+    await client.query(
+      "INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,$3,$4)",
+      [ctx.from.id, "تولید " + w[1], -w[2], Number(row.treasury) - w[2]],
+    );
+    await client.query("COMMIT");
+    await edit(
+      ctx,
+      "🛡️ یک واحد " +
+        weaponLabel(w) +
+        " به انبار تسلیحات افزوده شد.\nهزینه: " +
+        money(w[2]) +
+        "\nخزانه: " +
+        money(Number(row.treasury) - w[2]),
+      K([
+        [{ text: "🛡️ ادامه تسلیحات", callback_data: "shopweapons" }],
+        [{ text: "🏛️ دربار", callback_data: "m:n" }],
+      ]),
+    );
+  } catch (e) {
+    await client.query("ROLLBACK");
+    throw e;
+  } finally {
+    client.release();
+  }
+});
+
+bot.callbackQuery(/^start$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  await chooseCountry(ctx);
+});
+bot.callbackQuery(
+  /^cc:(all|europe|asia|africa|north_america|south_america|oceania)$/,
+  async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await countryMenu(ctx, ctx.match[1], 0, true);
+  },
+);
+bot.callbackQuery(
+  /^cp:(all|europe|asia|africa|north_america|south_america|oceania):(\d+)$/,
+  async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await countryMenu(ctx, ctx.match[1], Number(ctx.match[2]), true);
+  },
+);
+bot.callbackQuery(/^cs$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  pendingCountrySearch.add(ctx.from.id);
+  await ctx.reply(
+    "🔎 <b>جستجوی کشور</b>\n\nنام کشور یا بخشی از نام آن را ارسال کنید. برای لغو، /cancel را بفرستید.",
+    { parse_mode: "HTML", reply_markup: { force_reply: true, selective: true } },
+  );
+});
+bot.callbackQuery(/^noop$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+});
+bot.command("cancel", async (ctx) => {
+  pendingCountrySearch.delete(ctx.from.id);
+  pendingTradeInput.delete(ctx.from.id);
+  await say(ctx, "عملیات جاری لغو شد.", main());
+});
+bot.on("message:text", async (ctx) => {
+  const menuText = ctx.message.text.trim();
+  if (String(ctx.from.id) === ownerTelegramId) {
+    if (menuText === "🌐 پنل سازمان بین‌الملل" || menuText === "🏠 منوی اصلی") {
+      await ctx.reply("منوی سازمان بین‌الملل", { reply_markup: adminReply() });
+      await showAdminPanel(ctx);
+      return;
+    }
+    if (menuText === "🪪 درخواست‌های کشور") {
+      await ctx.reply("درخواست‌های کشور:", {
+        reply_markup: K([[{ text: "🪪 باز کردن درخواست‌ها", callback_data: "intlrequests" }]]),
+      });
+      return;
+    }
+    if (menuText === "🔍 بازرسی") {
+      await ctx.reply("بازرسی کشورها:", {
+        reply_markup: K([[{ text: "🔍 فهرست بازیکنان", callback_data: "intlplayers" }]]),
+      });
+      return;
+    }
+    if (menuText === "💳 وام‌دهی") {
+      await ctx.reply("وام‌دهی:", {
+        reply_markup: K([[{ text: "💳 دفتر وام‌ها", callback_data: "intlloans" }]]),
+      });
+      return;
+    }
+    if (menuText === "📦 افزودن منابع") {
+      await ctx.reply("افزودن منابع:", {
+        reply_markup: K([[{ text: "📦 انتخاب کشور", callback_data: "intlresources" }]]),
+      });
+      return;
+    }
+  }
+  if (menuText === "🏛️ دربار و کشور") {
+    const p = await ready(ctx);
+    if (p) {
+      await ctx.reply("دربار و کشور — دکمه‌های پایین را برای ورود به بخش‌ها بزنید.", {
+        reply_markup: nationReply(),
+      });
+      await say(ctx, "🏛️ دربار و کشور", nation());
+    }
+    return;
+  }
+  if (menuText === "🏪 فروشگاه") {
+    const p = await ready(ctx);
+    if (p) await openStore(ctx);
+    return;
+  }
+  if (menuText === "🏠 منوی اصلی") {
+    if (String(ctx.from.id) === ownerTelegramId) {
+      await ctx.reply("منوی سازمان بین‌الملل", { reply_markup: adminReply() });
+      await showAdminPanel(ctx);
+      return;
+    }
+    await ctx.reply("منوی اصلی شاه شاهان", { reply_markup: mainReply() });
+    await say(ctx, "منوی اصلی شاه شاهان", main());
+    return;
+  }
+  if (menuText === "📚 راهنما") {
+    await ctx.reply(
+      "راهنمای شاه شاهان\n۱) کشور را انتخاب و تأسیس کنید.\n۲) اقتصاد و خدمات را از دربار اداره کنید.\n۳) هر سه ساعت تسویه‌ی مالی انجام می‌شود.\n۴) با دیگر کشورها تجارت و پیمان برقرار کنید.",
+      { parse_mode: "HTML", reply_markup: mainReply() },
+    );
+    return;
+  }
+  if (menuText === "📜 تسویه‌ی نوبت") {
+    const p = await ready(ctx);
+    if (p) {
+      const result = await settleOne(ctx.from.id);
+      await ctx.reply(
+        result
+          ? `📜 تسویه‌ی نوبت\nتعداد: ${result.ticks}\nدرآمد سازه‌ها: ${money(result.buildingIncome)}\nتغییر خزانه: ${money(result.net)}\nمانده: ${money(result.balance)}`
+          : "هنوز زمان تسویه‌ی سه‌ساعته نرسیده است.",
+        { reply_markup: nationReply() },
+      );
+    }
+    return;
+  }
+  const menuMap = {
+    "📊 وضعیت کشور": "status",
+    "💰 خزانه": "money",
+    "🧾 مالیات": "tax",
+    "🏭 تولید": "industry",
+    "👥 جمعیت": "people",
+    "🛡️ ارتش": "army",
+    "🤝 دیپلماسی": "diplomacy",
+    "🛒 تجارت و بورس": "stocks",
+    "⚙️ تنظیمات": "settings",
+    "🎯 ستاد توسعه و اقدامات راهبردی": "strategy",
+  };
+  if (menuMap[menuText]) {
+    const p = await ready(ctx);
+    if (!p) return;
+    const k = menuMap[menuText];
+    if (k === "strategy") {
+      await ctx.reply(
+        "<b>🎯 ستاد توسعه و اقدامات راهبردی</b>\n\nاقدامات راهبردی کشور را انتخاب کنید.",
+        { parse_mode: "HTML", reply_markup: strategicMenu() },
+      );
+      return;
+    }
+    if (k === "status") {
+      await ctx.reply(await status(p), { parse_mode: "HTML", reply_markup: nationReply() });
+      return;
+    }
+    if (k === "money") {
+      const d = calc(p);
+      await ctx.reply(
+        `<b>💰 خزانه و دفتر حساب</b>\nمانده: ${money(p.treasury)}\nدرآمد روزانه: ${money(d.income)}\nهزینه‌ی روزانه: ${money(d.expense)}`,
+        { parse_mode: "HTML", reply_markup: nationReply() },
+      );
+      await ctx.reply("دفتر حساب:", {
+        reply_markup: K([[{ text: "📒 دفتر حساب", callback_data: "ledger" }]]),
+      });
+      return;
+    }
+    if (k === "tax") {
+      await ctx.reply(`<b>🧾 مالیات و تعرفه</b>\nمالیات: ${p.tax_rate}٪ | تعرفه: ${p.tariff}٪`, {
+        parse_mode: "HTML",
+        reply_markup: nationReply(),
+      });
+      await ctx.reply("تنظیم مالیات و تعرفه:", {
+        reply_markup: K([
+          [
+            { text: "➖ مالیات", callback_data: "adj:tax:-1" },
+            { text: "➕ مالیات", callback_data: "adj:tax:1" },
+          ],
+          [
+            { text: "➖ تعرفه", callback_data: "adj:tariff:-1" },
+            { text: "➕ تعرفه", callback_data: "adj:tariff:1" },
+          ],
+        ]),
+      });
+      return;
+    }
+    if (k === "industry") {
+      await ctx.reply(
+        `<b>🏭 تولید و منابع</b>\nصنعت: ${p.industry} | کشاورزی: ${p.agriculture}\nغله: ${p.grain} | زغال: ${p.coal} | آهن: ${p.iron} | پارچه: ${p.cloth}`,
+        { parse_mode: "HTML", reply_markup: nationReply() },
+      );
+      await ctx.reply("توسعه‌ی تولید:", {
+        reply_markup: K([
+          [{ text: "🏭 توسعه‌ی صنعت", callback_data: "build:industry" }],
+          [{ text: "🌾 توسعه‌ی کشاورزی", callback_data: "build:agriculture" }],
+          [{ text: "🛤 بهبود زیرساخت", callback_data: "build:infrastructure" }],
+        ]),
+      });
+      return;
+    }
+    if (k === "people") {
+      await ctx.reply(
+        `<b>👥 جمعیت و خدمات</b>\nجمعیت: ${fmt(p.population)}\nآموزش: ${p.education} | سلامت: ${p.health}\nحقوق متوسط: ${money(p.wage)}\nخدمات عمومی با منابع کشور پشتیبانی می‌شود؛ هزینه‌ی نقدی روزانه ندارد.`,
+        { parse_mode: "HTML", reply_markup: nationReply() },
+      );
+      await ctx.reply("تنظیم حقوق و خدمات:", {
+        reply_markup: K([
+          [
+            { text: "➖ حقوق", callback_data: "adj:wage:-10" },
+            { text: "➕ حقوق", callback_data: "adj:wage:10" },
+          ],
+          [
+            { text: "➖ خدمات", callback_data: "adj:service_budget:-100" },
+            { text: "➕ خدمات", callback_data: "adj:service_budget:100" },
+          ],
+        ]),
+      });
+      return;
+    }
+    if (k === "army") {
+      await ctx.reply(
+        `<b>🛡️ نیروهای مسلح</b>\n🪖 زمینی: ${fmt(p.army)} واحد لشکر/تیپ\n✈️ هوایی: ${fmt(p.air_force || 0)} گروه هوایی\n⚓ دریایی: ${fmt(p.navy)} واحد ناوگانی\n🛡️ پدافند: ${fmt(p.air_defense || 0)} آتشبار\n🎖️ روحیه: ${p.morale}٪`,
+        { parse_mode: "HTML", reply_markup: nationReply() },
+      );
+      await ctx.reply(
+        "🧭 <b>راهنمای تجهیز نیروها</b>\n\n" +
+          Object.values(militaryDetails).join("\n\n") +
+          "\n\n👇 نوع تجهیز را انتخاب کنید:",
+        {
+          parse_mode: "HTML",
+          reply_markup: K([
+            [{ text: "🪖 واحد زمینی — $28,000", callback_data: "mil:army" }],
+            [{ text: "✈️ گروه هوایی — $14,000", callback_data: "mil:air" }],
+            [{ text: "⚓ واحد ناوگانی — $180,000", callback_data: "mil:navy" }],
+            [{ text: "🛡️ آتشبار پدافند — $9,000", callback_data: "mil:defense" }],
+          ]),
+        },
+      );
+      return;
+    }
+    if (k === "diplomacy") {
+      const incoming = (
+        await pool.query(
+          "SELECT COUNT(*)::int AS n FROM game_relations WHERE other_id=$1 AND relation LIKE 'proposal_%'",
+          [ctx.from.id],
+        )
+      ).rows[0].n;
+      const contracts = (
+        await pool.query(
+          "SELECT COUNT(*)::int AS n FROM game_trade_contracts WHERE (recipient_id=$1 OR proposer_id=$1) AND status='pending'",
+          [ctx.from.id],
+        )
+      ).rows[0].n;
+      await ctx.reply(
+        "<b>🌐 دیپلماسی و روابط بین‌الملل</b>\n\n📨 پیشنهادهای دیپلماتیک در انتظار: " +
+          incoming +
+          "\n📋 قراردادهای تجاری در انتظار: " +
+          contracts +
+          "\n\nاز بخش موردنظر انتخاب کنید:",
+        {
+          parse_mode: "HTML",
+          reply_markup: K([
+            [{ text: "📈 بورس بین‌المللی کالاها · نفت، طلا و غلات", callback_data: "n:stocks" }],
+            [{ text: "📋 قراردادها و پیمان‌های من · پیگیری", callback_data: "tc:center" }],
+            [{ text: "📜 پیشنهاد قرارداد تجاری", callback_data: "tradeoffer" }],
+            [{ text: "🏅 خرید، فروش و انتقال تسلیحات", callback_data: "shopweapons" }],
+            [{ text: "🚩 مأموریت راهبردی · اعزام هیئت", callback_data: "dipmissions" }],
+            [{ text: "✉️ پیشنهادهای دیپلماتیک دریافتی", callback_data: "dipinbox" }],
+            [{ text: "📜 دفتر روابط و سوابق مذاکرات", callback_data: "diprelations" }],
+            [{ text: "🏛️ سفارت‌ها و ارتقای روابط", callback_data: "dipembassies" }],
+            [{ text: "🤝 اتحادها و تحریم‌های اقتصادی", callback_data: "dipcountries" }],
+            [{ text: "↩️ بازگشت به دربار", callback_data: "m:n" }],
+          ]),
+        },
+      );
+      return;
+    }
+    if (k === "stocks") {
+      await ctx.reply("🛒 تجارت و بورس کشورها", { reply_markup: nationReply() });
+      await say(
+        ctx,
+        "🛒 بازار بین کشورها",
+        K([
+          [{ text: "📈 ورود به بورس و کالا", callback_data: "n:stocks" }],
+          [{ text: "📜 مرکز قراردادهای تجاری", callback_data: "tc:center" }],
+        ]),
+      );
+      return;
+    }
+    if (k === "settings") {
+      await ctx.reply("⚙️ تنظیمات اداره", { reply_markup: nationReply() });
+      await ctx.reply("مقادیر اداره:", {
+        reply_markup: K([
+          [
+            { text: "➖ مالیات", callback_data: "adj:tax:-1" },
+            { text: "➕ مالیات", callback_data: "adj:tax:1" },
+          ],
+          [
+            { text: "➖ تعرفه", callback_data: "adj:tariff:-1" },
+            { text: "➕ تعرفه", callback_data: "adj:tariff:1" },
+          ],
+          [
+            { text: "➖ حقوق", callback_data: "adj:wage:-10" },
+            { text: "➕ حقوق", callback_data: "adj:wage:10" },
+          ],
+          [
+            { text: "➖ خدمات", callback_data: "adj:service_budget:-100" },
+            { text: "➕ خدمات", callback_data: "adj:service_budget:100" },
+          ],
+        ]),
+      });
+      return;
+    }
+  }
+  const tradeState = pendingTradeInput.get(ctx.from.id);
+  if (tradeState?.marketAsset && !ctx.message.text.startsWith("/")) {
+    const val = Number(ctx.message.text.trim().replace(/[٬,]/g, ""));
+    if (!Number.isSafeInteger(val) || val <= 0) {
+      await ctx.reply("لطفاً یک عدد صحیح مثبت وارد کنید.");
+      return;
+    }
+    const p = await ready(ctx);
+    if (!p) {
+      pendingTradeInput.delete(ctx.from.id);
+      return;
+    }
+    if (tradeState.step === "quantity") {
+      const h =
+        tradeState.assetType === "stock"
+          ? (
+              await pool.query(
+                "SELECT shares AS qty FROM game_stock_holdings WHERE telegram_id=$1 AND symbol=$2",
+                [ctx.from.id, tradeState.symbol],
+              )
+            ).rows[0]
+          : (
+              await pool.query(
+                "SELECT units AS qty FROM game_commodity_holdings WHERE telegram_id=$1 AND symbol=$2",
+                [ctx.from.id, tradeState.symbol],
+              )
+            ).rows[0];
+      if (!h || val > Number(h.qty)) {
+        await ctx.reply("موجودی کافی نیست. حداکثر مقدار قابل عرضه: " + fmt(h?.qty || 0));
+        return;
+      }
+      tradeState.quantity = val;
+      tradeState.step = "price";
+      pendingTradeInput.set(ctx.from.id, tradeState);
+      await ctx.reply(
+        "<b>مرحله ۲ از ۲ — قیمت فروش</b>\nمقدار: " +
+          fmt(val) +
+          "\nقیمت دلاری هر واحد را وارد کنید. ارزش کل سفارش: مقدار × قیمت.",
+        { parse_mode: "HTML", reply_markup: { force_reply: true, selective: true } },
+      );
+      return;
+    }
+    if (tradeState.step === "price") {
+      if (val > 100000000) {
+        await ctx.reply("قیمت واحد خیلی بالاست؛ مبلغ پایین‌تری وارد کنید.");
+        return;
+      }
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        if (tradeState.assetType === "stock") {
+          const h = (
+            await client.query(
+              "SELECT shares FROM game_stock_holdings WHERE telegram_id=$1 AND symbol=$2 FOR UPDATE",
+              [ctx.from.id, tradeState.symbol],
+            )
+          ).rows[0];
+          if (!h || Number(h.shares) < tradeState.quantity) {
+            await client.query("ROLLBACK");
+            pendingTradeInput.delete(ctx.from.id);
+            await ctx.reply("موجودی سهام تغییر کرده؛ سفارش لغو شد.");
+            return;
+          }
+          await client.query(
+            "UPDATE game_stock_holdings SET shares=shares-$3 WHERE telegram_id=$1 AND symbol=$2",
+            [ctx.from.id, tradeState.symbol, tradeState.quantity],
+          );
+        } else {
+          const h = (
+            await client.query(
+              "SELECT units FROM game_commodity_holdings WHERE telegram_id=$1 AND symbol=$2 FOR UPDATE",
+              [ctx.from.id, tradeState.symbol],
+            )
+          ).rows[0];
+          if (!h || Number(h.units) < tradeState.quantity) {
+            await client.query("ROLLBACK");
+            pendingTradeInput.delete(ctx.from.id);
+            await ctx.reply("موجودی کالا تغییر کرده؛ سفارش لغو شد.");
+            return;
+          }
+          await client.query(
+            "UPDATE game_commodity_holdings SET units=units-$3 WHERE telegram_id=$1 AND symbol=$2",
+            [ctx.from.id, tradeState.symbol, tradeState.quantity],
+          );
+        }
+        const o = (
+          await client.query(
+            "INSERT INTO game_exchange_orders(seller_id,asset_type,symbol,quantity,unit_price) VALUES($1,$2,$3,$4,$5) RETURNING id",
+            [ctx.from.id, tradeState.assetType, tradeState.symbol, tradeState.quantity, val],
+          )
+        ).rows[0];
+        await client.query("COMMIT");
+        pendingTradeInput.delete(ctx.from.id);
+        await ctx.reply(
+          "📤 سفارش فروش به بورس کشورها ثبت شد.\n\nنماد: " +
+            tradeState.symbol +
+            "\nمقدار: " +
+            fmt(tradeState.quantity) +
+            "\nقیمت واحد: " +
+            money(val) +
+            "\nارزش کل: " +
+            money(tradeState.quantity * val) +
+            "\n\nدارایی تا فروش یا لغو سفارش در امانت بازار است.",
+          {
+            reply_markup: K([
+              [{ text: "📈 مشاهده‌ی سفارش‌ها", callback_data: "n:stocks" }],
+              [{ text: "💼 پشتوانه بورسی", callback_data: "assetportfolio" }],
+            ]),
+          },
+        );
+      } catch (e) {
+        await client.query("ROLLBACK");
+        throw e;
+      } finally {
+        client.release();
+      }
+      return;
+    }
+  }
+  if (tradeState && tradeState.step?.startsWith("contract_") && !ctx.message.text.startsWith("/")) {
+    const val = Number(ctx.message.text.trim().replace(/[٬,]/g, ""));
+    if (!Number.isSafeInteger(val) || val <= 0) {
+      await ctx.reply("لطفاً عدد صحیح مثبت وارد کنید.");
+      return;
+    }
+    const p = await ready(ctx);
+    if (!p) {
+      pendingTradeInput.delete(ctx.from.id);
+      return;
+    }
+    if (tradeState.step === "contract_offer_qty") {
+      if (
+        val >
+        Number(tradeState.offer_resource === "cash" ? p.treasury : p[tradeState.offer_resource])
+      ) {
+        await ctx.reply(
+          "موجودی کافی نیست؛ حداکثر " +
+            fmt(tradeState.offer_resource === "cash" ? p.treasury : p[tradeState.offer_resource]) +
+            " وارد کنید.",
+        );
+        return;
+      }
+      tradeState.offer_quantity = val;
+      tradeState.step = "contract_choose_want";
+      pendingTradeInput.set(ctx.from.id, tradeState);
+      await edit(
+        ctx,
+        "مرحله ۲: منبعی را که در مقابل می‌خواهید دریافت کنید انتخاب کنید.",
+        K([
+          [
+            { text: "🌾 غله", callback_data: "tc:want:grain" },
+            { text: "🪨 زغال", callback_data: "tc:want:coal" },
+          ],
+          [
+            { text: "⛓ آهن", callback_data: "tc:want:iron" },
+            { text: "🧵 پارچه", callback_data: "tc:want:cloth" },
+          ],
+          [
+            { text: "🛢 نفت", callback_data: "tc:want:oil" },
+            { text: "🪙 طلا", callback_data: "tc:want:gold_stock" },
+          ],
+          [{ text: "💵 دلار نقدی", callback_data: "tc:want:cash" }],
+        ]),
+      );
+      return;
+    }
+    if (tradeState.step === "contract_want_qty") {
+      tradeState.want_quantity = val;
+      tradeState.step = "contract_choose_route";
+      pendingTradeInput.set(ctx.from.id, tradeState);
+      await edit(
+        ctx,
+        "مرحله ۳: مسیر انتقال را انتخاب کنید.\n\n🚢 دریایی: ارزان‌ترین (۱ دلار به‌ازای هر واحد)\n🚆 زمینی: متوسط (۲ دلار به‌ازای هر واحد)\n✈️ هوایی: سریع‌ترین و گران‌ترین (۴ دلار به‌ازای هر واحد)",
+        K([
+          [{ text: "🚢 دریایی", callback_data: "tc:route:sea" }],
+          [{ text: "🚆 زمینی", callback_data: "tc:route:land" }],
+          [{ text: "✈️ هوایی", callback_data: "tc:route:air" }],
+        ]),
+      );
+      return;
+    }
+  }
+  if (tradeState && !ctx.message.text.startsWith("/")) {
+    const val = Number(ctx.message.text.trim().replace(/[٬,]/g, ""));
+    if (!Number.isSafeInteger(val) || val <= 0) {
+      await ctx.reply("لطفاً یک عدد صحیح مثبت ارسال کنید.");
+      return;
+    }
+    const p = await ready(ctx);
+    if (!p) {
+      pendingTradeInput.delete(ctx.from.id);
+      return;
+    }
+    if (tradeState.step === "quantity") {
+      if (val > Number(p[tradeState.resource])) {
+        await ctx.reply(
+          "موجودی کافی نیست. مقدار کمتر از " + fmt(p[tradeState.resource]) + " وارد کنید.",
+        );
+        return;
+      }
+      tradeState.quantity = val;
+      tradeState.step = "price";
+      pendingTradeInput.set(ctx.from.id, tradeState);
+      await ctx.reply(
+        "<b>مرحله ۳ از ۳ — قیمت واحد</b>\nمقدار: " +
+          fmt(val) +
+          " " +
+          resourceNames[tradeState.resource] +
+          "\nقیمت هر واحد را به دلار وارد کنید. مبلغ کل: تعداد × قیمت واحد.",
+        { parse_mode: "HTML", reply_markup: { force_reply: true, selective: true } },
+      );
+      return;
+    }
+    if (tradeState.step === "price") {
+      if (val > 100000000) {
+        await ctx.reply("قیمت واحد بیش از حد بزرگ است؛ مبلغ کمتری وارد کنید.");
+        return;
+      }
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        const locked = (
+          await client.query(
+            "SELECT " +
+              tradeState.resource +
+              " AS stock FROM game_players WHERE telegram_id=$1 FOR UPDATE",
+            [ctx.from.id],
+          )
+        ).rows[0];
+        if (!locked || Number(locked.stock) < tradeState.quantity) {
+          await client.query("ROLLBACK");
+          pendingTradeInput.delete(ctx.from.id);
+          await ctx.reply("موجودی منبع تغییر کرده و کافی نیست. دوباره عرضه را آغاز کنید.");
+          return;
+        }
+        await client.query(
+          "UPDATE game_players SET " +
+            tradeState.resource +
+            "=" +
+            tradeState.resource +
+            "-$2 WHERE telegram_id=$1",
+          [ctx.from.id, tradeState.quantity],
+        );
+        const offer = (
+          await client.query(
+            "INSERT INTO game_trade(seller_id,resource,quantity,unit_price) VALUES($1,$2,$3,$4) RETURNING id",
+            [ctx.from.id, tradeState.resource, tradeState.quantity, val],
+          )
+        ).rows[0];
+        await client.query("COMMIT");
+        pendingTradeInput.delete(ctx.from.id);
+        await ctx.reply(
+          "📦 پیشنهاد در بازار ثبت شد.\n\nمنبع: " +
+            resourceNames[tradeState.resource] +
+            "\nمقدار: " +
+            fmt(tradeState.quantity) +
+            "\nقیمت واحد: " +
+            money(val) +
+            "\nارزش کل: " +
+            money(tradeState.quantity * val) +
+            "\n\nمنابع تا زمان فروش در امانت بازار نگه داشته می‌شوند.",
+          {
+            reply_markup: K([
+              [{ text: "🛒 مشاهده‌ی بازار", callback_data: "n:trade" }],
+              [{ text: "🏛️ دربار", callback_data: "m:n" }],
+            ]),
+          },
+        );
+      } catch (e) {
+        await client.query("ROLLBACK");
+        throw e;
+      } finally {
+        client.release();
+      }
+      return;
+    }
+  }
+  if (!pendingCountrySearch.has(ctx.from.id) || ctx.message.text.startsWith("/")) return;
+  pendingCountrySearch.delete(ctx.from.id);
+  const q = ctx.message.text.trim().toLocaleLowerCase("fa");
+  const matches = countries
+    .filter((c) => (c[1] + " " + c[0] + " " + c[2]).toLocaleLowerCase("fa").includes(q))
+    .sort((a, b) => a[1].localeCompare(b[1], "fa"))
+    .slice(0, 20);
+  if (!matches.length) {
+    await say(
+      ctx,
+      "کشوری با این عبارت پیدا نشد. دوباره جستجو کنید.",
+      K([
+        [{ text: "🔎 جستجوی دوباره", callback_data: "cs" }],
+        [{ text: "↩️ قاره‌ها", callback_data: "start" }],
+      ]),
+    );
+    return;
+  }
+  const occupiedRows = (
+    await pool.query(
+      "SELECT country_id FROM game_players WHERE approved=TRUE AND country_id=ANY($1::text[])",
+      [matches.map((c) => c[0])],
+    )
+  ).rows;
+  const occupied = new Set(occupiedRows.map((x) => x.country_id));
+  const rows = matches.map((c) => [
+    {
+      text: (occupied.has(c[0]) ? "🔒 " : "🌍 ") + c[1],
+      callback_data: occupied.has(c[0]) ? "lockedcountry:" + c[0] : "c:" + c[0],
+    },
+  ]);
+  rows.push(
+    [{ text: "🔎 جستجوی دوباره", callback_data: "cs" }],
+    [{ text: "↩️ قاره‌ها", callback_data: "start" }],
+  );
+  await say(ctx, "<b>نتایج جستجو</b>\n\nنتایج: " + matches.length, K(rows));
+});
+bot.callbackQuery(/^lockedcountry:(.+)$/, async (ctx) => {
+  await ctx.answerCallbackQuery({
+    text: "🔒 این کشور در اختیار یک بازیکن است و امکان درخواست آن وجود ندارد.",
+    show_alert: true,
+  });
+});
+bot.callbackQuery(/^c:(.+)$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  if (String(ctx.from.id) === ownerTelegramId) {
+    await say(
+      ctx,
+      "حساب سازمان بین‌الملل کشور انتخاب نمی‌کند؛ از /admin برای مدیریت بازی استفاده کنید.",
+    );
+    return;
+  }
+  const c = country(ctx.match[1]);
+  if (!c) return;
+  const occupied = (
+    await pool.query(
+      "SELECT telegram_id FROM game_players WHERE country_id=$1 AND approved=TRUE LIMIT 1",
+      [c[0]],
+    )
+  ).rows[0];
+  if (occupied) {
+    await say(
+      ctx,
+      "🔒 این کشور در اختیار بازیکن دیگری است و نمی‌توانید برای آن درخواست بدهید.",
+      K([[{ text: "🌍 انتخاب کشور دیگر", callback_data: "start" }]]),
+    );
+    return;
+  }
+  await pool.query(
+    "UPDATE game_players SET selected_country_id=$2 WHERE telegram_id=$1 AND approved=FALSE",
+    [ctx.from.id, c[0]],
+  );
+  await say(
+    ctx,
+    "<b>تأیید انتخاب کشور</b>\n\nآیا می‌خواهید درخواست تصاحب این کشور را برای مدیر بازی ارسال کنید؟\n\nنام و مشخصات کشور تا زمان تأیید نمایش داده نمی‌شود.",
+    K([
+      [{ text: "✅ تأیید و ارسال درخواست", callback_data: "request_country" }],
+      [{ text: "🔄 انتخاب دوباره", callback_data: "start" }],
+    ]),
+  );
+});
+bot.callbackQuery(/^request_country$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const p = await get(ctx.from.id);
+  if (!p || p.approved || !p.selected_country_id) {
+    await say(
+      ctx,
+      "ابتدا یک کشور انتخاب کنید.",
+      K([[{ text: "انتخاب کشور", callback_data: "start" }]]),
+    );
+    return;
+  }
+  const pending = (
+    await pool.query(
+      "SELECT id FROM game_country_requests WHERE telegram_id=$1 AND status='pending' ORDER BY id DESC LIMIT 1",
+      [ctx.from.id],
+    )
+  ).rows[0];
+  if (pending) {
+    await say(ctx, "درخواست شما قبلاً ارسال شده و در انتظار بررسی مدیر است.");
+    return;
+  }
+  const c = country(p.selected_country_id);
+  if (!c) return;
+  const occupied = (
+    await pool.query(
+      "SELECT telegram_id FROM game_players WHERE country_id=$1 AND approved=TRUE LIMIT 1",
+      [c[0]],
+    )
+  ).rows[0];
+  if (occupied) {
+    await pool.query("UPDATE game_players SET selected_country_id=NULL WHERE telegram_id=$1", [
+      ctx.from.id,
+    ]);
+    await say(
+      ctx,
+      "🔒 این کشور همین حالا به بازیکن دیگری واگذار شده است. لطفاً کشور دیگری انتخاب کنید.",
+      K([[{ text: "🌍 انتخاب کشور دیگر", callback_data: "start" }]]),
+    );
+    return;
+  }
+  const req = (
+    await pool.query(
+      "INSERT INTO game_country_requests(telegram_id,country_id) VALUES($1,$2) RETURNING id",
+      [ctx.from.id, c[0]],
+    )
+  ).rows[0];
+  const playerName =
+    [ctx.from.first_name, ctx.from.last_name].filter(Boolean).join(" ") || "Player";
+  try {
+    await bot.api.sendMessage(
+      ownerTelegramId,
+      "🏛 درخواست تصاحب کشور — شاه شاهان\n\n👤 بازیکن: " +
+        playerName +
+        "\n🆔 شناسه: " +
+        ctx.from.id +
+        "\n🌐 کشور: " +
+        c[1] +
+        "\n👑 فرمانروا: " +
+        c[2] +
+        "\n🏙 پایتخت: " +
+        c[3] +
+        "\n👥 جمعیت: " +
+        fmt(c[4]) +
+        "\n💵 خزانه‌ی آغازین: " +
+        money(c[5]),
+      {
+        reply_markup: K([
+          [{ text: "✅ تأیید و واگذاری", callback_data: "approve_country:" + req.id }],
+          [{ text: "❌ رد درخواست", callback_data: "reject_country:" + req.id }],
+        ]),
+      },
+    );
+  } catch (e) {
+    await pool.query(
+      "UPDATE game_country_requests SET status='delivery_failed',processed_at=NOW() WHERE id=$1",
+      [req.id],
+    );
+    await say(ctx, "ارسال درخواست به مدیر بازی انجام نشد. لطفاً بعداً تلاش کنید.");
+    return;
+  }
+  await say(ctx, "📨 درخواست شما برای مدیر بازی ارسال شد. پس از بررسی، نتیجه اعلام می‌شود.");
+});
+bot.callbackQuery(/^approve_country:(\d+)$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  if (String(ctx.from.id) !== ownerTelegramId) {
+    await say(ctx, "این عملیات فقط برای مدیر بازی مجاز است.");
+    return;
+  }
+  const id = Number(ctx.match[1]),
+    client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const req = (
+      await client.query("SELECT * FROM game_country_requests WHERE id=$1 FOR UPDATE", [id])
+    ).rows[0];
+    if (!req || req.status !== "pending") {
+      await client.query("ROLLBACK");
+      await say(ctx, "این درخواست قبلاً بررسی شده یا وجود ندارد.");
+      return;
+    }
+    const c = country(req.country_id);
+    if (!c) {
+      await client.query("ROLLBACK");
+      await say(ctx, "کشور پیدا نشد.");
+      return;
+    }
+    const taken = (
+      await client.query(
+        "SELECT telegram_id FROM game_players WHERE country_id=$1 AND approved=TRUE AND telegram_id<>$2 LIMIT 1",
+        [c[0], req.telegram_id],
+      )
+    ).rows[0];
+    if (taken) {
+      await client.query(
+        "UPDATE game_country_requests SET status='rejected',processed_at=NOW() WHERE id=$1",
+        [id],
+      );
+      await client.query("COMMIT");
+      try {
+        await bot.api.sendMessage(
+          req.telegram_id,
+          "❌ این کشور قبلاً واگذار شده است؛ درخواست رد شد.",
+        );
+      } catch {}
+      await say(ctx, "کشور قبلاً واگذار شده بود؛ درخواست رد شد.");
+      return;
+    }
+    await client.query(
+      "UPDATE game_players SET country_id=$2,ruler=$3,government=$4,population=$5,treasury=$6,oil_field_level=$7,oil_reserves=$8,oil_stock=$9,oil_initialized=TRUE,approved=TRUE,last_settlement=NOW() WHERE telegram_id=$1",
+      [
+        req.telegram_id,
+        c[0],
+        c[2],
+        c[1],
+        c[4],
+        c[5],
+        oilField(c[0]).daily,
+        oilField(c[0]).reserves,
+        oilStartingStock(c[0]),
+      ],
+    );
+    await client.query(
+      "UPDATE game_country_requests SET status='approved',processed_at=NOW() WHERE id=$1",
+      [id],
+    );
+    await client.query(
+      "INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,'خزانه‌ی آغاز حکومت',$2,$2)",
+      [req.telegram_id, c[5]],
+    );
+    await client.query("COMMIT");
+    try {
+      await bot.api.sendMessage(
+        req.telegram_id,
+        "✅ درخواست کشور شما تأیید شد.\n\nحکومت شما در " + c[1] + " آغاز شد.",
+        { reply_markup: nation() },
+      );
+    } catch {}
+    await edit(ctx, "✅ درخواست تأیید شد و کشور واگذار شد.");
+  } catch (e) {
+    await client.query("ROLLBACK");
+    throw e;
+  } finally {
+    client.release();
+  }
+});
+bot.callbackQuery(/^reject_country:(\d+)$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  if (String(ctx.from.id) !== ownerTelegramId) {
+    await say(ctx, "این عملیات فقط برای مدیر بازی مجاز است.");
+    return;
+  }
+  const id = Number(ctx.match[1]);
+  const req = (
+    await pool.query(
+      "UPDATE game_country_requests SET status='rejected',processed_at=NOW() WHERE id=$1 AND status='pending' RETURNING telegram_id",
+      [id],
+    )
+  ).rows[0];
+  if (!req) {
+    await say(ctx, "این درخواست قبلاً بررسی شده یا وجود ندارد.");
+    return;
+  }
+  try {
+    await bot.api.sendMessage(
+      req.telegram_id,
+      "❌ درخواست تصاحب کشور شما رد شد. می‌توانید کشور دیگری انتخاب کنید.",
+      { reply_markup: K([[{ text: "🌍 انتخاب کشور دیگر", callback_data: "start" }]]) },
+    );
+  } catch {}
+  await edit(ctx, "❌ درخواست رد شد. بازیکن مطلع شد.");
+});
+bot.callbackQuery(/^m:(main|n)$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  await edit(
+    ctx,
+    ctx.match[1] === "n"
+      ? "<b>🏛️ دربار و کشور</b>\nبخش مورد نظر را انتخاب کنید."
+      : "منوی اصلی شاه شاهان",
+    ctx.match[1] === "n" ? nation() : main(),
+  );
+});
+bot.callbackQuery(/^help$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  await edit(
+    ctx,
+    "<b>راهنمای شاه شاهان</b>\nکشور تاریخی انتخاب کنید، خزانه را مدیریت کنید و با تصمیم‌های مرحله‌ای بر آینده‌ی حکومت اثر بگذارید.",
+    main(),
+  );
+});
+bot.callbackQuery(
+  /^n:(status|money|tax|industry|people|army|diplomacy|trade|settings|stocks|commodities|strategy)$/,
+  async (ctx) => {
+    await ctx.answerCallbackQuery();
+    const p = await ready(ctx);
+    if (!p) return;
+    let s = ctx.match[1];
+    if (s === "trade") s = "stocks";
+    const d = calc(p);
+    if (s === "strategy") {
+      await pool.query(
+        "INSERT INTO game_maneuver_stats(owner_id) VALUES($1) ON CONFLICT(owner_id) DO NOTHING",
+        [ctx.from.id],
+      );
+      const m = (
+          await pool.query(
+            "SELECT readiness,CASE WHEN last_maneuver_date=CURRENT_DATE THEN maneuvers_today ELSE 0 END AS maneuvers_today FROM game_maneuver_stats WHERE owner_id=$1",
+            [ctx.from.id],
+          )
+        ).rows[0],
+        bases = Number(
+          (
+            await pool.query("SELECT COUNT(*)::int n FROM game_strategic_bases WHERE owner_id=$1", [
+              ctx.from.id,
+            ])
+          ).rows[0].n,
+        ),
+        navies = Number(
+          (
+            await pool.query(
+              "SELECT COALESCE(SUM(units),0)::int n FROM game_naval_deployments WHERE owner_id=$1 AND status='active'",
+              [ctx.from.id],
+            )
+          ).rows[0].n,
+        );
+      return edit(
+        ctx,
+        "<b>🎯 ستاد توسعه و اقدامات راهبردی</b>\n━━━━━━━━━━━━━━━━━━\n\n🛡️ آمادگی رزمی فعلی: " +
+          fmt(m.readiness) +
+          "٪\n🎖️ مانورهای برگزارشده امروز: " +
+          Number(m.maneuvers_today) +
+          " از 1\n🏗️ پایگاه‌های عملیاتی: " +
+          fmt(bases) +
+          "\n⚓ واحدهای ناوگان مستقر: " +
+          fmt(navies) +
+          "\n\nاقدامات راهبردی کشور را انتخاب کنید.",
+        strategicMenu(),
+      );
+    }
+    if (s === "status") return edit(ctx, await status(p), nation());
+    if (s === "money")
+      return edit(
+        ctx,
+        `<b>💰 خزانه و دفتر حساب</b>\nمانده: ${money(p.treasury)}\nدرآمد روزانه‌ی قابل دریافت: ${money(d.income)}\n\n💡 هزینه‌ی نقدی روزانه وجود ندارد؛ خزانه برای ارتقای کشور، ساخت سازه‌ها و خرید استفاده می‌شود. منابع در هر نوبت بر اساس جمعیت و دارایی‌ها مصرف می‌شوند.`,
+        K([
+          [{ text: "📒 دفتر حساب", callback_data: "ledger" }],
+          [{ text: "🏗️ ارتقای کشور", callback_data: "shop" }],
+          [{ text: "↩️ بازگشت", callback_data: "m:n" }],
+        ]),
+      );
+    if (s === "tax")
+      return edit(
+        ctx,
+        `<b>🧾 مالیات و تعرفه</b>\nمالیات: ${p.tax_rate}٪ | تعرفه: ${p.tariff}٪\n\nمالیات بیشتر درآمد را افزایش می‌دهد اما ثبات و مشروعیت را کاهش می‌دهد.`,
+        K([
+          [
+            { text: "➖ مالیات", callback_data: "adj:tax:-1" },
+            { text: "➕ مالیات", callback_data: "adj:tax:1" },
+          ],
+          [
+            { text: "➖ تعرفه", callback_data: "adj:tariff:-1" },
+            { text: "➕ تعرفه", callback_data: "adj:tariff:1" },
+          ],
+          [{ text: "↩️ بازگشت", callback_data: "m:n" }],
+        ]),
+      );
+    if (s === "industry")
+      return edit(
+        ctx,
+        `<b>🏭 تولید و منابع</b>\nصنعت: ${p.industry} | کشاورزی: ${p.agriculture}\nغله: ${resourceAmount("grain", p.grain)} | زغال‌سنگ: ${resourceAmount("coal", p.coal)} | آهن: ${resourceAmount("iron", p.iron)} | پارچه: ${resourceAmount("cloth", p.cloth)}\n🛢 نفت خام: ${resourceAmount("oil_stock", p.oil_stock || 0)}\nتولید نفت خام: ${resourceAmount("oil_stock", d.oilProduction)} در روز | مصرف نفت خام: ${resourceAmount("oil_stock", d.oilConsumption)} در روز\n\nتوسعه‌ی هر واحد نیازمند خزانه و مواد اولیه است.`,
+        K([
+          [
+            { text: "🏭 صنعت", callback_data: "build:industry" },
+            { text: "🌾 کشاورزی", callback_data: "build:agriculture" },
+          ],
+          [
+            { text: "🛤 زیرساخت", callback_data: "build:infrastructure" },
+            { text: "📦 عرضه‌ی منابع", callback_data: "tradeoffer" },
+          ],
+          [
+            { text: "↩️ دربار", callback_data: "m:n" },
+            { text: "🏠 خانه", callback_data: "m:main" },
+          ],
+        ]),
+      );
+    if (s === "people")
+      return edit(
+        ctx,
+        `<b>👥 جمعیت و خدمات</b>\nجمعیت: ${fmt(p.population)}\nآموزش: ${p.education} | سلامت: ${p.health}\nحقوق متوسط: ${money(p.wage)}\nبودجه‌ی خدمات روزانه: ${money(p.service_budget)}`,
+        K([
+          [
+            { text: "➖ حقوق", callback_data: "adj:wage:-10" },
+            { text: "➕ حقوق", callback_data: "adj:wage:10" },
+          ],
+          [
+            { text: "➖ خدمات", callback_data: "adj:service_budget:-100" },
+            { text: "➕ خدمات", callback_data: "adj:service_budget:100" },
+          ],
+          [{ text: "↩️ بازگشت", callback_data: "m:n" }],
+        ]),
+      );
+    if (s === "army")
+      return edit(
+        ctx,
+        `<b>🛡️ ارتش و ناوگان</b>\nارتش: ${p.army} | ناوگان: ${p.navy}\nروحیه: ${p.morale}٪\nمصرف دوره‌ای: غله، نفت، زغال و تجهیزات بر اساس اندازه‌ی نیروها؛ هزینه‌ی نقدی روزانه ندارد.`,
+        K([
+          [{ text: "🪖 جذب ارتش", callback_data: "mil:army" }],
+          [{ text: "⚓ ساخت ناوگان", callback_data: "mil:navy" }],
+          [{ text: "🔧 تعمیر تسلیحات آسیب‌دیده", callback_data: "weaponrepair" }],
+          [{ text: "↩️ بازگشت", callback_data: "m:n" }],
+        ]),
+      );
+    if (s === "settings")
+      return edit(
+        ctx,
+        "<b>⚙️ تنظیمات اداره</b>\nمقادیر مالیات، تعرفه، حقوق و بودجه‌ی خدمات را با دکمه‌های + و − تغییر دهید.",
+        K([
+          [
+            { text: "➖ مالیات", callback_data: "adj:tax:-1" },
+            { text: "➕ مالیات", callback_data: "adj:tax:1" },
+          ],
+          [
+            { text: "➖ تعرفه", callback_data: "adj:tariff:-1" },
+            { text: "➕ تعرفه", callback_data: "adj:tariff:1" },
+          ],
+          [
+            { text: "➖ حقوق", callback_data: "adj:wage:-10" },
+            { text: "➕ حقوق", callback_data: "adj:wage:10" },
+          ],
+          [
+            { text: "➖ خدمات", callback_data: "adj:service_budget:-100" },
+            { text: "➕ خدمات", callback_data: "adj:service_budget:100" },
+          ],
+          [{ text: "↩️ بازگشت", callback_data: "m:n" }],
+        ]),
+      );
+    if (s === "diplomacy") {
+      const incoming = (
+        await pool.query(
+          "SELECT COUNT(*)::int AS n FROM game_relations WHERE other_id=$1 AND relation LIKE 'proposal_%'",
+          [ctx.from.id],
+        )
+      ).rows[0].n;
+      const contracts = (
+        await pool.query(
+          "SELECT COUNT(*)::int AS n FROM game_trade_contracts WHERE (recipient_id=$1 OR proposer_id=$1) AND status='pending'",
+          [ctx.from.id],
+        )
+      ).rows[0].n;
+      return edit(
+        ctx,
+        "<b>🌐 دیپلماسی و روابط بین‌الملل</b>\n\n📨 پیشنهادهای دیپلماتیک در انتظار: " +
+          incoming +
+          "\n📋 قراردادهای تجاری در انتظار: " +
+          contracts +
+          "\n\nاز بخش موردنظر انتخاب کنید:",
+        K([
+          [{ text: "📈 بورس بین‌المللی کالاها · نفت، طلا و غلات", callback_data: "n:stocks" }],
+          [{ text: "📋 قراردادها و پیمان‌های من · پیگیری", callback_data: "tc:center" }],
+          [{ text: "📜 پیشنهاد قرارداد تجاری", callback_data: "tradeoffer" }],
+          [{ text: "🏅 خرید، فروش و انتقال تسلیحات", callback_data: "shopweapons" }],
+          [{ text: "🚩 مأموریت راهبردی · اعزام هیئت", callback_data: "dipmissions" }],
+          [{ text: "✉️ پیشنهادهای دیپلماتیک دریافتی", callback_data: "dipinbox" }],
+          [{ text: "📜 دفتر روابط و سوابق مذاکرات", callback_data: "diprelations" }],
+          [{ text: "🏛️ سفارت‌ها و ارتقای روابط", callback_data: "dipembassies" }],
+          [{ text: "🤝 اتحادها و تحریم‌های اقتصادی", callback_data: "dipcountries" }],
+          [{ text: "↩️ بازگشت به دربار", callback_data: "m:n" }],
+        ]),
+      );
+    }
+    if (s === "commodities")
+      return edit(
+        ctx,
+        "بازار نفت، طلا و غلات اکنون در بورس کالا ادغام شده است.",
+        K([
+          [{ text: "📈 ورود به بورس و کالا", callback_data: "n:stocks" }],
+          [{ text: "↩️ بازگشت به دربار", callback_data: "m:n" }],
+        ]),
+      );
+    if (s === "stocks") {
+      const r = await pool.query(
+        "SELECT t.*,p.display_name,p.country_id FROM game_trade t JOIN game_players p ON p.telegram_id=t.seller_id JOIN game_relations rel ON rel.player_id=$1 AND rel.other_id=t.seller_id AND rel.relation='trade_pact' WHERE t.status='open' AND t.seller_id<>$1 ORDER BY t.id DESC LIMIT 20",
+        [ctx.from.id],
+      );
+      const own = await pool.query(
+        "SELECT id,resource,quantity,unit_price FROM game_trade WHERE status='open' AND seller_id=$1 ORDER BY id DESC LIMIT 10",
+        [ctx.from.id],
+      );
+      const rows = r.rows.map((t) => [
+        {
+          text:
+            (country(t.country_id)?.[1] || t.display_name) +
+            " | " +
+            resourceLabel(t.resource) +
+            " ×" +
+            fmt(t.quantity) +
+            " | " +
+            money(t.unit_price) +
+            "/واحد",
+          callback_data: "buy:" + t.id,
+        },
+      ]);
+      rows.push([
+        { text: "📜 قرارداد تجاری جدید", callback_data: "tradeoffer" },
+        { text: "📨 قراردادهای دریافتی", callback_data: "tc:inbox" },
+      ]);
+      for (const t of own.rows)
+        rows.push([
+          {
+            text: "📤 محصول من: " + resourceLabel(t.resource) + " ×" + fmt(t.quantity) + " — لغو",
+            callback_data: "tradecancel:" + t.id,
+          },
+        ]);
+      if (!r.rows.length)
+        rows.unshift([{ text: "هنوز محصولی از سوی کشورها عرضه نشده", callback_data: "noop" }]);
+      rows.push([
+        { text: "🔄 تازه‌سازی", callback_data: "n:stocks" },
+        { text: "↩️ دربار", callback_data: "m:n" },
+      ]);
+      return edit(
+        ctx,
+        "<b>🌐 بازار تجارت و بورس کشورها</b>\n\nدر این بورس فقط محصولات و منابعی نمایش داده می‌شود که کشورهای بازیکنان خودشان عرضه کرده‌اند. هیچ کالایی از سیستم یا بازار پایه فروخته نمی‌شود.\n\nبرای خرید، محصول یک کشور را انتخاب کنید؛ برای فروش، محصول کشور خود را عرضه کنید.",
+        K(rows),
+      );
+    }
+  },
+);
+bot.callbackQuery(/^commodity:([A-Z]+)$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const p = await ready(ctx);
+  if (!p) return;
+  await refreshCommodities();
+  const r = await pool.query(
+    "SELECT c.*,COALESCE(h.units,0) AS units FROM game_commodities c LEFT JOIN game_commodity_holdings h ON h.symbol=c.symbol AND h.telegram_id=$1 WHERE c.symbol=$2",
+    [ctx.from.id, ctx.match[1]],
+  );
+  const x = r.rows[0];
+  if (!x) {
+    await say(ctx, "کالا پیدا نشد.", nation());
+    return;
+  }
+  await edit(
+    ctx,
+    "<b>" +
+      x.name +
+      "</b>\\nقیمت هر واحد: " +
+      money(x.price) +
+      "\\nتغییر: " +
+      x.change_pct +
+      "٪\\nموجودی شما: " +
+      fmt(x.units),
+    K([
+      [{ text: "🟢 خرید از بازار پایه", callback_data: "commoditybuy:" + x.symbol }],
+      [{ text: "📤 عرضه به کشورهای دیگر", callback_data: "exoffer:commodity:" + x.symbol }],
+      [{ text: "🔴 فروش به بازار پایه", callback_data: "commoditysell:" + x.symbol }],
+      [{ text: "↩️ بازگشت به بازار بورس و کالا", callback_data: "n:stocks" }],
+    ]),
+  );
+});
+bot.callbackQuery(/^commoditybuy:([A-Z]+)$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const p = await ready(ctx);
+  if (!p) return;
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const c = (
+      await client.query("SELECT * FROM game_commodities WHERE symbol=$1 FOR UPDATE", [
+        ctx.match[1],
+      ])
+    ).rows[0];
+    const pl = (
+      await client.query("SELECT treasury FROM game_players WHERE telegram_id=$1 FOR UPDATE", [
+        ctx.from.id,
+      ])
+    ).rows[0];
+    if (!c || !pl || Number(pl.treasury) < Number(c.price)) {
+      await client.query("ROLLBACK");
+      await say(ctx, "کالا موجود نیست یا خزانه برای خرید کافی نیست.", nation());
+      return;
+    }
+    const bal = Number(pl.treasury) - Number(c.price);
+    await client.query("UPDATE game_players SET treasury=$2 WHERE telegram_id=$1", [
+      ctx.from.id,
+      bal,
+    ]);
+    await client.query(
+      "INSERT INTO game_commodity_holdings(telegram_id,symbol,units) VALUES($1,$2,1) ON CONFLICT(telegram_id,symbol) DO UPDATE SET units=game_commodity_holdings.units+1",
+      [ctx.from.id, c.symbol],
+    );
+    await client.query(
+      "INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,$3,$4)",
+      [ctx.from.id, "خرید کالای " + c.symbol, -Number(c.price), bal],
+    );
+    await client.query("COMMIT");
+    await say(
+      ctx,
+      "خرید انجام شد؛ " + money(c.price) + " از خزانه کسر شد.",
+      K([
+        [{ text: "🛢️ ادامه در بازار کالا", callback_data: "n:commodities" }],
+        [{ text: "🏛️ بازگشت به دربار", callback_data: "m:n" }],
+      ]),
+    );
+  } catch (e) {
+    await client.query("ROLLBACK");
+    throw e;
+  } finally {
+    client.release();
+  }
+});
+bot.callbackQuery(/^commoditysell:([A-Z]+)$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const p = await ready(ctx);
+  if (!p) return;
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const c = (
+      await client.query("SELECT * FROM game_commodities WHERE symbol=$1 FOR UPDATE", [
+        ctx.match[1],
+      ])
+    ).rows[0];
+    const h = (
+      await client.query(
+        "SELECT units FROM game_commodity_holdings WHERE telegram_id=$1 AND symbol=$2 FOR UPDATE",
+        [ctx.from.id, ctx.match[1]],
+      )
+    ).rows[0];
+    const pl = (
+      await client.query("SELECT treasury FROM game_players WHERE telegram_id=$1 FOR UPDATE", [
+        ctx.from.id,
+      ])
+    ).rows[0];
+    if (!c || !h || Number(h.units) < 1 || !pl) {
+      await client.query("ROLLBACK");
+      await say(ctx, "برای فروش، موجودی کافی ندارید.", nation());
+      return;
+    }
+    const bal = Number(pl.treasury) + Number(c.price);
+    await client.query(
+      "UPDATE game_commodity_holdings SET units=units-1 WHERE telegram_id=$1 AND symbol=$2",
+      [ctx.from.id, c.symbol],
+    );
+    await client.query("UPDATE game_players SET treasury=$2 WHERE telegram_id=$1", [
+      ctx.from.id,
+      bal,
+    ]);
+    await client.query(
+      "INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,$3,$4)",
+      [ctx.from.id, "فروش کالای " + c.symbol, Number(c.price), bal],
+    );
+    await client.query("COMMIT");
+    await say(
+      ctx,
+      "فروش انجام شد؛ " + money(c.price) + " به خزانه افزوده شد.",
+      K([
+        [{ text: "🛢️ ادامه در بازار کالا", callback_data: "n:commodities" }],
+        [{ text: "🏛️ بازگشت به دربار", callback_data: "m:n" }],
+      ]),
+    );
+  } catch (e) {
+    await client.query("ROLLBACK");
+    throw e;
+  } finally {
+    client.release();
+  }
+});
+bot.callbackQuery(/^commodityportfolio$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  return edit(
+    ctx,
+    "سبد کالاها و سهام در بخش پشتوانه بورسی من یکپارچه شده است.",
+    K([
+      [{ text: "💼 پشتوانه بورسی من", callback_data: "assetportfolio" }],
+      [{ text: "📈 بورس و کالا", callback_data: "n:stocks" }],
+      [{ text: "🏛️ بازگشت به دربار", callback_data: "m:n" }],
+    ]),
+  );
+});
+bot.callbackQuery(/^stock:([A-Z]+)$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const p = await ready(ctx);
+  if (!p) return;
+  await refreshStocks();
+  const r = await pool.query(
+    "SELECT s.*,COALESCE(h.shares,0) AS shares FROM game_stocks s LEFT JOIN game_stock_holdings h ON h.symbol=s.symbol AND h.telegram_id=$1 WHERE s.symbol=$2",
+    [ctx.from.id, ctx.match[1]],
+  );
+  const x = r.rows[0];
+  if (!x) {
+    await say(ctx, "نماد پیدا نشد.", nation());
+    return;
+  }
+  await edit(
+    ctx,
+    "<b>" +
+      x.name +
+      " (" +
+      x.symbol +
+      ")</b>\\nقیمت هر سهم: " +
+      money(x.price) +
+      "\\nتغییر: " +
+      x.change_pct +
+      "٪\\nسهام شما: " +
+      fmt(x.shares),
+    K([
+      [{ text: "🟢 خرید از بازار پایه", callback_data: "stockbuy:" + x.symbol }],
+      [{ text: "📤 عرضه به کشورهای دیگر", callback_data: "exoffer:stock:" + x.symbol }],
+      [{ text: "🔴 فروش به بازار پایه", callback_data: "stocksell:" + x.symbol }],
+      [{ text: "↩️ بازگشت به بورس", callback_data: "n:stocks" }],
+    ]),
+  );
+});
+bot.callbackQuery(/^stockbuy:([A-Z]+)$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const p = await ready(ctx);
+  if (!p) return;
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const st = (
+      await client.query("SELECT * FROM game_stocks WHERE symbol=$1 FOR UPDATE", [ctx.match[1]])
+    ).rows[0];
+    const pl = (
+      await client.query("SELECT treasury FROM game_players WHERE telegram_id=$1 FOR UPDATE", [
+        ctx.from.id,
+      ])
+    ).rows[0];
+    if (!st || !pl || Number(pl.treasury) < Number(st.price)) {
+      await client.query("ROLLBACK");
+      await say(ctx, "نماد در دسترس نیست یا خزانه برای خرید سهم کافی نیست.", nation());
+      return;
+    }
+    await client.query("UPDATE game_players SET treasury=treasury-$2 WHERE telegram_id=$1", [
+      ctx.from.id,
+      st.price,
+    ]);
+    await client.query(
+      "INSERT INTO game_stock_holdings(telegram_id,symbol,shares) VALUES($1,$2,1) ON CONFLICT(telegram_id,symbol) DO UPDATE SET shares=game_stock_holdings.shares+1",
+      [ctx.from.id, st.symbol],
+    );
+    await client.query(
+      "INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,$3,$4)",
+      [
+        ctx.from.id,
+        "خرید سهم " + st.symbol,
+        -Number(st.price),
+        Number(pl.treasury) - Number(st.price),
+      ],
+    );
+    await client.query("COMMIT");
+    await say(
+      ctx,
+      "✅ یک سهم " + st.symbol + " خریداری شد؛ مبلغ " + money(st.price) + " از خزانه کسر شد.",
+      K([
+        [{ text: "📈 ادامه در بورس", callback_data: "n:stocks" }],
+        [{ text: "🏛 بازگشت به دربار", callback_data: "m:n" }],
+      ]),
+    );
+  } catch (e) {
+    await client.query("ROLLBACK");
+    throw e;
+  } finally {
+    client.release();
+  }
+});
+bot.callbackQuery(/^stocksell:([A-Z]+)$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const p = await ready(ctx);
+  if (!p) return;
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const st = (
+      await client.query("SELECT * FROM game_stocks WHERE symbol=$1 FOR UPDATE", [ctx.match[1]])
+    ).rows[0];
+    const h = (
+      await client.query(
+        "SELECT shares FROM game_stock_holdings WHERE telegram_id=$1 AND symbol=$2 FOR UPDATE",
+        [ctx.from.id, ctx.match[1]],
+      )
+    ).rows[0];
+    if (!st || !h || Number(h.shares) < 1) {
+      await client.query("ROLLBACK");
+      await say(ctx, "برای فروش، سهمی از این نماد در سبد شما نیست.", nation());
+      return;
+    }
+    await client.query(
+      "UPDATE game_stock_holdings SET shares=shares-1 WHERE telegram_id=$1 AND symbol=$2",
+      [ctx.from.id, st.symbol],
+    );
+    await client.query("UPDATE game_players SET treasury=treasury+$2 WHERE telegram_id=$1", [
+      ctx.from.id,
+      st.price,
+    ]);
+    const balance = Number(p.treasury) + Number(st.price);
+    await client.query(
+      "INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,$3,$4)",
+      [ctx.from.id, "فروش سهم " + st.symbol, Number(st.price), balance],
+    );
+    await client.query("COMMIT");
+    await say(
+      ctx,
+      "✅ یک سهم " + st.symbol + " فروخته شد؛ " + money(st.price) + " به خزانه افزوده شد.",
+      K([
+        [{ text: "📈 ادامه در بورس", callback_data: "n:stocks" }],
+        [{ text: "🏛 بازگشت به دربار", callback_data: "m:n" }],
+      ]),
+    );
+  } catch (e) {
+    await client.query("ROLLBACK");
+    throw e;
+  } finally {
+    client.release();
+  }
+});
+bot.callbackQuery(/^exorders$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const r = await pool.query(
+    "SELECT o.*,p.display_name,p.country_id,COALESCE(st.name,cm.name) AS asset_name FROM game_exchange_orders o JOIN game_players p ON p.telegram_id=o.seller_id LEFT JOIN game_stocks st ON o.asset_type='stock' AND st.symbol=o.symbol LEFT JOIN game_commodities cm ON o.asset_type='commodity' AND cm.symbol=o.symbol WHERE o.status='open' AND o.seller_id<>$1 ORDER BY o.id DESC LIMIT 20",
+    [ctx.from.id],
+  );
+  const rows = r.rows.map((o) => [
+    {
+      text: `${country(o.country_id)?.[1] || o.display_name} | ${o.asset_name} ×${fmt(o.quantity)} | ${money(o.unit_price)}/واحد`,
+      callback_data: "exbuy:" + o.id,
+    },
+  ]);
+  if (!rows.length) rows.push([{ text: "هنوز سفارش فعالی ثبت نشده", callback_data: "noop" }]);
+  rows.push(
+    [{ text: "↻ بازگشت به بورس", callback_data: "n:stocks" }],
+    [{ text: "🏛 دربار", callback_data: "m:n" }],
+  );
+  return edit(
+    ctx,
+    "<b>🌐 سفارش‌های فعال کشورها</b>\nخرید از کشور دیگر: انتخاب سفارش و پرداخت از خزانه‌ی شما.",
+    K(rows),
+  );
+});
+bot.callbackQuery(/^exoffer:(stock|commodity):([A-Z]+)$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const p = await ready(ctx);
+  if (!p) return;
+  const type = ctx.match[1],
+    symbol = ctx.match[2];
+  const h =
+    type === "stock"
+      ? (
+          await pool.query(
+            "SELECT shares AS qty FROM game_stock_holdings WHERE telegram_id=$1 AND symbol=$2",
+            [ctx.from.id, symbol],
+          )
+        ).rows[0]
+      : (
+          await pool.query(
+            "SELECT units AS qty FROM game_commodity_holdings WHERE telegram_id=$1 AND symbol=$2",
+            [ctx.from.id, symbol],
+          )
+        ).rows[0];
+  if (!h || Number(h.qty) < 1) {
+    await say(
+      ctx,
+      "برای عرضه، ابتدا باید این سهم یا کالا را در پشتوانه‌ی خود داشته باشید.",
+      K([
+        [{ text: "💼 پشتوانه بورسی من", callback_data: "assetportfolio" }],
+        [{ text: "📈 بورس", callback_data: "n:stocks" }],
+      ]),
+    );
+    return;
+  }
+  pendingTradeInput.set(ctx.from.id, {
+    step: "quantity",
+    marketAsset: true,
+    assetType: type,
+    symbol,
+  });
+  await ctx.reply(
+    "<b>مرحله ۱ از ۲ — مقدار سفارش فروش</b>\nموجودی شما: " +
+      fmt(h.qty) +
+      "\nچند واحد را برای فروش به کشورهای دیگر عرضه می‌کنید؟",
+    { parse_mode: "HTML", reply_markup: { force_reply: true, selective: true } },
+  );
+});
+bot.callbackQuery(/^exbuy:(\d+)$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const p = await ready(ctx);
+  if (!p) return;
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const o = (
+      await client.query(
+        "SELECT * FROM game_exchange_orders WHERE id=$1 AND status='open' FOR UPDATE",
+        [Number(ctx.match[1])],
+      )
+    ).rows[0];
+    if (!o || Number(o.seller_id) === Number(ctx.from.id)) {
+      await client.query("ROLLBACK");
+      await say(ctx, "این سفارش دیگر در دسترس نیست.", nation());
+      return;
+    }
+    const buyer = (
+      await client.query(
+        "SELECT treasury,country_id FROM game_players WHERE telegram_id=$1 FOR UPDATE",
+        [ctx.from.id],
+      )
+    ).rows[0];
+    const total = Number(o.quantity) * Number(o.unit_price);
+    if (!buyer || Number(buyer.treasury) < total) {
+      await client.query("ROLLBACK");
+      await say(ctx, "خزانه‌ی کشور برای خرید این سفارش کافی نیست.", nation());
+      return;
+    }
+    const seller = (
+      await client.query("SELECT country_id FROM game_players WHERE telegram_id=$1 FOR UPDATE", [
+        o.seller_id,
+      ])
+    ).rows[0];
+    await client.query("UPDATE game_players SET treasury=treasury-$2 WHERE telegram_id=$1", [
+      ctx.from.id,
+      total,
+    ]);
+    await client.query("UPDATE game_players SET treasury=treasury+$2 WHERE telegram_id=$1", [
+      o.seller_id,
+      total,
+    ]);
+    if (o.asset_type === "stock")
+      await client.query(
+        "INSERT INTO game_stock_holdings(telegram_id,symbol,shares) VALUES($1,$2,$3) ON CONFLICT(telegram_id,symbol) DO UPDATE SET shares=game_stock_holdings.shares+EXCLUDED.shares",
+        [ctx.from.id, o.symbol, o.quantity],
+      );
+    else
+      await client.query(
+        "INSERT INTO game_commodity_holdings(telegram_id,symbol,units) VALUES($1,$2,$3) ON CONFLICT(telegram_id,symbol) DO UPDATE SET units=game_commodity_holdings.units+EXCLUDED.units",
+        [ctx.from.id, o.symbol, o.quantity],
+      );
+    await client.query("UPDATE game_exchange_orders SET status='sold' WHERE id=$1", [o.id]);
+    await client.query(
+      "INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,$3,$4)",
+      [
+        ctx.from.id,
+        "خرید " + o.symbol + " از " + (country(seller?.country_id)?.[1] || "کشور دیگر"),
+        -total,
+        Number(buyer.treasury) - total,
+      ],
+    );
+    const sellerBal = (
+      await client.query("SELECT treasury FROM game_players WHERE telegram_id=$1", [o.seller_id])
+    ).rows[0];
+    await client.query(
+      "INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,$3,$4)",
+      [
+        o.seller_id,
+        "فروش " + o.symbol + " به " + (country(buyer.country_id)?.[1] || "کشور دیگر"),
+        total,
+        sellerBal.treasury,
+      ],
+    );
+    await client.query("COMMIT");
+    await say(
+      ctx,
+      "🤝 معامله‌ی بورسی بین کشورها انجام شد.\n\nخریدار: " +
+        (country(buyer.country_id)?.[1] || "کشور شما") +
+        "\nفروشنده: " +
+        (country(seller?.country_id)?.[1] || "کشور دیگر") +
+        "\nنماد: " +
+        o.symbol +
+        " ×" +
+        fmt(o.quantity) +
+        "\nمبلغ: " +
+        money(total),
+      K([
+        [{ text: "📈 ادامه‌ی بورس", callback_data: "n:stocks" }],
+        [{ text: "🏛 دربار", callback_data: "m:n" }],
+      ]),
+    );
+  } catch (e) {
+    await client.query("ROLLBACK");
+    throw e;
+  } finally {
+    client.release();
+  }
+});
+bot.callbackQuery(/^excancel:(\d+)$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const p = await ready(ctx);
+  if (!p) return;
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const o = (
+      await client.query(
+        "SELECT * FROM game_exchange_orders WHERE id=$1 AND seller_id=$2 AND status='open' FOR UPDATE",
+        [Number(ctx.match[1]), ctx.from.id],
+      )
+    ).rows[0];
+    if (!o) {
+      await client.query("ROLLBACK");
+      await say(ctx, "سفارش دیگر فعال نیست.", nation());
+      return;
+    }
+    if (o.asset_type === "stock")
+      await client.query(
+        "INSERT INTO game_stock_holdings(telegram_id,symbol,shares) VALUES($1,$2,$3) ON CONFLICT(telegram_id,symbol) DO UPDATE SET shares=game_stock_holdings.shares+EXCLUDED.shares",
+        [ctx.from.id, o.symbol, o.quantity],
+      );
+    else
+      await client.query(
+        "INSERT INTO game_commodity_holdings(telegram_id,symbol,units) VALUES($1,$2,$3) ON CONFLICT(telegram_id,symbol) DO UPDATE SET units=game_commodity_holdings.units+EXCLUDED.units",
+        [ctx.from.id, o.symbol, o.quantity],
+      );
+    await client.query("UPDATE game_exchange_orders SET status='cancelled' WHERE id=$1", [o.id]);
+    await client.query("COMMIT");
+    await say(
+      ctx,
+      "سفارش لغو شد و دارایی به پشتوانه‌ی شما برگشت.",
+      K([
+        [{ text: "📈 بورس و کالا", callback_data: "n:stocks" }],
+        [{ text: "💼 پشتوانه بورسی", callback_data: "assetportfolio" }],
+      ]),
+    );
+  } catch (e) {
+    await client.query("ROLLBACK");
+    throw e;
+  } finally {
+    client.release();
+  }
+});
+bot.callbackQuery(/^assetportfolio$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const p = await ready(ctx);
+  if (!p) return;
+  const a = await pool.query(
+    "SELECT s.name,s.symbol,h.shares AS qty,s.price,h.shares*s.price AS value,'سهام' AS kind FROM game_stock_holdings h JOIN game_stocks s ON s.symbol=h.symbol WHERE h.telegram_id=$1 AND h.shares>0",
+    [ctx.from.id],
+  );
+  const b = await pool.query(
+    "SELECT c.name,c.symbol,h.units AS qty,c.price,h.units*c.price AS value,'کالا' AS kind FROM game_commodity_holdings h JOIN game_commodities c ON c.symbol=h.symbol WHERE h.telegram_id=$1 AND h.units>0",
+    [ctx.from.id],
+  );
+  const all = [...a.rows, ...b.rows].sort((x, y) => Number(y.value) - Number(x.value));
+  const total = all.reduce((n, x) => n + Number(x.value), 0);
+  await edit(
+    ctx,
+    all.length
+      ? "<b>💼 پشتوانه بورسی من</b>\\nارزش کل: " +
+          money(total) +
+          "\\n\\n" +
+          all
+            .map(
+              (x) =>
+                x.kind +
+                " — " +
+                x.name +
+                " (" +
+                x.symbol +
+                ")\\nمقدار: " +
+                fmt(x.qty) +
+                " | ارزش: " +
+                money(x.value),
+            )
+            .join("\\n\\n")
+      : "<b>💼 پشتوانه بورسی من</b>\\nهنوز سهام یا کالایی در سبد شما نیست.",
+    K([
+      [{ text: "📈 بازگشت به بورس و کالا", callback_data: "n:stocks" }],
+      [{ text: "🏛️ بازگشت به دربار", callback_data: "m:n" }],
+    ]),
+  );
+});
+bot.callbackQuery(/^portfolio$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  return edit(
+    ctx,
+    "سبد سهام و کالا در بخش پشتوانه بورسی من یکپارچه شده است.",
+    K([
+      [{ text: "💼 پشتوانه بورسی من", callback_data: "assetportfolio" }],
+      [{ text: "📈 بورس و کالا", callback_data: "n:stocks" }],
+      [{ text: "🏛️ بازگشت به دربار", callback_data: "m:n" }],
+    ]),
+  );
+});
+bot.callbackQuery(/^adj:(tax|tariff|wage|service_budget):(-?\d+)$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const p = await ready(ctx);
+  if (!p) return;
+  const f = ctx.match[1],
+    delta = Number(ctx.match[2]),
+    lim = { tax: [0, 60], tariff: [0, 50], wage: [10, 10000], service_budget: [0, 10000000] }[f],
+    v = Math.max(lim[0], Math.min(lim[1], Number(p[f]) + delta));
+  const q =
+    f === "tax" && delta > 0
+      ? "UPDATE game_players SET tax_rate=$2,stability=GREATEST(0,stability-1),legitimacy=GREATEST(0,legitimacy-1) WHERE telegram_id=$1"
+      : `UPDATE game_players SET ${f}=$2 WHERE telegram_id=$1`;
+  await pool.query(q, [ctx.from.id, v]);
+  await say(ctx, "تغییر سیاست ثبت شد.\n\n" + (await status(await get(ctx.from.id))), nation());
+});
+bot.callbackQuery(/^build:(industry|agriculture|infrastructure)$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const p = await ready(ctx);
+  if (!p) return;
+  const f = ctx.match[1],
+    cost = f === "industry" ? 5000 : f === "agriculture" ? 3500 : 6000,
+    need = f === "industry" ? { iron: 100, coal: 150 } : f === "agriculture" ? {} : { iron: 50 };
+  if (Number(p.treasury) < cost || Object.entries(need).some(([r, q]) => p[r] < q)) {
+    await say(ctx, "خزانه یا مواد اولیه کافی نیست.", nation());
+    return;
+  }
+  const changes = [
+    f + "=" + f + "+1",
+    "treasury=treasury-" + cost,
+    ...Object.entries(need).map(([r, q]) => r + "=" + r + "-" + q),
+  ];
+  await pool.query("UPDATE game_players SET " + changes.join(",") + " WHERE telegram_id=$1", [
+    ctx.from.id,
+  ]);
+  await pool.query(
+    "INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,$3,$4)",
+    [ctx.from.id, "پروژه‌ی توسعه‌ی " + f, -cost, p.treasury - cost],
+  );
+  await say(ctx, "پروژه تکمیل و هزینه در دفتر حساب ثبت شد.", nation());
+});
+bot.callbackQuery(/^mil:(army|navy|air|defense)$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const p = await ready(ctx);
+  if (!p) return;
+  const type = ctx.match[1],
+    cfg = {
+      army: ["army", 28000, "🪖 یک واحد زمینی"],
+      navy: ["navy", 180000, "⚓ یک شناور"],
+      air: ["air_force", 14000, "✈️ یک هواپیما"],
+      defense: ["air_defense", 9000, "🛡️ یک قبضه پدافند"],
+    }[type],
+    field = cfg[0],
+    cost = cfg[1];
+  if (Number(p.treasury) < cost) {
+    await say(ctx, "💰 خزانه برای این تجهیز کافی نیست.", nation());
+    return;
+  }
+  await pool.query(
+    `UPDATE game_players SET ${field}=${field}+1,treasury=treasury-$2 WHERE telegram_id=$1`,
+    [ctx.from.id, cost],
+  );
+  await pool.query(
+    "INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,$3,$4)",
+    [ctx.from.id, "تجهیز نیرو: " + cfg[2], -cost, Number(p.treasury) - cost],
+  );
+  await say(
+    ctx,
+    "✅ افزوده شد: " +
+      cfg[2] +
+      "\n💵 هزینه: " +
+      money(cost) +
+      "\n💰 خزانه: " +
+      money(Number(p.treasury) - cost),
+    nation(),
+  );
+});
+bot.callbackQuery(/^ledger$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const r = await pool.query(
+    "SELECT description,amount,balance FROM game_ledger WHERE telegram_id=$1 ORDER BY id DESC LIMIT 15",
+    [ctx.from.id],
+  );
+  await edit(
+    ctx,
+    r.rows.length
+      ? "<b>📒 دفتر حساب</b>\n\n" +
+          r.rows
+            .map((x) => x.description + "\n" + money(x.amount) + " | مانده " + money(x.balance))
+            .join("\n\n")
+      : "دفتر حساب خالی است.",
+    back(),
+  );
+});
+bot.callbackQuery(/^partnertrade:(\d+)$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const p = await ready(ctx);
+  if (!p) return;
+  const other = Number(ctx.match[1]),
+    target = await get(other),
+    rel = (
+      await pool.query("SELECT relation FROM game_relations WHERE player_id=$1 AND other_id=$2", [
+        ctx.from.id,
+        other,
+      ])
+    ).rows[0];
+  if (!target?.approved || rel?.relation !== "trade_pact") {
+    await say(
+      ctx,
+      "برای تجارت مستقیم با این کشور، ابتدا پیمان تجاری را از وزارت امور خارجه بپذیرید.",
+      K([
+        [{ text: "📦 پیشنهاد پیمان تجاری", callback_data: "dipoffer:trade_pact:" + other }],
+        [{ text: "↩️ پرونده دیپلماتیک", callback_data: "dip:" + other }],
+      ]),
+    );
+    return;
+  }
+  const r = await pool.query(
+    "SELECT id,resource,quantity,unit_price FROM game_trade WHERE seller_id=$1 AND status='open' ORDER BY id DESC LIMIT 20",
+    [other],
+  );
+  const rows = r.rows.map((x) => [
+    {
+      text:
+        resourceLabel(x.resource) + " ×" + fmt(x.quantity) + " · " + money(x.unit_price) + "/واحد",
+      callback_data: "buy:" + x.id,
+    },
+  ]);
+  if (!rows.length)
+    rows.push([{ text: "📭 این کشور هنوز کالایی عرضه نکرده است.", callback_data: "noop" }]);
+  rows.push(
+    [{ text: "📤 عرضه‌ی منابع شما", callback_data: "tradeoffer" }],
+    [{ text: "🔄 تازه‌سازی", callback_data: "partnertrade:" + other }],
+    [{ text: "↩️ پرونده دیپلماتیک", callback_data: "dip:" + other }],
+  );
+  await edit(
+    ctx,
+    "<b>🛒 تجارت دوجانبه</b>\n\nکشور شریک: " +
+      (country(target.country_id)?.[1] || target.display_name) +
+      "\n🤝 پیمان تجاری فعال است.\n\nفقط پیشنهادهای همین کشور نمایش داده می‌شود. برای معامله، پیشنهاد کالا را انتخاب کنید یا منابع خود را عرضه کنید.",
+    K(rows),
+  );
+});
+bot.callbackQuery(/^tc:center$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const p = await ready(ctx);
+  if (!p) return;
+  const [incoming, outgoing] = await Promise.all([
+    pool.query(
+      "SELECT COUNT(*)::int AS n FROM game_trade_contracts WHERE recipient_id=$1 AND status='pending'",
+      [ctx.from.id],
+    ),
+    pool.query(
+      "SELECT COUNT(*)::int AS n FROM game_trade_contracts WHERE proposer_id=$1 AND status='pending'",
+      [ctx.from.id],
+    ),
+  ]);
+  await edit(
+    ctx,
+    "<b>📜 مرکز قراردادهای تجاری</b>\n\n📨 قراردادهای دریافتی: " +
+      incoming.rows[0].n +
+      "\n📤 پیشنهادهای ارسال‌شده و در انتظار پاسخ: " +
+      outgoing.rows[0].n +
+      "\n\nاز یک بخش وارد شوید:",
+    K([
+      [{ text: "✍️ ایجاد و ارسال قرارداد", callback_data: "tradeoffer" }],
+      [{ text: "📨 بررسی قراردادهای دریافتی", callback_data: "tc:inbox" }],
+      [{ text: "↩️ بازار تجارت", callback_data: "n:trade" }],
+    ]),
+  );
+});
+bot.callbackQuery(/^tradeoffer$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const p = await ready(ctx);
+  if (!p) return;
+  const rows = Object.keys(continentNames).map((k) => [
+    { text: continentNames[k], callback_data: "tc:continent:" + k },
+  ]);
+  rows.push([{ text: "↩️ بازار تجارت", callback_data: "n:trade" }]);
+  await edit(
+    ctx,
+    "<b>📜 پیشنهاد قرارداد تجاری</b>\n\nابتدا قاره را انتخاب کنید؛ سپس فهرست کشورها بر اساس قاره نمایش داده می‌شود.",
+    K(rows),
+  );
+});
+bot.callbackQuery(
+  /^tc:continent:(europe|asia|africa|north_america|south_america|oceania)$/,
+  async (ctx) => {
+    await ctx.answerCallbackQuery();
+    const p = await ready(ctx);
+    if (!p) return;
+    const region = ctx.match[1],
+      ids = (
+        await pool.query(
+          "SELECT country_id FROM game_players WHERE approved=TRUE AND telegram_id<>$1 AND country_id IS NOT NULL",
+          [ctx.from.id],
+        )
+      ).rows.map((x) => x.country_id),
+      active = new Set(ids),
+      list = countries
+        .filter((c) => continentOf(c[0]) === region && active.has(c[0]))
+        .sort((a, b) => a[1].localeCompare(b[1], "fa")),
+      rows = [];
+    for (let i = 0; i < list.length; i += 2)
+      rows.push(
+        list.slice(i, i + 2).map((c) => ({ text: c[1], callback_data: "tc:country:" + c[0] })),
+      );
+    if (!rows.length)
+      rows.push([{ text: "در این قاره کشور بازیکن فعالی نیست", callback_data: "noop" }]);
+    rows.push(
+      [{ text: "↩️ بازگشت به قاره‌ها", callback_data: "tradeoffer" }],
+      [{ text: "↩️ بازار تجارت", callback_data: "n:trade" }],
+    );
+    return edit(
+      ctx,
+      "<b>📜 پیشنهاد قرارداد تجاری</b>\nقاره: " +
+        continentNames[region] +
+        "\n\nفقط نام کشورها نمایش داده می‌شود. کشور موردنظر را انتخاب کنید:",
+      K(rows),
+    );
+  },
+);
+bot.callbackQuery(/^tc:country:([a-z0-9_]+)$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const p = await ready(ctx);
+  if (!p) return;
+  const id = ctx.match[1],
+    c = country(id);
+  if (!c) {
+    await say(ctx, "کشور انتخاب‌شده معتبر نیست.");
+    return;
+  }
+  const target = (
+    await pool.query(
+      "SELECT telegram_id FROM game_players WHERE approved=TRUE AND country_id=$1 AND telegram_id<>$2 LIMIT 1",
+      [id, ctx.from.id],
+    )
+  ).rows[0];
+  if (!target) {
+    await say(ctx, "این کشور بازیکن فعال ندارد؛ کشور دیگری انتخاب کنید.");
+    return;
+  }
+  return edit(
+    ctx,
+    "<b>کشور طرف قرارداد</b>\n\n🌍 " + c[1] + "\n\nبرای ادامه، کشور را انتخاب کنید:",
+    K([
+      [{ text: c[1], callback_data: "tc:partner:" + target.telegram_id }],
+      [{ text: "↩️ بازگشت به فهرست کشورها", callback_data: "tc:continent:" + continentOf(id) }],
+    ]),
+  );
+});
+bot.callbackQuery(/^tc:partner:(\d+)$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const p = await ready(ctx);
+  if (!p) return;
+  const other = Number(ctx.match[1]),
+    target = await get(other),
+    rel = (
+      await pool.query("SELECT relation FROM game_relations WHERE player_id=$1 AND other_id=$2", [
+        ctx.from.id,
+        other,
+      ])
+    ).rows[0];
+  if (!target?.approved || rel?.relation !== "trade_pact") {
+    await say(
+      ctx,
+      "برای قرارداد تجاری باید ابتدا پیمان تجاری با این کشور فعال باشد.",
+      K([
+        [{ text: "📦 پیشنهاد پیمان تجاری", callback_data: "dipoffer:trade_pact:" + other }],
+        [{ text: "↩️ بازگشت", callback_data: "n:trade" }],
+      ]),
+    );
+    return;
+  }
+  pendingTradeInput.set(ctx.from.id, { step: "contract_offer_qty", partner: other });
+  await edit(
+    ctx,
+    "<b>📜 قرارداد با " +
+      (country(target.country_id)?.[1] || target.display_name) +
+      "</b>\n\nمرحله ۱: منبعی را که شما می‌فرستید انتخاب کنید.",
+    K([
+      [
+        { text: "🌾 غله", callback_data: "tc:offer:grain" },
+        { text: "🪨 زغال", callback_data: "tc:offer:coal" },
+      ],
+      [
+        { text: "⛓ آهن", callback_data: "tc:offer:iron" },
+        { text: "🧵 پارچه", callback_data: "tc:offer:cloth" },
+      ],
+      [
+        { text: "🛢 نفت", callback_data: "tc:offer:oil" },
+        { text: "🪙 طلا", callback_data: "tc:offer:gold_stock" },
+      ],
+      [{ text: "💵 دلار نقدی", callback_data: "tc:offer:cash" }],
+      [{ text: "لغو", callback_data: "n:trade" }],
+    ]),
+  );
+});
+bot.callbackQuery(/^tc:offer:(grain|coal|iron|cloth|oil|gold_stock|cash)$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const st = pendingTradeInput.get(ctx.from.id);
+  if (!st?.partner) return;
+  st.offer_resource = ctx.match[1];
+  st.step = "contract_offer_qty";
+  pendingTradeInput.set(ctx.from.id, st);
+  await ctx.reply(
+    "مقدار " +
+      resourceNames[st.offer_resource] +
+      " که می‌فرستید را عددی وارد کنید. موجودی شما: " +
+      fmt(
+        st.offer_resource === "cash"
+          ? (await get(ctx.from.id)).treasury
+          : (await get(ctx.from.id))[st.offer_resource],
+      ),
+    { reply_markup: { force_reply: true, selective: true } },
+  );
+});
+bot.callbackQuery(/^tc:want:(grain|coal|iron|cloth|oil|gold_stock|cash)$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const st = pendingTradeInput.get(ctx.from.id);
+  if (!st?.partner || !st.offer_quantity) return;
+  if (ctx.match[1] === st.offer_resource) {
+    await say(ctx, "برای جلوگیری از انتقال مبهم، منبع دریافتی باید با منبع ارسالی متفاوت باشد.");
+    return;
+  }
+  st.want_resource = ctx.match[1];
+  st.step = "contract_want_qty";
+  pendingTradeInput.set(ctx.from.id, st);
+  await ctx.reply(
+    "مقدار " +
+      resourceNames[st.want_resource] +
+      " را که در ازای کالا می‌خواهید دریافت کنید، وارد کنید.",
+    { reply_markup: { force_reply: true, selective: true } },
+  );
+});
+bot.callbackQuery(/^tc:route:(sea|land|air)$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const st = pendingTradeInput.get(ctx.from.id);
+  if (!st?.partner || !st.want_quantity) return;
+  st.transport = ctx.match[1];
+  st.transit_cost = st.want_quantity * { sea: 1, land: 2, air: 4 }[st.transport];
+  st.step = "contract_payer";
+  pendingTradeInput.set(ctx.from.id, st);
+  await edit(
+    ctx,
+    "<b>مرحله ۴ — پرداخت ترانزیت</b>\n\nمسیر: " +
+      { sea: "🚢 دریایی — ارزان‌ترین", land: "🚆 زمینی — قیمت متوسط", air: "✈️ هوایی — گران‌ترین" }[
+        st.transport
+      ] +
+      "\nهزینه‌ی برآوردی: " +
+      money(st.transit_cost) +
+      "\n\nچه کسی هزینه‌ی حمل را می‌پردازد؟",
+    K([
+      [{ text: "📤 فرستنده / فروشنده", callback_data: "tc:payer:seller" }],
+      [{ text: "📥 گیرنده / خریدار", callback_data: "tc:payer:buyer" }],
+      [{ text: "لغو", callback_data: "n:trade" }],
+    ]),
+  );
+});
+bot.callbackQuery(/^tc:payer:(seller|buyer)$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const st = pendingTradeInput.get(ctx.from.id);
+  if (!st?.partner || !st.transport) return;
+  st.transit_payer = ctx.match[1];
+  st.step = "contract_confirm";
+  pendingTradeInput.set(ctx.from.id, st);
+  await edit(
+    ctx,
+    "<b>📋 پیش‌نمایش قرارداد</b>\n\nشما می‌فرستید: " +
+      resourceNames[st.offer_resource] +
+      " × " +
+      fmt(st.offer_quantity) +
+      "\nدر مقابل دریافت: " +
+      resourceNames[st.want_resource] +
+      " × " +
+      fmt(st.want_quantity) +
+      "\nمسیر: " +
+      { sea: "دریایی", land: "زمینی", air: "هوایی" }[st.transport] +
+      "\nترانزیت: " +
+      money(st.transit_cost) +
+      " — پرداخت توسط " +
+      (st.transit_payer === "seller" ? "فرستنده" : "گیرنده") +
+      "\n\nبا ارسال، کالاهای ارسالی شما تا قبول یا رد پیشنهاد رزرو می‌شوند.",
+    K([
+      [{ text: "📨 ارسال قرارداد", callback_data: "tc:send" }],
+      [{ text: "❌ لغو", callback_data: "n:trade" }],
+    ]),
+  );
+});
+bot.callbackQuery(/^tc:send$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const st = pendingTradeInput.get(ctx.from.id);
+  if (!st || st.step !== "contract_confirm") return;
+  const blocked = (
+    await pool.query(
+      "SELECT EXISTS(SELECT 1 FROM game_sanctions WHERE active=TRUE AND ((issuer_id=$1 AND target_id=$2) OR (issuer_id=$2 AND target_id=$1))) AS blocked",
+      [ctx.from.id, st.partner],
+    )
+  ).rows[0]?.blocked;
+  if (blocked) {
+    pendingTradeInput.delete(ctx.from.id);
+    await say(ctx, "🚫 به‌دلیل تحریم اقتصادی، قرارداد با این کشور قابل ارسال نیست.");
+    return;
+  }
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const p = (
+      await client.query(
+        "SELECT " +
+          (st.offer_resource === "cash" ? "treasury" : st.offer_resource) +
+          " AS stock FROM game_players WHERE telegram_id=$1 FOR UPDATE",
+        [ctx.from.id],
+      )
+    ).rows[0];
+    if (!p || Number(p.stock) < st.offer_quantity) {
+      await client.query("ROLLBACK");
+      pendingTradeInput.delete(ctx.from.id);
+      await say(ctx, "موجودی برای رزرو قرارداد کافی نیست. دوباره پیشنهاد بسازید.");
+      return;
+    }
+    await client.query(
+      "UPDATE game_players SET " +
+        (st.offer_resource === "cash" ? "treasury" : st.offer_resource) +
+        "=" +
+        (st.offer_resource === "cash" ? "treasury" : st.offer_resource) +
+        "-$2 WHERE telegram_id=$1",
+      [ctx.from.id, st.offer_quantity],
+    );
+    const c = (
+      await client.query(
+        "INSERT INTO game_trade_contracts(proposer_id,recipient_id,offer_resource,offer_quantity,want_resource,want_quantity,transport,transit_payer,transit_cost) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id",
+        [
+          ctx.from.id,
+          st.partner,
+          st.offer_resource,
+          st.offer_quantity,
+          st.want_resource,
+          st.want_quantity,
+          st.transport,
+          st.transit_payer,
+          st.transit_cost,
+        ],
+      )
+    ).rows[0];
+    await client.query("COMMIT");
+    pendingTradeInput.delete(ctx.from.id);
+    await say(
+      ctx,
+      "📨 قرارداد شماره " + c.id + " ارسال شد؛ کالاهای پیشنهادی رزرو شدند.",
+      K([
+        [{ text: "📜 مرکز قراردادهای تجاری", callback_data: "tc:center" }],
+        [{ text: "↩️ بازار", callback_data: "n:trade" }],
+      ]),
+    );
+    try {
+      await bot.api.sendMessage(
+        st.partner,
+        "📨 یک قرارداد تجاری جدید از کشور دیگر دریافت کردید. برای بررسی وارد بخش قراردادها شوید.",
+      );
+    } catch {}
+  } catch (e) {
+    await client.query("ROLLBACK");
+    throw e;
+  } finally {
+    client.release();
+  }
+});
+bot.callbackQuery(/^tc:inbox$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const p = await ready(ctx);
+  if (!p) return;
+  const r = await pool.query(
+    "SELECT c.*,p.country_id,p.display_name FROM game_trade_contracts c JOIN game_players p ON p.telegram_id=c.proposer_id WHERE c.recipient_id=$1 AND c.status='pending' ORDER BY c.id DESC LIMIT 20",
+    [ctx.from.id],
+  );
+  const rows = r.rows.map((x) => [
+    {
+      text: "📜 #" + x.id + " · " + (country(x.country_id)?.[1] || x.display_name),
+      callback_data: "tc:view:" + x.id,
+    },
+  ]);
+  if (!rows.length) rows.push([{ text: "قرارداد دریافتی ندارید", callback_data: "noop" }]);
+  rows.push([{ text: "↩️ بازار", callback_data: "n:trade" }]);
+  await edit(ctx, "<b>📨 قراردادهای تجاری دریافتی</b>", K(rows));
+});
+bot.callbackQuery(/^tc:view:(\d+)$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const x = (
+    await pool.query(
+      "SELECT c.*,p.country_id,p.display_name FROM game_trade_contracts c JOIN game_players p ON p.telegram_id=c.proposer_id WHERE c.id=$1 AND c.recipient_id=$2 AND c.status='pending'",
+      [Number(ctx.match[1]), ctx.from.id],
+    )
+  ).rows[0];
+  if (!x) {
+    await say(ctx, "این قرارداد دیگر فعال نیست.");
+    return;
+  }
+  await edit(
+    ctx,
+    "<b>📜 قرارداد شماره " +
+      x.id +
+      "</b>\n\nطرف قرارداد: " +
+      (country(x.country_id)?.[1] || x.display_name) +
+      "\nارسال: " +
+      resourceLabel(x.offer_resource) +
+      " × " +
+      fmt(x.offer_quantity) +
+      "\nدرخواست در مقابل: " +
+      resourceLabel(x.want_resource) +
+      " × " +
+      fmt(x.want_quantity) +
+      "\nمسیر: " +
+      { sea: "🚢 دریایی", land: "🚆 زمینی", air: "✈️ هوایی" }[x.transport] +
+      "\nهزینه‌ی ترانزیت: " +
+      money(x.transit_cost) +
+      " — پرداخت توسط " +
+      (x.transit_payer === "seller" ? "فرستنده" : "گیرنده") +
+      "\n\nبا قبول قرارداد، کالاها و هزینه‌ی ترانزیت طبق توافق منتقل می‌شوند.",
+    K([
+      [{ text: "✅ قبول و اجرای قرارداد", callback_data: "tc:accept:" + x.id }],
+      [{ text: "❌ رد قرارداد", callback_data: "tc:reject:" + x.id }],
+      [{ text: "↩️ قراردادها", callback_data: "tc:inbox" }],
+    ]),
+  );
+});
+bot.callbackQuery(/^tc:reject:(\d+)$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const id = Number(ctx.match[1]),
+    client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const x = (
+      await client.query(
+        "SELECT * FROM game_trade_contracts WHERE id=$1 AND recipient_id=$2 AND status='pending' FOR UPDATE",
+        [id, ctx.from.id],
+      )
+    ).rows[0];
+    if (!x) {
+      await client.query("ROLLBACK");
+      await say(ctx, "قرارداد دیگر فعال نیست.");
+      return;
+    }
+    await client.query(
+      "UPDATE game_players SET " +
+        (x.offer_resource === "cash" ? "treasury" : x.offer_resource) +
+        "=" +
+        (x.offer_resource === "cash" ? "treasury" : x.offer_resource) +
+        "+$2 WHERE telegram_id=$1",
+      [x.proposer_id, x.offer_quantity],
+    );
+    await client.query("UPDATE game_trade_contracts SET status='rejected' WHERE id=$1", [id]);
+    await client.query("COMMIT");
+    await say(ctx, "قرارداد رد شد؛ کالای رزروشده به فرستنده بازگشت.");
+    try {
+      await bot.api.sendMessage(
+        x.proposer_id,
+        "❌ قرارداد تجاری شماره " + id + " رد شد و کالای رزروشده به ذخایر شما برگشت.",
+      );
+    } catch {}
+  } catch (e) {
+    await client.query("ROLLBACK");
+    throw e;
+  } finally {
+    client.release();
+  }
+});
+bot.callbackQuery(/^tc:accept:(\d+)$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const id = Number(ctx.match[1]),
+    client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const x = (
+      await client.query(
+        "SELECT * FROM game_trade_contracts WHERE id=$1 AND recipient_id=$2 AND status='pending' FOR UPDATE",
+        [id, ctx.from.id],
+      )
+    ).rows[0];
+    if (!x) {
+      await client.query("ROLLBACK");
+      await say(ctx, "قرارداد دیگر فعال نیست.");
+      return;
+    }
+    const blocked = (
+      await client.query(
+        "SELECT EXISTS(SELECT 1 FROM game_sanctions WHERE active=TRUE AND ((issuer_id=$1 AND target_id=$2) OR (issuer_id=$2 AND target_id=$1))) AS blocked",
+        [ctx.from.id, x.proposer_id],
+      )
+    ).rows[0]?.blocked;
+    if (blocked) {
+      await client.query("ROLLBACK");
+      await say(ctx, "🚫 اجرای این قرارداد به‌دلیل تحریم اقتصادی ممنوع است.");
+      return;
+    }
+    const buyer = (
+      await client.query(
+        "SELECT " +
+          (x.want_resource === "cash" ? "treasury" : x.want_resource) +
+          " AS stock,treasury FROM game_players WHERE telegram_id=$1 FOR UPDATE",
+        [ctx.from.id],
+      )
+    ).rows[0];
+    const seller = (
+      await client.query("SELECT treasury FROM game_players WHERE telegram_id=$1 FOR UPDATE", [
+        x.proposer_id,
+      ])
+    ).rows[0];
+    if (
+      !buyer ||
+      Number(buyer.stock) < Number(x.want_quantity) ||
+      (x.want_resource === "cash" &&
+        x.transit_payer === "buyer" &&
+        Number(buyer.treasury) < Number(x.want_quantity) + Number(x.transit_cost))
+    ) {
+      await client.query("ROLLBACK");
+      await say(ctx, "منابع یا خزانه‌ی شما برای اجرای قرارداد و هزینه‌ی ترانزیت کافی نیست.");
+      return;
+    }
+    const payerId = x.transit_payer === "seller" ? x.proposer_id : ctx.from.id;
+    const payer = payerId === Number(ctx.from.id) ? buyer : seller;
+    if (!payer || Number(payer.treasury) < Number(x.transit_cost)) {
+      await client.query("ROLLBACK");
+      await say(ctx, "خزانه‌ی طرف پرداخت‌کننده برای هزینه‌ی ترانزیت کافی نیست.");
+      return;
+    }
+    if (x.want_resource === "cash") {
+      await client.query("UPDATE game_players SET treasury=treasury-$2 WHERE telegram_id=$1", [
+        ctx.from.id,
+        x.want_quantity,
+      ]);
+      await client.query("UPDATE game_players SET treasury=treasury+$2 WHERE telegram_id=$1", [
+        x.proposer_id,
+        x.want_quantity,
+      ]);
+    } else {
+      await client.query(
+        "UPDATE game_players SET " +
+          x.want_resource +
+          "=" +
+          x.want_resource +
+          "-$2 WHERE telegram_id=$1",
+        [ctx.from.id, x.want_quantity],
+      );
+      await client.query(
+        "UPDATE game_players SET " +
+          x.want_resource +
+          "=" +
+          x.want_resource +
+          "+$2 WHERE telegram_id=$1",
+        [x.proposer_id, x.want_quantity],
+      );
+    }
+    if (x.offer_resource === "cash") {
+      await client.query("UPDATE game_players SET treasury=treasury+$2 WHERE telegram_id=$1", [
+        ctx.from.id,
+        x.offer_quantity,
+      ]);
+    } else {
+      await client.query(
+        "UPDATE game_players SET " +
+          x.offer_resource +
+          "=" +
+          x.offer_resource +
+          "+$2 WHERE telegram_id=$1",
+        [ctx.from.id, x.offer_quantity],
+      );
+    }
+    await client.query("UPDATE game_players SET treasury=treasury-$2 WHERE telegram_id=$1", [
+      payerId,
+      x.transit_cost,
+    ]);
+    await client.query("UPDATE game_trade_contracts SET status='completed' WHERE id=$1", [id]);
+    await client.query("COMMIT");
+    await say(
+      ctx,
+      "✅ قرارداد اجرا شد!\n\nدریافت شما: " +
+        resourceLabel(x.offer_resource) +
+        " × " +
+        fmt(x.offer_quantity) +
+        "\nارسال شما: " +
+        resourceLabel(x.want_resource) +
+        " × " +
+        fmt(x.want_quantity) +
+        "\nترانزیت پرداخت‌شده: " +
+        money(x.transit_cost),
+      K([
+        [{ text: "📨 قراردادهای دریافتی", callback_data: "tc:inbox" }],
+        [{ text: "🛒 بازار", callback_data: "n:trade" }],
+      ]),
+    );
+    try {
+      await bot.api.sendMessage(
+        x.proposer_id,
+        "✅ قرارداد تجاری شماره " + id + " اجرا شد. کالای مورد توافق به ذخایر شما منتقل شد.",
+      );
+    } catch {}
+  } catch (e) {
+    await client.query("ROLLBACK");
+    throw e;
+  } finally {
+    client.release();
+  }
+});
+bot.callbackQuery(/^sell:(grain|coal|iron|cloth|oil|gold_stock)$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const p = await ready(ctx);
+  if (!p) return;
+  const res = ctx.match[1];
+  pendingTradeInput.set(ctx.from.id, { step: "quantity", resource: res });
+  await ctx.reply(
+    "<b>مرحله ۲ از ۳ — مقدار عرضه</b>\nمنبع: " +
+      resourceNames[res] +
+      "\nموجودی کشور: " +
+      fmt(p[res]) +
+      "\n\nمقدار موردنظر برای فروش را به عدد ارسال کنید.",
+    { parse_mode: "HTML", reply_markup: { force_reply: true, selective: true } },
+  );
+});
+bot.callbackQuery(/^buy:(\d+)$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const p = await ready(ctx);
+  if (!p) return;
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const t = (
+      await client.query("SELECT * FROM game_trade WHERE id=$1 AND status='open' FOR UPDATE", [
+        Number(ctx.match[1]),
+      ])
+    ).rows[0];
+    if (!t || Number(t.seller_id) === Number(ctx.from.id)) {
+      await client.query("ROLLBACK");
+      await say(ctx, "پیشنهاد دیگر موجود نیست.", nation());
+      return;
+    }
+    const pact = (
+      await client.query("SELECT relation FROM game_relations WHERE player_id=$1 AND other_id=$2", [
+        ctx.from.id,
+        t.seller_id,
+      ])
+    ).rows[0];
+    if (pact?.relation !== "trade_pact") {
+      await client.query("ROLLBACK");
+      await say(
+        ctx,
+        "برای تجارت با این کشور باید پیمان تجاری دوطرفه داشته باشید. از وزارت امور خارجه پیشنهاد پیمان بفرستید و پس از پذیرش، بازار را تازه‌سازی کنید.",
+        K([
+          [{ text: "🤝 وزارت امور خارجه", callback_data: "n:diplomacy" }],
+          [{ text: "↩️ بازار", callback_data: "n:trade" }],
+        ]),
+      );
+      return;
+    }
+    const blocked = (
+      await client.query(
+        "SELECT EXISTS(SELECT 1 FROM game_sanctions WHERE active=TRUE AND ((issuer_id=$1 AND target_id=$2) OR (issuer_id=$2 AND target_id=$1))) AS blocked",
+        [ctx.from.id, t.seller_id],
+      )
+    ).rows[0]?.blocked;
+    if (blocked) {
+      await client.query("ROLLBACK");
+      await say(ctx, "🚫 معامله به‌دلیل تحریم اقتصادی مسدود است.");
+      return;
+    }
+    const total = Number(t.quantity) * Number(t.unit_price);
+    const buyer = (
+      await client.query(
+        "SELECT treasury,country_id FROM game_players WHERE telegram_id=$1 FOR UPDATE",
+        [ctx.from.id],
+      )
+    ).rows[0];
+    if (!buyer || Number(buyer.treasury) < total) {
+      await client.query("ROLLBACK");
+      await say(ctx, "خزانه برای خرید کافی نیست.", nation());
+      return;
+    }
+    const seller = (
+      await client.query("SELECT country_id FROM game_players WHERE telegram_id=$1 FOR UPDATE", [
+        t.seller_id,
+      ])
+    ).rows[0];
+    await client.query(
+      "UPDATE game_players SET treasury=treasury-$2," +
+        t.resource +
+        "=" +
+        t.resource +
+        "+$3 WHERE telegram_id=$1",
+      [ctx.from.id, total, t.quantity],
+    );
+    await client.query("UPDATE game_players SET treasury=treasury+$2 WHERE telegram_id=$1", [
+      t.seller_id,
+      total,
+    ]);
+    await client.query("UPDATE game_trade SET status='sold',buyer_id=$2 WHERE id=$1", [
+      t.id,
+      ctx.from.id,
+    ]);
+    await client.query(
+      "INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,$3,$4)",
+      [
+        ctx.from.id,
+        "خرید " +
+          resourceLabel(t.resource) +
+          " از " +
+          (country(seller?.country_id)?.[1] || "کشور دیگر"),
+        -total,
+        Number(buyer.treasury) - total,
+      ],
+    );
+    await client.query(
+      "INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,$3,$4)",
+      [
+        t.seller_id,
+        "فروش " +
+          resourceLabel(t.resource) +
+          " به " +
+          (country(buyer.country_id)?.[1] || "کشور دیگر"),
+        total,
+        Number(
+          (
+            await client.query("SELECT treasury FROM game_players WHERE telegram_id=$1", [
+              t.seller_id,
+            ])
+          ).rows[0].treasury,
+        ),
+      ],
+    );
+    await client.query("COMMIT");
+    await say(
+      ctx,
+      "🤝 معامله‌ی بین کشورها انجام شد.\n\nخریدار: " +
+        (country(buyer.country_id)?.[1] || "کشور شما") +
+        "\nفروشنده: " +
+        (country(seller?.country_id)?.[1] || "کشور فروشنده") +
+        "\nکالا: " +
+        resourceLabel(t.resource) +
+        " ×" +
+        fmt(t.quantity) +
+        "\nمبلغ پرداختی: " +
+        money(total),
+      K([
+        [{ text: "🛒 ادامه‌ی تجارت", callback_data: "n:stocks" }],
+        [{ text: "🏛 بازگشت به دربار", callback_data: "m:n" }],
+      ]),
+    );
+  } catch (e) {
+    await client.query("ROLLBACK");
+    throw e;
+  } finally {
+    client.release();
+  }
+});
+bot.callbackQuery(/^tradecancel:(\d+)$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const p = await ready(ctx);
+  if (!p) return;
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const t = (
+      await client.query(
+        "SELECT * FROM game_trade WHERE id=$1 AND seller_id=$2 AND status='open' FOR UPDATE",
+        [Number(ctx.match[1]), ctx.from.id],
+      )
+    ).rows[0];
+    if (!t) {
+      await client.query("ROLLBACK");
+      await say(ctx, "این پیشنهاد دیگر فعال نیست.", nation());
+      return;
+    }
+    await client.query(
+      "UPDATE game_players SET " + t.resource + "=" + t.resource + "+$2 WHERE telegram_id=$1",
+      [ctx.from.id, t.quantity],
+    );
+    await client.query("UPDATE game_trade SET status='cancelled' WHERE id=$1", [t.id]);
+    await client.query("COMMIT");
+    await say(
+      ctx,
+      "پیشنهاد لغو شد و منابع به خزانه‌ی کشور بازگشت.",
+      K([
+        [{ text: "🛒 بازار تجارت", callback_data: "n:trade" }],
+        [{ text: "🏛️ دربار", callback_data: "m:n" }],
+      ]),
+    );
+  } catch (e) {
+    await client.query("ROLLBACK");
+    throw e;
+  } finally {
+    client.release();
+  }
+});
+bot.callbackQuery(/^dipsanction:(\d+)$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const p = await ready(ctx);
+  if (!p) return;
+  const other = Number(ctx.match[1]),
+    target = await get(other);
+  if (other === ctx.from.id || !target?.approved) {
+    await say(ctx, "کشور هدف معتبر نیست.");
+    return;
+  }
+  const active = (
+    await pool.query("SELECT active FROM game_sanctions WHERE issuer_id=$1 AND target_id=$2", [
+      ctx.from.id,
+      other,
+    ])
+  ).rows[0]?.active;
+  if (active) {
+    await pool.query("UPDATE game_sanctions SET active=FALSE WHERE issuer_id=$1 AND target_id=$2", [
+      ctx.from.id,
+      other,
+    ]);
+    await pool.query(
+      "INSERT INTO game_diplomacy_log(player_id,other_id,event,details) VALUES($1,$2,'sanction_lifted','تحریم اقتصادی لغو شد')",
+      [ctx.from.id, other],
+    );
+    await edit(
+      ctx,
+      "✅ تحریم اقتصادی لغو شد. تجارت دوباره ممکن است، مگر اینکه تحریم دیگری فعال باشد.",
+      K([
+        [{ text: "↩️ وزارت امور خارجه", callback_data: "n:diplomacy" }],
+        [{ text: "📂 پرونده کشور", callback_data: "dip:" + other }],
+      ]),
+    );
+    try {
+      await bot.api.sendMessage(other, "✅ تحریم اقتصادی علیه کشور شما لغو شد.");
+    } catch {}
+    return;
+  }
+  await pool.query(
+    "INSERT INTO game_sanctions(issuer_id,target_id,active) VALUES($1,$2,TRUE) ON CONFLICT(issuer_id,target_id) DO UPDATE SET active=TRUE,created_at=NOW()",
+    [ctx.from.id, other],
+  );
+  await pool.query(
+    "INSERT INTO game_diplomacy_log(player_id,other_id,event,details) VALUES($1,$2,'sanction','تحریم اقتصادی اعمال شد؛ تجارت دوجانبه مسدود شد')",
+    [ctx.from.id, other],
+  );
+  await edit(
+    ctx,
+    "🚫 تحریم اقتصادی اعمال شد؛ تجارت و قراردادهای مستقیم با این کشور مسدود است.",
+    K([
+      [{ text: "↩️ وزارت امور خارجه", callback_data: "n:diplomacy" }],
+      [{ text: "📂 پرونده کشور", callback_data: "dip:" + other }],
+    ]),
+  );
+  try {
+    await bot.api.sendMessage(
+      other,
+      "🚫 یک کشور علیه شما تحریم اقتصادی اعمال کرد؛ تجارت دوجانبه مسدود شد.",
+    );
+  } catch {}
+});
+bot.callbackQuery(/^dip:(\d+)$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const other = Number(ctx.match[1]),
+    target = await get(other);
+  if (!target?.approved || other === ctx.from.id) {
+    await say(ctx, "کشور در دسترس نیست.");
+    return;
+  }
+  const rel = (
+    await pool.query(
+      "SELECT relation,trust FROM game_relations WHERE player_id=$1 AND other_id=$2",
+      [ctx.from.id, other],
+    )
+  ).rows[0] || { relation: "neutral", trust: 0 };
+  const labels = {
+    alliance: "🤝 اتحاد",
+    nonaggression: "🕊 عدم تعرض",
+    trade_pact: "📦 پیمان تجاری",
+    neutral: "⚪ عادی",
+    proposal_alliance: "📨 پیشنهاد اتحاد",
+    proposal_nonaggression: "📨 پیشنهاد عدم تعرض",
+    proposal_trade_pact: "📨 پیشنهاد تجاری",
+    war: "⚔️ جنگ",
+  };
+  await edit(
+    ctx,
+    "<b>🤝 پرونده‌ی دیپلماتیک</b>\n\n🏳️ کشور: " +
+      (country(target.country_id)?.[1] || target.display_name) +
+      "\n👑 فرمانروا: " +
+      target.display_name +
+      "\n📊 رابطه: " +
+      (labels[rel.relation] || rel.relation) +
+      "\n💗 اعتماد: " +
+      rel.trust +
+      "/100\n\n🤝 اتحاد: اعلام همکاری سیاسی و افزایش اعتماد.\n🕊 عدم تعرض: تعهد سیاسی؛ حمله‌ی نظامی این پیمان را نقض کرده و رابطه به وضعیت جنگ می‌رود.\n📦 پیمان تجاری: توافق برای همکاری اقتصادی؛ معامله همچنان از بازار منابع انجام می‌شود.\n\n🏛️ سفارت: " +
+      Number(
+        (
+          await pool.query("SELECT level FROM game_embassies WHERE player_id=$1 AND other_id=$2", [
+            ctx.from.id,
+            other,
+          ])
+        ).rows[0]?.level || 0,
+      ) +
+      "/3\n\nنوع پیشنهاد یا اقدام را انتخاب کنید:\n\n• اتحاد: افزایش اعتماد و همکاری سیاسی.\n• عدم تعرض: پیمان دوطرفه؛ حمله، پیمان را نقض می‌کند.\n• تجاری: همکاری اقتصادی؛ خریدوفروش همچنان از بازار انجام می‌شود.\n• جنگ: با حمله آغاز می‌شود؛ برای پایان، آتش‌بس پیشنهاد دهید.\n• اعتماد: از ۰ تا ۱۰۰؛ با مذاکرات و پیمان‌ها تغییر می‌کند.",
+    K([
+      [{ text: "🤝 پیشنهاد اتحاد", callback_data: "dipoffer:alliance:" + other }],
+      [{ text: "🕊 پیشنهاد عدم تعرض", callback_data: "dipoffer:nonaggression:" + other }],
+      [{ text: "📦 پیمان و قرارداد تجاری", callback_data: "dipcommerce:" + other }],
+      [{ text: "🕊️ پیشنهاد آتش‌بس", callback_data: "dipoffer:ceasefire:" + other }],
+      [{ text: "🧹 لغو پیمان", callback_data: "dipbreak:" + other }],
+      [{ text: "⚔️ حمله به کشور", callback_data: "battlechoose:" + other }],
+      [{ text: "↩️ فهرست کشورها", callback_data: "n:diplomacy" }],
+    ]),
+  );
+});
+bot.callbackQuery(/^dipcountries$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const r = await pool.query(
+    "SELECT p.telegram_id,p.display_name,p.country_id,COALESCE(g.relation,'neutral') AS relation,EXISTS(SELECT 1 FROM game_sanctions s WHERE s.issuer_id=$1 AND s.target_id=p.telegram_id AND s.active=TRUE) AS sanctioned FROM game_players p LEFT JOIN game_relations g ON g.player_id=$1 AND g.other_id=p.telegram_id WHERE p.approved=TRUE AND p.telegram_id<>$1 ORDER BY p.display_name LIMIT 30",
+    [ctx.from.id],
+  );
+  const rows = [];
+  for (const x of r.rows) {
+    rows.push([
+      {
+        text:
+          "🌐 " +
+          (country(x.country_id)?.[1] || x.display_name) +
+          " · " +
+          ({
+            alliance: "🤝 متحد",
+            nonaggression: "🕊 عدم تعرض",
+            trade_pact: "📦 تجاری",
+            neutral: "⚪ عادی",
+          }[x.relation] || "📨 " + keyLabel(x.relation)) +
+          (x.sanctioned ? " · 🚫 تحریم" : ""),
+        callback_data: "dip:" + x.telegram_id,
+      },
+    ]);
+    rows.push([
+      { text: "🤝 اتحاد", callback_data: "dipoffer:alliance:" + x.telegram_id },
+      {
+        text: x.sanctioned ? "✅ لغو تحریم" : "🚫 تحریم",
+        callback_data: "dipsanction:" + x.telegram_id,
+      },
+    ]);
+  }
+  if (!rows.length) rows.push([{ text: "⏳ کشور دیگری فعال نیست", callback_data: "noop" }]);
+  rows.push([{ text: "↩️ دیپلماسی", callback_data: "n:diplomacy" }]);
+  return edit(
+    ctx,
+    "<b>🤝 اتحادها و تحریم‌های اقتصادی</b>\n\nکشور را انتخاب کنید. تحریم، تجارت مستقیم و قراردادهای تجاری را مسدود می‌کند.",
+    K(rows),
+  );
+});
+bot.callbackQuery(/^dipmissions$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const p = await ready(ctx);
+  if (!p) return;
+  const r = await pool.query(
+    "SELECT telegram_id,display_name,country_id FROM game_players WHERE approved=TRUE AND telegram_id<>$1 ORDER BY display_name LIMIT 30",
+    [ctx.from.id],
+  );
+  const rows = r.rows.map((x) => [
+    {
+      text: "🕊️ اعزام هیئت به " + (country(x.country_id)?.[1] || x.display_name) + " · $5,000",
+      callback_data: "dipmission:" + x.telegram_id,
+    },
+  ]);
+  if (!rows.length)
+    rows.push([{ text: "کشور دیگری برای اعزام هیئت وجود ندارد", callback_data: "noop" }]);
+  rows.push([{ text: "↩️ دیپلماسی", callback_data: "n:diplomacy" }]);
+  return edit(
+    ctx,
+    "<b>🚩 مأموریت‌های راهبردی</b>\n\nاعزام هیئت دیپلماتیک به کشور دیگر، هزینه‌ی $5,000 دارد و اعتماد دوطرفه را ۵ واحد افزایش می‌دهد.",
+    K(rows),
+  );
+});
+bot.callbackQuery(/^dipembassies$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const p = await ready(ctx);
+  if (!p) return;
+  const r = await pool.query(
+    "SELECT p.telegram_id,p.display_name,p.country_id,COALESCE(e.level,0) AS level FROM game_players p LEFT JOIN game_embassies e ON e.player_id=$1 AND e.other_id=p.telegram_id WHERE p.approved=TRUE AND p.telegram_id<>$1 ORDER BY p.display_name LIMIT 30",
+    [ctx.from.id],
+  );
+  const rows = r.rows.map((x) => [
+    {
+      text: "🏛️ " + (country(x.country_id)?.[1] || x.display_name) + " · سفارت " + x.level + "/3",
+      callback_data: "dipembassy:" + x.telegram_id,
+    },
+  ]);
+  if (!rows.length)
+    rows.push([{ text: "کشور دیگری برای سفارت وجود ندارد", callback_data: "noop" }]);
+  rows.push([{ text: "↩️ دیپلماسی", callback_data: "n:diplomacy" }]);
+  return edit(
+    ctx,
+    "<b>🏛️ سفارت‌ها و ارتقای روابط</b>\n\nساخت یا ارتقای سفارت: $25,000 و ۱۰۰ آهن؛ هر سطح اعتماد را ۸ واحد افزایش می‌دهد. حداکثر سطح: ۳.",
+    K(rows),
+  );
+});
+bot.callbackQuery(/^dipmission:(\d+)$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const p = await ready(ctx);
+  if (!p) return;
+  const other = Number(ctx.match[1]);
+  if (other === ctx.from.id || !(await get(other))?.approved) {
+    await say(ctx, "کشور مقصد معتبر نیست.");
+    return;
+  }
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const me = (
+      await client.query("SELECT treasury FROM game_players WHERE telegram_id=$1 FOR UPDATE", [
+        ctx.from.id,
+      ])
+    ).rows[0];
+    if (!me || Number(me.treasury) < 5000) {
+      await client.query("ROLLBACK");
+      await say(ctx, "برای اعزام هیئت به $5,000 نیاز دارید.");
+      return;
+    }
+    await client.query("UPDATE game_players SET treasury=treasury-5000 WHERE telegram_id=$1", [
+      ctx.from.id,
+    ]);
+    for (const [a, b] of [
+      [ctx.from.id, other],
+      [other, ctx.from.id],
+    ])
+      await client.query(
+        "INSERT INTO game_relations(player_id,other_id,relation,trust) VALUES($1,$2,'neutral',5) ON CONFLICT(player_id,other_id) DO UPDATE SET trust=LEAST(100,game_relations.trust+5)",
+        [a, b],
+      );
+    await client.query(
+      "INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,'اعزام هیئت دیپلماتیک',-5000,$2)",
+      [ctx.from.id, Number(me.treasury) - 5000],
+    );
+    await client.query(
+      "INSERT INTO game_diplomacy_log(player_id,other_id,event,details) VALUES($1,$2,'mission','هیئت دیپلماتیک اعزام شد')",
+      [ctx.from.id, other],
+    );
+    await client.query("COMMIT");
+    try {
+      await bot.api.sendMessage(
+        other,
+        "🕊️ یک هیئت دیپلماتیک از سوی " +
+          ((await get(ctx.from.id))?.display_name || "کشوری") +
+          " اعزام شد؛ اعتماد روابط افزایش یافت.",
+      );
+    } catch {}
+    await edit(
+      ctx,
+      "🕊️ هیئت دیپلماتیک اعزام شد.\n💵 هزینه: $5,000\n💗 اعتماد دوطرفه: +5",
+      K([
+        [{ text: "↩️ پرونده‌ی دیپلماتیک", callback_data: "dip:" + other }],
+        [{ text: "📜 دفتر روابط", callback_data: "diprelations" }],
+      ]),
+    );
+  } catch (e) {
+    await client.query("ROLLBACK");
+    throw e;
+  } finally {
+    client.release();
+  }
+});
+bot.callbackQuery(/^dipembassy:(\d+)$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const p = await ready(ctx);
+  if (!p) return;
+  const other = Number(ctx.match[1]);
+  if (other === ctx.from.id || !(await get(other))?.approved) {
+    await say(ctx, "کشور مقصد معتبر نیست.");
+    return;
+  }
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const me = (
+        await client.query(
+          "SELECT treasury,iron FROM game_players WHERE telegram_id=$1 FOR UPDATE",
+          [ctx.from.id],
+        )
+      ).rows[0],
+      e = (
+        await client.query(
+          "SELECT level FROM game_embassies WHERE player_id=$1 AND other_id=$2 FOR UPDATE",
+          [ctx.from.id, other],
+        )
+      ).rows[0],
+      level = Number(e?.level || 0);
+    if (level >= 3) {
+      await client.query("ROLLBACK");
+      await say(ctx, "سفارت به حداکثر سطح ۳ رسیده است.");
+      return;
+    }
+    if (!me || Number(me.treasury) < 25000 || Number(me.iron) < 100) {
+      await client.query("ROLLBACK");
+      await say(ctx, "برای ساخت/ارتقای سفارت به $25,000 و 100 آهن نیاز دارید.");
+      return;
+    }
+    await client.query(
+      "UPDATE game_players SET treasury=treasury-25000,iron=iron-100 WHERE telegram_id=$1",
+      [ctx.from.id],
+    );
+    await client.query(
+      "INSERT INTO game_embassies(player_id,other_id,level) VALUES($1,$2,1) ON CONFLICT(player_id,other_id) DO UPDATE SET level=LEAST(3,game_embassies.level+1)",
+      [ctx.from.id, other],
+    );
+    await client.query(
+      "INSERT INTO game_relations(player_id,other_id,relation,trust) VALUES($1,$2,'neutral',8) ON CONFLICT(player_id,other_id) DO UPDATE SET trust=LEAST(100,game_relations.trust+8)",
+      [ctx.from.id, other],
+    );
+    await client.query(
+      "INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,'ساخت یا ارتقای سفارت',-25000,$2)",
+      [ctx.from.id, Number(me.treasury) - 25000],
+    );
+    await client.query(
+      "INSERT INTO game_diplomacy_log(player_id,other_id,event,details) VALUES($1,$2,'embassy',$3)",
+      [ctx.from.id, other, "سفارت سطح " + (level + 1)],
+    );
+    await client.query("COMMIT");
+    await edit(
+      ctx,
+      "🏛️ سفارت ساخته/ارتقا یافت.\n📈 سطح: " +
+        (level + 1) +
+        "/3\n💵 هزینه: $25,000\n⛓ آهن: 100\n💗 اعتماد: +8",
+      K([[{ text: "↩️ پرونده‌ی دیپلماتیک", callback_data: "dip:" + other }]]),
+    );
+  } catch (e) {
+    await client.query("ROLLBACK");
+    throw e;
+  } finally {
+    client.release();
+  }
+});
+bot.callbackQuery(/^diplog:(\d+)$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const other = Number(ctx.match[1]),
+    r = await pool.query(
+      "SELECT details,created_at FROM game_diplomacy_log WHERE player_id=$1 AND other_id=$2 ORDER BY id DESC LIMIT 12",
+      [ctx.from.id, other],
+    );
+  const lines = r.rows.map(
+    (x) => "• " + x.details + " — " + new Date(x.created_at).toLocaleString("fa-IR"),
+  );
+  await edit(
+    ctx,
+    "<b>📜 تاریخچه‌ی مذاکرات</b>\n\n" + (lines.join("\n") || "هنوز اقدام دیپلماتیکی ثبت نشده است."),
+    K([[{ text: "↩️ پرونده‌ی دیپلماتیک", callback_data: "dip:" + other }]]),
+  );
+});
+bot.callbackQuery(/^dipbreak:(\d+)$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const other = Number(ctx.match[1]),
+    rel = (
+      await pool.query("SELECT relation FROM game_relations WHERE player_id=$1 AND other_id=$2", [
+        ctx.from.id,
+        other,
+      ])
+    ).rows[0];
+  if (!rel || !["alliance", "nonaggression", "trade_pact"].includes(rel.relation)) {
+    await say(ctx, "پیمان فعالی برای لغو وجود ندارد.");
+    return;
+  }
+  for (const [a, b] of [
+    [ctx.from.id, other],
+    [other, ctx.from.id],
+  ])
+    await pool.query(
+      "INSERT INTO game_relations(player_id,other_id,relation,trust) VALUES($1,$2,'neutral',0) ON CONFLICT(player_id,other_id) DO UPDATE SET relation='neutral',trust=GREATEST(0,game_relations.trust-10)",
+      [a, b],
+    );
+  await pool.query(
+    "INSERT INTO game_diplomacy_log(player_id,other_id,event,details) VALUES($1,$2,'break','پیمان لغو شد')",
+    [ctx.from.id, other],
+  );
+  try {
+    await bot.api.sendMessage(other, "⚠️ پیمان دیپلماتیک با کشور شما لغو شد؛ اعتماد کاهش یافت.");
+  } catch {}
+  await edit(
+    ctx,
+    "پیمان لغو شد؛ اعتماد دوطرفه ۱۰ واحد کاهش یافت.",
+    K([[{ text: "↩️ پرونده‌ی دیپلماتیک", callback_data: "dip:" + other }]]),
+  );
+});
+bot.callbackQuery(/^battlechoose:(\d+)$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const p = await ready(ctx);
+  if (!p) return;
+  const target = Number(ctx.match[1]);
+  if (target === ctx.from.id || !(await get(target))?.approved) {
+    await say(ctx, "کشور هدف معتبر نیست.");
+    return;
+  }
+  const r = await pool.query(
+    "SELECT weapon_key,quantity,damaged FROM game_weapon_stock WHERE telegram_id=$1 AND quantity>COALESCE(damaged,0) ORDER BY weapon_key",
+    [ctx.from.id],
+  );
+  const rows = r.rows
+    .map((x) => {
+      const w =
+        getCountryWeapons(p.country_id).find((z) => z[0] === x.weapon_key) ||
+        Object.values(countryWeapons)
+          .flat()
+          .find((z) => z[0] === x.weapon_key);
+      return w
+        ? [
+            {
+              text: weaponLabel(w) + " · آماده: " + (Number(x.quantity) - Number(x.damaged || 0)),
+              callback_data: "battleattack:" + target + ":" + x.weapon_key,
+            },
+          ]
+        : null;
+    })
+    .filter(Boolean);
+  if (!rows.length)
+    rows.push([
+      {
+        text: "📭 تسلیحات سالمی برای حمله ندارید؛ تعمیر کنید یا تولید کنید.",
+        callback_data: "weaponrepair",
+      },
+    ]);
+  rows.push([{ text: "↩️ پرونده دیپلماتیک", callback_data: "dip:" + target }]);
+  await edit(
+    ctx,
+    "<b>⚔️ انتخاب نیروی حمله</b>\n\nحمله جنگ را آغاز می‌کند و ممکن است انبار تسلیحات هر دو کشور آسیب ببیند. هزینه‌ی عملیات: $15,000 و 100 بشکه نفت.",
+    K(rows),
+  );
+});
+bot.callbackQuery(/^battleattack:(\d+):([a-z0-9_]+)$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const p = await ready(ctx);
+  if (!p) return;
+  const target = Number(ctx.match[1]),
+    key = ctx.match[2];
+  if (target === ctx.from.id) {
+    await say(ctx, "نمی‌توانید به کشور خودتان حمله کنید.");
+    return;
+  }
+  const weapon = Object.values(countryWeapons)
+    .flat()
+    .find((x) => x[0] === key);
+  if (!weapon) {
+    await say(ctx, "این مدل در کاتالوگ تسلیحات ثبت نشده است.");
+    return;
+  }
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const ids = [Number(ctx.from.id), target].sort((a, b) => a - b);
+    for (const id of ids)
+      await client.query("SELECT telegram_id FROM game_players WHERE telegram_id=$1 FOR UPDATE", [
+        id,
+      ]);
+    const attacker = (
+        await client.query(
+          "SELECT treasury,oil_stock,iron FROM game_players WHERE telegram_id=$1 AND approved=TRUE",
+          [ctx.from.id],
+        )
+      ).rows[0],
+      defender = (
+        await client.query(
+          "SELECT telegram_id,country_id,stability,army FROM game_players WHERE telegram_id=$1 AND approved=TRUE",
+          [target],
+        )
+      ).rows[0];
+    const stock = (
+      await client.query(
+        "SELECT quantity,damaged FROM game_weapon_stock WHERE telegram_id=$1 AND weapon_key=$2 FOR UPDATE",
+        [ctx.from.id, key],
+      )
+    ).rows[0];
+    if (!attacker || !defender || !stock || Number(stock.quantity) <= Number(stock.damaged || 0)) {
+      await client.query("ROLLBACK");
+      await say(ctx, "کشور یا تسلیحات آماده‌ی حمله موجود نیست.");
+      return;
+    }
+    if (Number(attacker.treasury) < 15000 || Number(attacker.oil_stock) < 100) {
+      await client.query("ROLLBACK");
+      await say(ctx, "برای حمله به $15,000 خزانه و 100 بشکه نفت نیاز دارید.");
+      return;
+    }
+    await client.query(
+      "UPDATE game_players SET treasury=treasury-15000,oil_stock=oil_stock-100 WHERE telegram_id=$1",
+      [ctx.from.id],
+    );
+    await client.query(
+      "INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,$3,$4)",
+      [ctx.from.id, "هزینه عملیات نظامی", -15000, Number(attacker.treasury) - 15000],
+    );
+    const enemy = (
+      await client.query(
+        "SELECT weapon_key,quantity,damaged FROM game_weapon_stock WHERE telegram_id=$1 AND quantity>COALESCE(damaged,0) ORDER BY random() LIMIT 1 FOR UPDATE",
+        [target],
+      )
+    ).rows[0];
+    let damagedKey = null;
+    if (enemy) {
+      damagedKey = enemy.weapon_key;
+      await client.query(
+        "UPDATE game_weapon_stock SET damaged=LEAST(quantity,COALESCE(damaged,0)+1) WHERE telegram_id=$1 AND weapon_key=$2",
+        [target, damagedKey],
+      );
+    } else {
+      await client.query(
+        "UPDATE game_players SET stability=GREATEST(0,stability-5),army=GREATEST(0,army-1) WHERE telegram_id=$1",
+        [target],
+      );
+    }
+    let attackerHit = false;
+    if (Math.random() < 0.25) {
+      const own = (
+        await client.query(
+          "SELECT quantity,damaged FROM game_weapon_stock WHERE telegram_id=$1 AND weapon_key=$2 FOR UPDATE",
+          [ctx.from.id, key],
+        )
+      ).rows[0];
+      if (own && Number(own.quantity) > Number(own.damaged || 0)) {
+        await client.query(
+          "UPDATE game_weapon_stock SET damaged=LEAST(quantity,COALESCE(damaged,0)+1) WHERE telegram_id=$1 AND weapon_key=$2",
+          [ctx.from.id, key],
+        );
+        attackerHit = true;
+      }
+    }
+    await client.query(
+      "INSERT INTO game_battles(attacker_id,defender_id,attacker_weapon,damaged_weapon,result) VALUES($1,$2,$3,$4,$5)",
+      [ctx.from.id, target, key, damagedKey, enemy ? "equipment_damaged" : "stability_and_army"],
+    );
+    await client.query(
+      "INSERT INTO game_relations(player_id,other_id,relation,trust) VALUES($1,$2,'war',0) ON CONFLICT(player_id,other_id) DO UPDATE SET relation='war',trust=GREATEST(0,game_relations.trust-25)",
+      [ctx.from.id, target],
+    );
+    await client.query(
+      "INSERT INTO game_relations(player_id,other_id,relation,trust) VALUES($1,$2,'war',0) ON CONFLICT(player_id,other_id) DO UPDATE SET relation='war',trust=GREATEST(0,game_relations.trust-25)",
+      [target, ctx.from.id],
+    );
+    await client.query("COMMIT");
+    const w = Object.values(countryWeapons)
+      .flat()
+      .find((x) => x[0] === damagedKey);
+    await edit(
+      ctx,
+      "<b>⚔️ نتیجه‌ی عملیات</b>\n\n🎯 هدف: " +
+        (country(defender.country_id)?.[1] || "کشور دشمن") +
+        "\n🛡️ نیروی مهاجم: " +
+        weaponLabel(weapon) +
+        "\n" +
+        (enemy
+          ? "💥 آسیب دید: " + weaponLabel(w) + " (یک واحد)"
+          : "💥 زرادخانه خالی بود؛ ثبات و ارتش هدف آسیب دید.") +
+        "\n" +
+        (attackerHit
+          ? "⚠️ ضدحمله: یک واحد از تسلیحات شما نیز آسیب دید."
+          : "✅ تسلیحات مهاجم سالم ماند.") +
+        "\n\n🔧 آسیب‌ها قابل تعمیر هستند و برای تعمیر به خزانه و آهن نیاز دارید.",
+      K([
+        [{ text: "🔧 تعمیر تسلیحات", callback_data: "weaponrepair" }],
+        [{ text: "🤝 پرونده روابط", callback_data: "dip:" + target }],
+        [{ text: "🏛️ دربار", callback_data: "m:n" }],
+      ]),
+    );
+    try {
+      await bot.api.sendMessage(
+        target,
+        "⚠️ کشور شما مورد حمله قرار گرفت. " +
+          (enemy
+            ? "یک واحد " + (w?.[1] || weaponName(damagedKey, p.country_id)) + " آسیب دید."
+            : "ثبات و ارتش کشور آسیب دید.") +
+          " برای تعمیر تسلیحات وارد بخش ارتش شوید.",
+      );
+    } catch {}
+  } catch (e) {
+    await client.query("ROLLBACK");
+    throw e;
+  } finally {
+    client.release();
+  }
+});
+bot.callbackQuery(/^weaponrepair$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const p = await ready(ctx);
+  if (!p) return;
+  const r = await pool.query(
+    "SELECT weapon_key,quantity,damaged FROM game_weapon_stock WHERE telegram_id=$1 AND COALESCE(damaged,0)>0 ORDER BY weapon_key",
+    [ctx.from.id],
+  );
+  const rows = r.rows
+    .map((x) => {
+      const w =
+        getCountryWeapons(p.country_id).find((z) => z[0] === x.weapon_key) ||
+        Object.values(countryWeapons)
+          .flat()
+          .find((z) => z[0] === x.weapon_key);
+      return w
+        ? [
+            {
+              text:
+                "🔧 " +
+                weaponLabel(w) +
+                " · آسیب " +
+                x.damaged +
+                " · " +
+                money(Math.max(1000, Math.round(w[2] * 0.2))),
+              callback_data: "weaponrepair:" + x.weapon_key,
+            },
+          ]
+        : null;
+    })
+    .filter(Boolean);
+  if (!rows.length) rows.push([{ text: "✅ تسلیحات آسیب‌دیده‌ای ندارید.", callback_data: "noop" }]);
+  rows.push([{ text: "↩️ تسلیحات", callback_data: "shopweapons" }]);
+  await edit(
+    ctx,
+    "<b>🔧 تعمیر زرادخانه</b>\n\nبرای تعمیر هر واحد: 20٪ قیمت پایه (حداقل $1,000) و 50 واحد آهن. هزینه تعمیر یک‌باره است، نه روزانه.",
+    K(rows),
+  );
+});
+bot.callbackQuery(/^weaponrepair:([a-z0-9_]+)$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const p = await ready(ctx);
+  if (!p) return;
+  const key = ctx.match[1],
+    w =
+      getCountryWeapons(p.country_id).find((x) => x[0] === key) ||
+      Object.values(countryWeapons)
+        .flat()
+        .find((x) => x[0] === key);
+  if (!w) {
+    await say(ctx, "سلاح نامعتبر است.");
+    return;
+  }
+  const cost = Math.max(1000, Math.round(w[2] * 0.2)),
+    client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const player = (
+        await client.query(
+          "SELECT treasury,iron FROM game_players WHERE telegram_id=$1 FOR UPDATE",
+          [ctx.from.id],
+        )
+      ).rows[0],
+      stock = (
+        await client.query(
+          "SELECT quantity,damaged FROM game_weapon_stock WHERE telegram_id=$1 AND weapon_key=$2 FOR UPDATE",
+          [ctx.from.id, key],
+        )
+      ).rows[0];
+    if (
+      !player ||
+      Number(player.treasury) < cost ||
+      Number(player.iron) < 50 ||
+      !stock ||
+      Number(stock.damaged) < 1
+    ) {
+      await client.query("ROLLBACK");
+      await say(ctx, "برای تعمیر یک واحد، خزانه‌ی کافی، 50 آهن و یک واحد آسیب‌دیده لازم است.");
+      return;
+    }
+    await client.query(
+      "UPDATE game_players SET treasury=treasury-$2,iron=iron-50 WHERE telegram_id=$1",
+      [ctx.from.id, cost],
+    );
+    await client.query(
+      "UPDATE game_weapon_stock SET damaged=GREATEST(0,damaged-1) WHERE telegram_id=$1 AND weapon_key=$2",
+      [ctx.from.id, key],
+    );
+    await client.query(
+      "INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,$3,$4)",
+      [ctx.from.id, "تعمیر " + w[1], -cost, Number(player.treasury) - cost],
+    );
+    await client.query("COMMIT");
+    await edit(
+      ctx,
+      "✅ یک واحد " +
+        weaponLabel(w) +
+        " تعمیر شد و به وضعیت آماده برگشت.\n💵 هزینه: " +
+        money(cost) +
+        "\n⛓ آهن مصرف‌شده: 50",
+      K([
+        [{ text: "🔧 تعمیر واحد دیگر", callback_data: "weaponrepair" }],
+        [{ text: "⚔️ دیپلماسی", callback_data: "n:diplomacy" }],
+      ]),
+    );
+  } catch (e) {
+    await client.query("ROLLBACK");
+    throw e;
+  } finally {
+    client.release();
+  }
+});
+bot.callbackQuery(/^dipcommerce:(\d+)$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const p = await ready(ctx);
+  if (!p) return;
+  const other = Number(ctx.match[1]),
+    target = await get(other),
+    rel = (
+      await pool.query("SELECT relation FROM game_relations WHERE player_id=$1 AND other_id=$2", [
+        ctx.from.id,
+        other,
+      ])
+    ).rows[0];
+  if (!target?.approved || other === ctx.from.id) {
+    await say(ctx, "کشور مقصد معتبر نیست.");
+    return;
+  }
+  if (rel?.relation !== "trade_pact") {
+    await edit(
+      ctx,
+      "<b>📦 پیمان و قرارداد تجاری</b>\n\nبا این کشور هنوز پیمان تجاری ندارید. ابتدا پیشنهاد پیمان را ارسال کنید؛ پس از پذیرش، همین گزینه برای تنظیم قرارداد کالا فعال می‌شود.",
+      K([
+        [{ text: "📨 پیشنهاد پیمان تجاری", callback_data: "dipoffer:trade_pact:" + other }],
+        [{ text: "↩️ پرونده دیپلماتیک", callback_data: "dip:" + other }],
+      ]),
+    );
+    return;
+  }
+  await edit(
+    ctx,
+    "<b>📦 پیمان تجاری فعال است</b>\n\nکشور طرف قرارداد: " +
+      (country(target.country_id)?.[1] || target.display_name) +
+      "\nاز اینجا قرارداد کالا ایجاد کنید یا قراردادهای دریافتی را بررسی کنید.",
+    K([
+      [{ text: "✍️ ایجاد قرارداد با این کشور", callback_data: "tc:partner:" + other }],
+      [{ text: "📨 مرکز قراردادهای تجاری", callback_data: "tc:center" }],
+      [{ text: "🛒 بازار مستقیم", callback_data: "partnertrade:" + other }],
+      [{ text: "↩️ پرونده دیپلماتیک", callback_data: "dip:" + other }],
+    ]),
+  );
+});
+bot.callbackQuery(/^dipoffer:(alliance|nonaggression|trade_pact|ceasefire):(\d+)$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const type = ctx.match[1],
+    other = Number(ctx.match[2]),
+    target = await get(other),
+    me = await get(ctx.from.id);
+  if (other === ctx.from.id || !target?.approved) {
+    await say(ctx, "کشور مقصد معتبر نیست.");
+    return;
+  }
+  const active = (
+    await pool.query("SELECT relation FROM game_relations WHERE player_id=$1 AND other_id=$2", [
+      ctx.from.id,
+      other,
+    ])
+  ).rows[0];
+  if (type === "ceasefire" && active?.relation !== "war") {
+    await say(ctx, "آتش‌بس فقط هنگام جنگ قابل پیشنهاد است.");
+    return;
+  }
+  if (["alliance", "nonaggression", "trade_pact"].includes(active?.relation)) {
+    await say(ctx, "با این کشور پیمان فعال دارید.");
+    return;
+  }
+  const proposal = "proposal_" + type;
+  await pool.query(
+    "INSERT INTO game_relations(player_id,other_id,relation,trust) VALUES($1,$2,$3,0) ON CONFLICT(player_id,other_id) DO UPDATE SET relation=EXCLUDED.relation",
+    [ctx.from.id, other, proposal],
+  );
+  const titles = {
+      alliance: "اتحاد",
+      nonaggression: "عدم تعرض",
+      trade_pact: "پیمان تجاری",
+      ceasefire: "آتش‌بس",
+    },
+    details = {
+      alliance: "پیمان همکاری سیاسی و افزایش اعتماد دو کشور.",
+      nonaggression: "تعهد دو کشور به عدم آغاز حمله؛ نقض آن رابطه را به جنگ می‌کشاند.",
+      trade_pact: "پیمان همکاری تجاری؛ پس از پذیرش، قراردادهای کالا و تجارت دوجانبه فعال می‌شود.",
+      ceasefire: "توقف جنگ و بازگشت رابطه به وضعیت عادی.",
+    };
+  const title = titles[type],
+    senderName = me?.display_name || "کشوری",
+    senderCountry = country(me?.country_id)?.[1] || "کشور فرستنده";
+  const message =
+    "📨 پیشنهاد دیپلماتیک جدید\n\n🏳️ فرستنده: " +
+    senderCountry +
+    "\n👤 فرمانروا: " +
+    senderName +
+    "\n📜 نوع پیشنهاد: " +
+    title +
+    "\n\n📝 جزئیات:\n" +
+    details[type] +
+    "\n\nمی‌توانید همین‌جا پیشنهاد را بپذیرید یا رد کنید.";
+  try {
+    await bot.api.sendMessage(other, message, {
+      reply_markup: K([
+        [
+          {
+            text: "✅ پذیرش " + title,
+            callback_data: "dipanswer:accept:" + ctx.from.id + ":" + type,
+          },
+        ],
+        [{ text: "❌ رد پیشنهاد", callback_data: "dipanswer:reject:" + ctx.from.id + ":" + type }],
+      ]),
+    });
+  } catch (e) {
+    console.error("Proposal notification failed:", e);
+  }
+  await edit(
+    ctx,
+    "📨 پیشنهاد «" + title + "» با جزئیات برای کشور مقصد ارسال شد.",
+    K([
+      [{ text: "📨 مشاهده پیشنهادهای دریافتی", callback_data: "dipinbox" }],
+      [{ text: "↩️ پرونده دیپلماتیک", callback_data: "dip:" + other }],
+    ]),
+  );
+});
+bot.callbackQuery(
+  /^dipanswer:(accept|reject):(\d+):(alliance|nonaggression|trade_pact|ceasefire)$/,
+  async (ctx) => {
+    await ctx.answerCallbackQuery();
+    const ok = ctx.match[1] === "accept",
+      other = Number(ctx.match[2]),
+      type = ctx.match[3],
+      pending = (
+        await pool.query("SELECT relation FROM game_relations WHERE player_id=$1 AND other_id=$2", [
+          other,
+          ctx.from.id,
+        ])
+      ).rows[0];
+    if (pending?.relation !== "proposal_" + type) {
+      await say(ctx, "این پیشنهاد دیگر فعال نیست یا قبلاً بررسی شده است.");
+      return;
+    }
+    const rel = ok ? (type === "ceasefire" ? "neutral" : type) : "neutral",
+      trust = ok ? { alliance: 25, nonaggression: 15, trade_pact: 20, ceasefire: 10 }[type] : 0;
+    for (const [a, b] of [
+      [ctx.from.id, other],
+      [other, ctx.from.id],
+    ])
+      await pool.query(
+        "INSERT INTO game_relations(player_id,other_id,relation,trust) VALUES($1,$2,$3,$4) ON CONFLICT(player_id,other_id) DO UPDATE SET relation=EXCLUDED.relation,trust=LEAST(100,game_relations.trust+EXCLUDED.trust)",
+        [a, b, rel, trust],
+      );
+    const titles = {
+      alliance: "اتحاد",
+      nonaggression: "عدم تعرض",
+      trade_pact: "پیمان تجاری",
+      ceasefire: "آتش‌بس",
+    };
+    const result = ok
+      ? "✅ پیشنهاد " + titles[type] + " پذیرفته شد."
+      : "❌ پیشنهاد " + titles[type] + " رد شد.";
+    await edit(
+      ctx,
+      result,
+      K([
+        [{ text: "📨 پیشنهادهای دریافتی", callback_data: "dipinbox" }],
+        [{ text: "📜 دفتر روابط", callback_data: "diprelations" }],
+        [{ text: "↩️ دیپلماسی", callback_data: "n:diplomacy" }],
+      ]),
+    );
+    try {
+      await bot.api.sendMessage(
+        other,
+        "📬 پاسخ به پیشنهاد دیپلماتیک شما:\n" +
+          result +
+          "\nکشور: " +
+          (country((await get(ctx.from.id))?.country_id)?.[1] || "کشور طرف مقابل"),
+      );
+    } catch {}
+  },
+);
+bot.callbackQuery(/^dipinbox$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const r = await pool.query(
+    "SELECT g.player_id,p.display_name,p.country_id,g.relation FROM game_relations g JOIN game_players p ON p.telegram_id=g.player_id WHERE g.other_id=$1 AND g.relation LIKE 'proposal_%' ORDER BY p.display_name LIMIT 10",
+    [ctx.from.id],
+  );
+  const titles = {
+      alliance: "اتحاد",
+      nonaggression: "عدم تعرض",
+      trade_pact: "پیمان تجاری",
+      ceasefire: "آتش‌بس",
+    },
+    details = {
+      alliance: "همکاری سیاسی و افزایش اعتماد دو کشور.",
+      nonaggression: "تعهد به عدم آغاز حمله؛ نقض پیمان موجب جنگ می‌شود.",
+      trade_pact: "همکاری تجاری و امکان تنظیم قراردادهای کالا.",
+      ceasefire: "توقف جنگ و بازگشت رابطه به وضعیت عادی.",
+    };
+  const rows = [],
+    texts = [];
+  for (const x of r.rows) {
+    const type = x.relation.replace("proposal_", ""),
+      title = titles[type] || "پیمان";
+    texts.push(
+      "📨 پیشنهاد از: " +
+        (country(x.country_id)?.[1] || x.display_name) +
+        "\n📜 نوع: " +
+        title +
+        "\n📝 جزئیات: " +
+        (details[type] || "پیشنهاد دیپلماتیک"),
+    );
+    rows.push([
+      {
+        text: "✅ پذیرش " + title + " · " + x.display_name.slice(0, 18),
+        callback_data: "dipanswer:accept:" + x.player_id + ":" + type,
+      },
+      { text: "❌ رد", callback_data: "dipanswer:reject:" + x.player_id + ":" + type },
+    ]);
+  }
+  if (!r.rows.length) texts.push("📭 پیشنهاد معوق ندارید.");
+  rows.push([{ text: "↩️ بازگشت به دیپلماسی", callback_data: "n:diplomacy" }]);
+  await edit(ctx, "<b>📨 پیشنهادهای دریافتی</b>\n\n" + texts.join("\n\n────────────\n\n"), K(rows));
+});
+bot.callbackQuery(/^diprelations$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const r = await pool.query(
+    "SELECT g.other_id,p.display_name,g.relation,g.trust FROM game_relations g JOIN game_players p ON p.telegram_id=g.other_id WHERE g.player_id=$1 ORDER BY p.display_name LIMIT 30",
+    [ctx.from.id],
+  );
+  const lines = r.rows.map(
+    (x) =>
+      "• " +
+      x.display_name +
+      " — " +
+      ({
+        alliance: "🤝 اتحاد",
+        nonaggression: "🕊 عدم تعرض",
+        trade_pact: "📦 پیمان تجاری",
+        neutral: "⚪ عادی",
+        proposal_alliance: "📨 پیشنهاد اتحاد",
+        proposal_nonaggression: "📨 پیشنهاد عدم تعرض",
+        proposal_trade_pact: "📨 پیشنهاد تجاری",
+      }[x.relation] || keyLabel(x.relation)) +
+      " | اعتماد " +
+      x.trust +
+      "/100",
+  );
+  await edit(
+    ctx,
+    "<b>📜 دفتر روابط خارجی</b>\n\n" +
+      (lines.join("\n") || "هنوز رابطه‌ای ثبت نشده است.") +
+      "\n\nاعتماد فعلاً شاخص دیپلماتیک است و اثر اقتصادی/نظامی خودکار ندارد.",
+    K([
+      [{ text: "🌐 کشورها", callback_data: "n:diplomacy" }],
+      [{ text: "↩️ دربار", callback_data: "m:n" }],
+    ]),
+  );
+});
+async function settleOne(id) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const row = (
+      await client.query("SELECT * FROM game_players WHERE telegram_id=$1 FOR UPDATE", [id])
+    ).rows[0];
+    if (!row?.approved) {
+      await client.query("COMMIT");
+      return null;
+    }
+    const ticks = Math.min(
+      56,
+      Math.floor((Date.now() - new Date(row.last_settlement).getTime()) / period),
+    );
+    if (ticks < 1) {
+      await client.query("COMMIT");
+      return null;
+    }
+    const buildings = (
+      await client.query("SELECT building_key,level FROM game_buildings WHERE telegram_id=$1", [id])
+    ).rows.reduce((o, x) => ((o[x.building_key] = Number(x.level)), o), {});
+    const lv = (k) => Number(buildings[k] || 0),
+      scale = ticks / 8;
+    const oilProduced = Math.min(
+      Number(row.oil_reserves || 0),
+      Math.round(
+        Number(row.oil_field_level || 0) * (1 + Number(row.technology || 0) / 250) * scale,
+      ),
+    );
+    const rawOil = Math.max(0, Number(row.oil_stock || 0)) + oilProduced;
+    const refineryOil = Math.min(rawOil, Math.round(lv("oil_refinery") * 55 * scale));
+    const fuelMade = Math.round(refineryOil * 1.7);
+    const coalPowerDemand = Math.round(lv("coal_power") * 120 * scale);
+    const population = Number(row.population || 0);
+    const coldGeo = [
+      "russia",
+      "canada",
+      "sweden",
+      "norway",
+      "finland",
+      "iceland",
+      "denmark",
+      "switzerland",
+      "mongolia",
+      "ukraine",
+      "poland",
+      "czech",
+      "hungary",
+      "serbia",
+      "romania",
+    ];
+    const aridGeo = [
+      "persia",
+      "afghanistan",
+      "saudi",
+      "oman",
+      "yemen",
+      "egypt",
+      "sudan",
+      "libya",
+      "algeria",
+      "morocco",
+      "iraq",
+    ];
+    const tropicalGeo = [
+      "india",
+      "indonesia",
+      "vietnam",
+      "burma",
+      "malaya",
+      "nigeria",
+      "ghana",
+      "kenya",
+      "uganda",
+      "congo",
+      "brazil",
+      "colombia",
+      "venezuela",
+      "philippines",
+    ];
+    const coldFactor = coldGeo.includes(row.country_id) ? 1.2 : 1;
+    const foodFactor = aridGeo.includes(row.country_id)
+      ? 1.25
+      : tropicalGeo.includes(row.country_id)
+        ? 1.1
+        : coldGeo.includes(row.country_id)
+          ? 1.15
+          : 1;
+    const fuelFactor = coldGeo.includes(row.country_id)
+      ? 1.25
+      : aridGeo.includes(row.country_id)
+        ? 1.1
+        : 1;
+    const grainNeed = Math.ceil((population / 100000) * foodFactor * scale);
+    const coalNeed = Math.ceil(
+      (Number(row.industry || 0) * 20 +
+        (population / 1000000) * 12 * coldFactor +
+        lv("coal_power") * 120) *
+        scale,
+    );
+    const ironNeed = Math.ceil(
+      (Number(row.industry || 0) * 8 + lv("arms_factory") * 35 + lv("railway") * 10) * scale,
+    );
+    const clothNeed = Math.ceil((population / 100000) * 3 * scale);
+    const electricityNeed = Math.ceil(
+      (population / 10000 + Number(row.industry || 0) * 25) * scale,
+    );
+    const oilNeed = Math.ceil(
+      (Number(row.army || 0) * 2 +
+        Number(row.navy || 0) * 10 +
+        Number(row.air_force || 0) * 3 +
+        Number(row.industry || 0) * 4) *
+        fuelFactor *
+        scale,
+    );
+    const grainMade = Math.round((lv("wheat_farm") * 250 + lv("plateau_farm") * 160) * scale);
+    const goldMade = Math.round(lv("gold_mine") * 35 * scale);
+    const ironMade = Math.round(lv("iron_mine") * 180 * scale);
+    const coalMade = Math.round(lv("coal_mine") * 220 * scale);
+    const coalUsed = Math.min(Number(row.coal || 0), coalNeed);
+    const ironUsed = Math.min(Number(row.iron || 0), ironNeed);
+    const grainUsed = Math.min(Number(row.grain || 0), grainNeed);
+    const clothUsed = Math.min(Number(row.cloth || 0), clothNeed);
+    const electricityUsed = Math.min(Number(row.electricity_stock || 0), electricityNeed);
+    const oilAvailable = Math.max(0, rawOil - refineryOil),
+      oilConsumed = Math.min(oilAvailable, oilNeed),
+      oilShortage = oilNeed - oilConsumed;
+    const oilStock = oilAvailable - oilConsumed;
+    const coalPowerRatio = coalPowerDemand ? Math.min(1, coalUsed / coalPowerDemand) : 1;
+    const electricityMade = Math.round(
+      (lv("coal_power") * 500 * coalPowerRatio + lv("hydro_power") * 650 + lv("oil_power") * 420) *
+        scale,
+    );
+    const dailyBuildingIncome =
+      lv("gold_mine") * 9000 +
+      lv("iron_mine") * 6500 +
+      lv("coal_mine") * 5000 +
+      lv("oil_refinery") * 8500 +
+      lv("housing") * 1800 +
+      lv("admin") * 2500 +
+      lv("commercial") * 4000 +
+      lv("hotel") * 6000 +
+      lv("highway") * 1200 +
+      lv("railway") * 2500 +
+      lv("station") * 2000 +
+      lv("airport") * 12000 +
+      lv("port") * 9000 +
+      lv("wheat_farm") * 1800 +
+      lv("plateau_farm") * 1200 +
+      lv("grain_silo") * 700 +
+      lv("coal_power") * 4000 +
+      lv("hydro_power") * 5000 +
+      lv("oil_power") * 3800 +
+      lv("arms_factory") * 6500;
+    const d = calc(row),
+      earned = Math.max(0, Math.round((d.income + dailyBuildingIncome) * scale));
+    const balance = Number(row.treasury) + earned,
+      net = earned;
+    const shortages =
+      (grainUsed < grainNeed ? 1 : 0) +
+      (coalUsed < coalNeed ? 1 : 0) +
+      (ironUsed < ironNeed ? 1 : 0) +
+      (clothUsed < clothNeed ? 1 : 0) +
+      (electricityUsed < electricityNeed ? 1 : 0) +
+      (oilShortage > 0 ? 1 : 0);
+    const stability = Math.max(
+      0,
+      Math.min(
+        100,
+        Number(row.stability || 0) -
+          (grainUsed < grainNeed ? 3 : 0) -
+          (shortages > 2 ? 1 : 0) +
+          (shortages === 0 ? 1 : 0),
+      ),
+    );
+    const populationChange =
+      grainUsed < grainNeed
+        ? -Math.ceil(population * 0.00001 * scale)
+        : Math.round(lv("housing") * 5 * scale);
+    await client.query(
+      "UPDATE game_players SET treasury=$2,oil_stock=$3,oil_reserves=GREATEST(0,oil_reserves-$4),gold_stock=gold_stock+$5,iron=GREATEST(0,iron-$6)+$7,coal=GREATEST(0,coal-$8)+$9,grain=GREATEST(0,grain-$10)+$11,cloth=GREATEST(0,cloth-$12),electricity_stock=GREATEST(0,electricity_stock-$13)+$14,fuel_stock=fuel_stock+$15,population=GREATEST(1000,population+$16),stability=$17,last_settlement=last_settlement+make_interval(hours => $18::int * 3) WHERE telegram_id=$1",
+      [
+        id,
+        balance,
+        oilStock,
+        oilProduced,
+        goldMade,
+        ironUsed,
+        ironMade,
+        coalUsed,
+        coalMade,
+        grainUsed,
+        grainMade,
+        clothUsed,
+        electricityUsed,
+        electricityMade,
+        fuelMade,
+        populationChange,
+        stability,
+        ticks,
+      ],
+    );
+    await client.query(
+      "INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,$3,$4)",
+      [id, "درآمد و مصرف منابع در " + ticks + " نوبت", net, balance],
+    );
+    await client.query("COMMIT");
+    return {
+      ticks,
+      net,
+      balance,
+      buildingIncome: Math.round(dailyBuildingIncome * scale),
+      grainNeed,
+      grainUsed,
+      coalNeed,
+      coalUsed,
+      ironNeed,
+      ironUsed,
+      clothNeed,
+      clothUsed,
+      electricityNeed,
+      electricityUsed,
+      oilNeed,
+      oilConsumed,
+      shortages,
+    };
+  } catch (e) {
+    await client.query("ROLLBACK");
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+function settlementReport(result, p) {
+  const d = calc(p),
+    scale = result.ticks / 8,
+    c = country(p.country_id),
+    line = (label, value) => "• " + label + ": " + money(value * scale);
+  return (
+    "<b>📜 واریز درآمد و تسویه‌ی دوره‌ای — " +
+    (c?.[1] || p.country_id) +
+    "</b>\n━━━━━━━━━━━━━━━━━━\n\n<b>💵 درآمد این نوبت</b>\n" +
+    line("مالیات وصول‌شده", d.tax) +
+    "\n" +
+    line("درآمد صنعت و کشاورزی", d.production) +
+    "\n" +
+    line("درآمد تعرفه‌ها", d.tariff) +
+    "\n• درآمد سازه‌ها: " +
+    money(result.buildingIncome) +
+    "\n\n<b>💰 خزانه</b>\n• واریز واقعی این نوبت: " +
+    money(result.net) +
+    "\n• موجودی خزانه: " +
+    money(result.balance) +
+    "\n\n<b>📦 تولید و مصرف منابع</b>\n• غله (تن): مصرف " +
+    resourceAmount("grain", result.grainUsed) +
+    " / " +
+    resourceAmount("grain", result.grainNeed) +
+    " | موجودی " +
+    resourceAmount("grain", p.grain) +
+    "\n• زغال‌سنگ (تن): مصرف " +
+    resourceAmount("coal", result.coalUsed) +
+    " / " +
+    resourceAmount("coal", result.coalNeed) +
+    " | موجودی " +
+    resourceAmount("coal", p.coal) +
+    "\n• آهن (تن): مصرف " +
+    resourceAmount("iron", result.ironUsed) +
+    " / " +
+    resourceAmount("iron", result.ironNeed) +
+    " | موجودی " +
+    resourceAmount("iron", p.iron) +
+    "\n• پارچه (طاقه): مصرف " +
+    resourceAmount("cloth", result.clothUsed) +
+    " / " +
+    resourceAmount("cloth", result.clothNeed) +
+    " | موجودی " +
+    resourceAmount("cloth", p.cloth) +
+    "\n• برق (مگاوات‌ساعت): مصرف " +
+    resourceAmount("electricity_stock", result.electricityUsed) +
+    " / " +
+    resourceAmount("electricity_stock", result.electricityNeed) +
+    " | موجودی " +
+    resourceAmount("electricity_stock", p.electricity_stock) +
+    "\n• نفت خام (بشکه): مصرف " +
+    resourceAmount("oil_stock", result.oilConsumed) +
+    " / " +
+    resourceAmount("oil_stock", result.oilNeed) +
+    " | موجودی " +
+    resourceAmount("oil_stock", p.oil_stock) +
+    "\n\n" +
+    (result.shortages
+      ? "⚠️ کمبود منابع ثبت شد؛ ثبات کشور کاهش یافت."
+      : "✅ منابع موردنیاز تأمین شد.") +
+    "\nℹ️ درآمد به خزانه افزوده می‌شود؛ تسویه‌ی دوره‌ای هزینه‌ی نقدی از خزانه کم نمی‌کند."
+  );
+}
+
+bot.callbackQuery(/^turn$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const p = await ready(ctx);
+  if (!p) return;
+  const result = await settleOne(ctx.from.id);
+  const fresh = await get(ctx.from.id);
+  await edit(
+    ctx,
+    result ? settlementReport(result, fresh) : "هنوز زمان تسویه‌ی سه‌ساعته نرسیده است.",
+    nation(),
+  );
+});
+async function internationalAllowed(ctx) {
+  return String(ctx.from.id) === ownerTelegramId;
+}
+async function showAdminPanel(ctx) {
+  if (!(await internationalAllowed(ctx))) {
+    await ctx.reply(
+      "⛔ این پنل فقط برای سازمان بین‌الملل است.\nشناسه‌ی تلگرام شما: " +
+        ctx.from.id +
+        "\nشناسه‌ی تنظیم‌شده‌ی مدیر: " +
+        ownerTelegramId +
+        "\nاگر این شناسه متعلق به شماست، در Railway متغیر OWNER_TELEGRAM_ID را برابر شناسه‌ی بالا قرار دهید و Deploy کنید.",
+    );
+    return;
+  }
+  await ctx.reply("<b>🌐 سازمان بین‌الملل — شاه شاهان</b>\nمدیریت بازی مستقل از هر کشور.", {
+    parse_mode: "HTML",
+    reply_markup: K([
+      [{ text: "🪪 درخواست‌های کشور", callback_data: "intlrequests" }],
+      [{ text: "🔍 بازرسی کشورها", callback_data: "intlplayers" }],
+      [{ text: "💳 وام‌دهی", callback_data: "intlloans" }],
+      [{ text: "📦 افزودن منابع", callback_data: "intlresources" }],
+      [{ text: "🚫 سلب کشور از بازیکن", callback_data: "intlremove" }],
+      [{ text: "⛔ مسدودسازی کامل ربات", callback_data: "intlblock" }],
+    ]),
+  });
+  await ctx.reply("منوی اختصاصی سازمان بین‌الملل فعال شد.", { reply_markup: adminReply() });
+}
+bot.command("admin", async (ctx) => showAdminPanel(ctx));
+bot.callbackQuery(/^intlrequests$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  if (!(await internationalAllowed(ctx))) return;
+  const r = await pool.query(
+    "SELECT id,telegram_id,country_id FROM game_country_requests WHERE status='pending' ORDER BY id LIMIT 20",
+  );
+  const rows = r.rows.map((x) => [
+    {
+      text: (country(x.country_id)?.[1] || x.country_id) + " · " + x.telegram_id,
+      callback_data: "intlrequest:" + x.id,
+    },
+  ]);
+  if (!rows.length) rows.push([{ text: "درخواست معوقی نیست", callback_data: "noop" }]);
+  rows.push([{ text: "↩️ سازمان بین‌الملل", callback_data: "intlhome" }]);
+  await edit(
+    ctx,
+    "<b>🪪 درخواست‌های در انتظار</b>\nدرخواست را باز کنید تا تأیید یا رد شود.",
+    K(rows),
+  );
+});
+bot.callbackQuery(/^intlrequest:(\d+)$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  if (!(await internationalAllowed(ctx))) return;
+  const id = Number(ctx.match[1]),
+    req = (
+      await pool.query("SELECT * FROM game_country_requests WHERE id=$1 AND status='pending'", [id])
+    ).rows[0];
+  if (!req) {
+    await say(ctx, "این درخواست قبلاً بررسی شده است.");
+    return;
+  }
+  const c = country(req.country_id);
+  await edit(
+    ctx,
+    "<b>🪪 بررسی درخواست کشور</b>\n🆔 بازیکن: " +
+      req.telegram_id +
+      "\n🌍 کشور: " +
+      (c?.[1] || req.country_id) +
+      "\n\nدر صورت تأیید، کشور به بازیکن واگذار می‌شود.",
+    K([
+      [{ text: "✅ تأیید و واگذاری", callback_data: "approve_country:" + id }],
+      [{ text: "❌ رد درخواست", callback_data: "reject_country:" + id }],
+      [{ text: "↩️ درخواست‌ها", callback_data: "intlrequests" }],
+    ]),
+  );
+});
+bot.callbackQuery(/^intlhome$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  if (!(await internationalAllowed(ctx))) return;
+  await edit(
+    ctx,
+    "<b>🌐 سازمان بین‌الملل</b>",
+    K([
+      [{ text: "🪪 درخواست‌ها", callback_data: "intlrequests" }],
+      [{ text: "🔍 بازرسی", callback_data: "intlplayers" }],
+      [{ text: "💳 وام", callback_data: "intlloans" }],
+      [{ text: "📦 منابع", callback_data: "intlresources" }],
+      [{ text: "🚫 سلب کشور", callback_data: "intlremove" }],
+      [{ text: "⛔ مسدودسازی ربات", callback_data: "intlblock" }],
+    ]),
+  );
+});
+bot.callbackQuery(/^intlplayers$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  if (!(await internationalAllowed(ctx))) return;
+  const r = await pool.query(
+    "SELECT telegram_id,display_name,country_id,approved FROM game_players ORDER BY approved DESC,display_name LIMIT 25",
+  );
+  const rows = r.rows.map((x) => [
+    {
+      text:
+        (x.approved ? country(x.country_id)?.[1] || "کشور" : "بدون کشور") +
+        " · " +
+        x.display_name +
+        " · " +
+        x.telegram_id,
+      callback_data: "intlplayer:" + x.telegram_id,
+    },
+  ]);
+  if (!rows.length) rows.push([{ text: "بازیکنی ثبت نشده", callback_data: "noop" }]);
+  rows.push([{ text: "↩️ سازمان بین‌الملل", callback_data: "intlhome" }]);
+  await edit(ctx, "<b>🔍 فهرست بازیکنان برای بازرسی</b>", K(rows));
+});
+bot.callbackQuery(/^intlplayer:(\d+)$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  if (!(await internationalAllowed(ctx))) return;
+  const id = ctx.match[1],
+    p = await get(id);
+  if (!p) {
+    await say(ctx, "بازیکن یافت نشد.");
+    return;
+  }
+  const c = country(p.country_id);
+  await edit(
+    ctx,
+    "<b>🔍 گزارش بازرسی</b>\n👤 " +
+      p.display_name +
+      "\n🆔 " +
+      id +
+      "\n🌍 " +
+      (c?.[1] || "بدون کشور") +
+      "\n💰 خزانه: " +
+      money(p.treasury) +
+      "\n👥 جمعیت: " +
+      fmt(p.population) +
+      "\n📦 منابع: غله " +
+      fmt(p.grain) +
+      " | زغال " +
+      fmt(p.coal) +
+      " | آهن " +
+      fmt(p.iron) +
+      " | پارچه " +
+      fmt(p.cloth) +
+      "\n⛔ مسدود: " +
+      (p.bot_blocked ? "بله" : "خیر") +
+      "\n\nعملیات مدیریتی مستقل:",
+    K([
+      [
+        { text: "💳 وام $100,000", callback_data: "intlloan:" + id + ":100000" },
+        { text: "💳 وام $500,000", callback_data: "intlloan:" + id + ":500000" },
+      ],
+      [{ text: "📦 بسته منابع", callback_data: "intlgrant:" + id }],
+      [{ text: "🚫 سلب کشور", callback_data: "intlremove:" + id }],
+      [
+        {
+          text: p.bot_blocked ? "🔓 رفع مسدودی" : "⛔ مسدودسازی ربات",
+          callback_data: "intlblock:" + id,
+        },
+      ],
+      [{ text: "↩️ فهرست", callback_data: "intlplayers" }],
+    ]),
+  );
+});
+bot.callbackQuery(/^intlloans$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  if (!(await internationalAllowed(ctx))) return;
+  const r = await pool.query(
+    "SELECT p.telegram_id,p.display_name,COALESCE(SUM(l.amount),0) AS total FROM game_players p LEFT JOIN game_international_loans l ON l.player_id=p.telegram_id GROUP BY p.telegram_id,p.display_name ORDER BY p.display_name LIMIT 20",
+  );
+  const rows = r.rows.map((x) => [
+    {
+      text: x.display_name + " · وام ثبت‌شده " + money(x.total),
+      callback_data: "intlplayer:" + x.telegram_id,
+    },
+  ]);
+  rows.push([{ text: "↩️ سازمان بین‌الملل", callback_data: "intlhome" }]);
+  await edit(
+    ctx,
+    "<b>💳 دفتر وام‌های سازمان بین‌الملل</b>\nانتخاب بازیکن برای ثبت وام جدید:",
+    K(rows),
+  );
+});
+bot.callbackQuery(/^intlloan:(\d+):(\d+)$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  if (!(await internationalAllowed(ctx))) return;
+  const id = ctx.match[1],
+    amount = Number(ctx.match[2]),
+    client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const p = (
+      await client.query("SELECT treasury FROM game_players WHERE telegram_id=$1 FOR UPDATE", [id])
+    ).rows[0];
+    if (!p) {
+      await client.query("ROLLBACK");
+      await say(ctx, "بازیکن پیدا نشد.");
+      return;
+    }
+    await client.query("UPDATE game_players SET treasury=treasury+$2 WHERE telegram_id=$1", [
+      id,
+      amount,
+    ]);
+    await client.query(
+      "INSERT INTO game_international_loans(player_id,admin_id,amount,reason) VALUES($1,$2,$3,'وام سازمان بین‌الملل')",
+      [id, ctx.from.id, amount],
+    );
+    await client.query(
+      "INSERT INTO game_international_audit(admin_id,target_id,action,details) VALUES($1,$2,'loan',$3)",
+      [ctx.from.id, id, String(amount)],
+    );
+    await client.query(
+      "INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,$3,$4)",
+      [id, "وام سازمان بین‌الملل", amount, Number(p.treasury) + amount],
+    );
+    await client.query("COMMIT");
+    await say(ctx, "✅ وام " + money(amount) + " ثبت و به خزانه‌ی بازیکن افزوده شد.");
+    try {
+      await bot.api.sendMessage(
+        id,
+        "🌐 سازمان بین‌الملل وام " + money(amount) + " به خزانه‌ی کشور شما افزود.",
+      );
+    } catch {}
+  } catch (e) {
+    await client.query("ROLLBACK");
+    throw e;
+  } finally {
+    client.release();
+  }
+});
+bot.callbackQuery(/^intlresources$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  if (!(await internationalAllowed(ctx))) return;
+  const r = await pool.query(
+    "SELECT telegram_id,display_name FROM game_players ORDER BY display_name LIMIT 25",
+  );
+  const rows = r.rows.map((x) => [
+    { text: x.display_name + " · " + x.telegram_id, callback_data: "intlgrant:" + x.telegram_id },
+  ]);
+  rows.push([{ text: "↩️ سازمان بین‌الملل", callback_data: "intlhome" }]);
+  await edit(ctx, "<b>📦 افزودن منابع به کشور</b>\nبازیکن را انتخاب کنید:", K(rows));
+});
+bot.callbackQuery(/^intlgrant:(\d+)$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  if (!(await internationalAllowed(ctx))) return;
+  const id = ctx.match[1];
+  await edit(
+    ctx,
+    "<b>📦 بسته‌ی منابع</b>\nبازیکن: " + id + "\nمقدار بسته‌ی حمایتی را انتخاب کنید.",
+    K([
+      [
+        { text: "🌾 غله +10,000", callback_data: "intlresource:" + id + ":grain:10000" },
+        { text: "🪨 زغال +5,000", callback_data: "intlresource:" + id + ":coal:5000" },
+      ],
+      [
+        { text: "⛓ آهن +3,000", callback_data: "intlresource:" + id + ":iron:3000" },
+        { text: "🧵 پارچه +2,000", callback_data: "intlresource:" + id + ":cloth:2000" },
+      ],
+      [
+        { text: "🛢 نفت +5,000", callback_data: "intlresource:" + id + ":oil_stock:5000" },
+        { text: "⚡ برق +5,000", callback_data: "intlresource:" + id + ":electricity_stock:5000" },
+      ],
+      [{ text: "↩️ بازگشت", callback_data: "intlplayer:" + id }],
+    ]),
+  );
+});
+bot.callbackQuery(
+  /^intlresource:(\d+):(grain|coal|iron|cloth|oil_stock|electricity_stock):(\d+)$/,
+  async (ctx) => {
+    await ctx.answerCallbackQuery();
+    if (!(await internationalAllowed(ctx))) return;
+    const id = ctx.match[1],
+      col = ctx.match[2],
+      amount = Number(ctx.match[3]);
+    if (!["grain", "coal", "iron", "cloth", "oil_stock", "electricity_stock"].includes(col)) return;
+    await pool.query(
+      "UPDATE game_players SET " + col + "=COALESCE(" + col + ",0)+$2 WHERE telegram_id=$1",
+      [id, amount],
+    );
+    await pool.query(
+      "INSERT INTO game_international_audit(admin_id,target_id,action,details) VALUES($1,$2,'resource_grant',$3)",
+      [ctx.from.id, id, col + " +" + amount],
+    );
+    await say(ctx, "✅ " + amount + " واحد " + col + " به ذخایر بازیکن افزوده شد.");
+    try {
+      await bot.api.sendMessage(
+        id,
+        "🌐 سازمان بین‌الملل " + amount + " واحد " + col + " به ذخایر کشور شما افزود.",
+      );
+    } catch {}
+  },
+);
+bot.callbackQuery(/^intlremove$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  if (!(await internationalAllowed(ctx))) return;
+  const r = await pool.query(
+    "SELECT telegram_id,display_name,country_id FROM game_players WHERE approved=TRUE ORDER BY display_name LIMIT 25",
+  );
+  const rows = r.rows.map((x) => [
+    {
+      text: (country(x.country_id)?.[1] || "کشور") + " · " + x.display_name,
+      callback_data: "intlremove:" + x.telegram_id,
+    },
+  ]);
+  rows.push([{ text: "↩️ سازمان بین‌الملل", callback_data: "intlhome" }]);
+  await edit(
+    ctx,
+    "<b>🚫 سلب کشور</b>\nاین عملیات فقط کشور را آزاد می‌کند و دسترسی بازیکن به ربات را مسدود نمی‌کند.",
+    K(rows),
+  );
+});
+bot.callbackQuery(/^intlremove:(\d+)$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  if (!(await internationalAllowed(ctx))) return;
+  const id = ctx.match[1];
+  if (id === ownerTelegramId) {
+    await say(ctx, "حساب سازمان بین‌الملل را نمی‌توان از کشور سلب کرد.");
+    return;
+  }
+  await pool.query(
+    "UPDATE game_players SET approved=FALSE,country_id=NULL,ruler=NULL,government=NULL,selected_country_id=NULL,last_settlement=NOW() WHERE telegram_id=$1",
+    [id],
+  );
+  await pool.query(
+    "INSERT INTO game_international_audit(admin_id,target_id,action,details) VALUES($1,$2,'country_revoke','کشور از بازیکن سلب شد')",
+    [ctx.from.id, id],
+  );
+  await say(
+    ctx,
+    "✅ کشور از بازیکن سلب شد. دسترسی او به ربات همچنان فعال است و می‌تواند درخواست کشور دیگری بدهد.",
+  );
+  try {
+    await bot.api.sendMessage(
+      id,
+      "🌐 سازمان بین‌الملل کشور را از حساب شما سلب کرد. دسترسی ربات مسدود نشده؛ برای انتخاب کشور جدید /start را بفرستید.",
+    );
+  } catch {}
+});
+bot.callbackQuery(/^intlblock$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  if (!(await internationalAllowed(ctx))) return;
+  const r = await pool.query(
+    "SELECT telegram_id,display_name,bot_blocked FROM game_players ORDER BY display_name LIMIT 25",
+  );
+  const rows = r.rows.map((x) => [
+    {
+      text: (x.bot_blocked ? "🔓 رفع مسدودی · " : "⛔ مسدودسازی · ") + x.display_name,
+      callback_data: "intlblock:" + x.telegram_id,
+    },
+  ]);
+  rows.push([{ text: "↩️ سازمان بین‌الملل", callback_data: "intlhome" }]);
+  await edit(ctx, "<b>⛔ مسدودسازی کامل از ربات</b>\nاین کنترل جدا از سلب کشور است.", K(rows));
+});
+bot.callbackQuery(/^intlblock:(\d+)$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  if (!(await internationalAllowed(ctx))) return;
+  const id = ctx.match[1];
+  if (id === ownerTelegramId) {
+    await say(ctx, "حساب سازمان بین‌الملل قابل مسدودسازی نیست.");
+    return;
+  }
+  const p = await get(id);
+  if (!p) {
+    await say(ctx, "بازیکن یافت نشد.");
+    return;
+  }
+  const blocked = !p.bot_blocked;
+  await pool.query("UPDATE game_players SET bot_blocked=$2 WHERE telegram_id=$1", [id, blocked]);
+  await pool.query(
+    "INSERT INTO game_international_audit(admin_id,target_id,action,details) VALUES($1,$2,'bot_block',$3)",
+    [ctx.from.id, id, blocked ? "blocked" : "unblocked"],
+  );
+  await say(
+    ctx,
+    blocked ? "⛔ دسترسی این بازیکن به ربات مسدود شد." : "🔓 دسترسی بازیکن به ربات آزاد شد.",
+  );
+});
+
+async function finalizeForeignBase(ownerId, hostCountryId) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const me = (
+      await client.query("SELECT treasury,iron FROM game_players WHERE telegram_id=$1 FOR UPDATE", [
+        ownerId,
+      ])
+    ).rows[0];
+    if (!me || Number(me.treasury) < 75000 || Number(me.iron) < 300) {
+      await client.query("ROLLBACK");
+      return false;
+    }
+    await client.query(
+      "UPDATE game_players SET treasury=treasury-75000,iron=iron-300 WHERE telegram_id=$1",
+      [ownerId],
+    );
+    await client.query(
+      "INSERT INTO game_strategic_bases(owner_id,host_country_id,base_name) VALUES($1,$2,$3)",
+      [ownerId, hostCountryId, "پایگاه عملیاتی خارجی"],
+    );
+    await client.query(
+      "INSERT INTO game_buildings(telegram_id,building_key,level) VALUES($1,'forward_base',1) ON CONFLICT(telegram_id,building_key) DO UPDATE SET level=game_buildings.level+1",
+      [ownerId],
+    );
+    await client.query(
+      "INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,-75000,$3)",
+      [
+        ownerId,
+        "ساخت پایگاه خارجی در " + (country(hostCountryId)?.[1] || hostCountryId),
+        Number(me.treasury) - 75000,
+      ],
+    );
+    await client.query("COMMIT");
+    return true;
+  } catch (e) {
+    await client.query("ROLLBACK");
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+bot.callbackQuery(
+  /^str:basecontinent:(europe|asia|africa|north_america|south_america|oceania)$/,
+  async (ctx) => {
+    await ctx.answerCallbackQuery();
+    const p = await ready(ctx);
+    if (!p) return;
+    const region = ctx.match[1],
+      list = countries
+        .filter((c) => continentOf(c[0]) === region && c[0] !== p.country_id)
+        .sort((a, b) => a[1].localeCompare(b[1], "fa")),
+      rows = [];
+    for (let i = 0; i < list.length; i += 2)
+      rows.push(
+        list.slice(i, i + 2).map((c) => ({ text: c[1], callback_data: "str:basecountry:" + c[0] })),
+      );
+    rows.push(
+      [{ text: "↩️ قاره‌ها", callback_data: "str:base" }],
+      [{ text: "↩️ ستاد راهبردی", callback_data: "n:strategy" }],
+    );
+    return edit(
+      ctx,
+      "<b>🏗️ انتخاب کشور میزبان</b>\n\nقاره: " +
+        continentNames[region] +
+        "\nکشور میزبان را انتخاب کنید. اگر کشور بازیکن داشته باشد، درخواست باید توسط رهبر آن کشور تأیید شود.",
+      K(rows),
+    );
+  },
+);
+bot.callbackQuery(/^str:basecountry:([a-z0-9_]+)$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const p = await ready(ctx);
+  if (!p) return;
+  const cid = ctx.match[1],
+    c = country(cid);
+  if (!c || cid === p.country_id) {
+    await say(ctx, "کشور میزبان معتبر نیست.");
+    return;
+  }
+  const host = (
+    await pool.query(
+      "SELECT telegram_id FROM game_players WHERE approved=TRUE AND country_id=$1 LIMIT 1",
+      [cid],
+    )
+  ).rows[0];
+  if (host) {
+    const q = await pool.query(
+        "INSERT INTO game_base_requests(owner_id,host_id,host_country_id) VALUES($1,$2,$3) RETURNING id",
+        [ctx.from.id, host.telegram_id, cid],
+      ),
+      id = q.rows[0].id;
+    try {
+      await bot.api.sendMessage(
+        host.telegram_id,
+        "🏗️ درخواست ساخت پایگاه عملیاتی خارجی\nکشور درخواست‌کننده: " +
+          (country(p.country_id)?.[1] || p.country_id) +
+          "\nکشور میزبان: " +
+          c[1] +
+          "\n\nساخت پایگاه نیازمند تأیید شماست. هزینه بر عهده کشور درخواست‌کننده است: $75,000 و 300 آهن.",
+        {
+          reply_markup: K([
+            [
+              { text: "✅ تأیید استقرار", callback_data: "baseaccept:" + id },
+              { text: "❌ رد درخواست", callback_data: "basereject:" + id },
+            ],
+          ]),
+        },
+      );
+    } catch {}
+    return say(
+      ctx,
+      "📨 درخواست پایگاه برای " +
+        c[1] +
+        " ارسال شد. تا تأیید رهبر آن کشور، هزینه‌ای از خزانه کسر نمی‌شود.",
+      strategicMenu(),
+    );
+  }
+  const ok = await finalizeForeignBase(ctx.from.id, cid);
+  return say(
+    ctx,
+    ok
+      ? "✅ پایگاه عملیاتی در " + c[1] + " ساخته شد.\nهزینه: $75,000 و 300 آهن."
+      : "منابع کافی نیست؛ نیاز: $75,000 و 300 آهن.",
+    strategicMenu(),
+  );
+});
+bot.callbackQuery(/^baseaccept:(\d+)$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const req = (
+    await pool.query(
+      "SELECT * FROM game_base_requests WHERE id=$1 AND host_id=$2 AND status='pending'",
+      [ctx.match[1], ctx.from.id],
+    )
+  ).rows[0];
+  if (!req) {
+    await say(ctx, "این درخواست وجود ندارد یا قبلاً پاسخ داده شده.");
+    return;
+  }
+  const ok = await finalizeForeignBase(req.owner_id, req.host_country_id);
+  await pool.query("UPDATE game_base_requests SET status=$2 WHERE id=$1", [
+    req.id,
+    ok ? "accepted" : "insufficient",
+  ]);
+  if (ok) {
+    try {
+      await bot.api.sendMessage(
+        req.owner_id,
+        "✅ درخواست پایگاه عملیاتی شما در " +
+          (country(req.host_country_id)?.[1] || req.host_country_id) +
+          " تأیید و پایگاه ساخته شد.",
+      );
+    } catch {}
+    return say(ctx, "✅ درخواست تأیید شد و پایگاه ساخته شد.");
+  }
+  try {
+    await bot.api.sendMessage(
+      req.owner_id,
+      "درخواست پایگاه پذیرفته شد، اما خزانه یا آهن کافی برای ساخت وجود نداشت.",
+    );
+  } catch {}
+  return say(ctx, "درخواست پذیرفته شد؛ اما کشور درخواست‌کننده منابع کافی ندارد.");
+});
+bot.callbackQuery(/^basereject:(\d+)$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const q = await pool.query(
+    "UPDATE game_base_requests SET status='rejected' WHERE id=$1 AND host_id=$2 AND status='pending' RETURNING owner_id,host_country_id",
+    [ctx.match[1], ctx.from.id],
+  );
+  if (!q.rows.length) {
+    await say(ctx, "درخواست معتبر یا در انتظار پاسخ نیست.");
+    return;
+  }
+  try {
+    await bot.api.sendMessage(
+      q.rows[0].owner_id,
+      "❌ درخواست پایگاه در " +
+        (country(q.rows[0].host_country_id)?.[1] || q.rows[0].host_country_id) +
+        " رد شد.",
+    );
+  } catch {}
+  return say(ctx, "درخواست رد شد.");
+});
+bot.callbackQuery(
+  /^str:(exercise|exercise:begin|intel|command|nuclear|base|mybases|territory|allybases|ally:(\d+)|navy|sea:(north|baltic|med|atlantic|pacific))$/,
+  async (ctx) => {
+    await ctx.answerCallbackQuery();
+    const p = await ready(ctx);
+    if (!p) return;
+    const d = ctx.callbackQuery.data;
+    if (d === "str:exercise") {
+      await pool.query(
+        "INSERT INTO game_maneuver_stats(owner_id) VALUES($1) ON CONFLICT(owner_id) DO NOTHING",
+        [ctx.from.id],
+      );
+      const m = (
+          await pool.query(
+            "SELECT readiness,maneuvers_today,last_maneuver_date FROM game_maneuver_stats WHERE owner_id=$1",
+            [ctx.from.id],
+          )
+        ).rows[0],
+        today = new Date().toISOString().slice(0, 10),
+        done =
+          m.last_maneuver_date &&
+          new Date(m.last_maneuver_date).toISOString().slice(0, 10) === today
+            ? Number(m.maneuvers_today)
+            : 0;
+      return edit(
+        ctx,
+        "<b>🎯 ستاد برگزاری مانور و تمرینات رزمی</b>\n━━━━━━━━━━━━━━━━━━\n\n🛡️ شاخص آمادگی رزمی فعلی: " +
+          fmt(m.readiness) +
+          "٪\n🎖️ تعداد مانورهای برگزارشده امروز: " +
+          done +
+          " (باقی‌مانده: " +
+          Math.max(0, 1 - done) +
+          ")\n\n⚠️ هزینه پشتیبانی و لجستیک: $1,000,000\n🛢️ سوخت مصرفی: 100 بشکه نفت\n\n🏆 دستاوردهای مانور:\n• افزایش آمادگی رزمی نیروها +5٪\n• افزایش روحیه و ثبات کشور\n\nسقف مجاز: یک مانور در هر روز\n\nآیا مایل به آغاز مانور رزمی هستید؟",
+        K([
+          [{ text: "✅ آغاز و اجرای مانور رزمی", callback_data: "str:exercise:begin" }],
+          [{ text: "↩️ بازگشت به ستاد توسعه", callback_data: "n:strategy" }],
+        ]),
+      );
+    }
+    if (d === "str:exercise:begin") {
+      await pool.query(
+        "INSERT INTO game_maneuver_stats(owner_id) VALUES($1) ON CONFLICT(owner_id) DO NOTHING",
+        [ctx.from.id],
+      );
+      const m = (
+          await pool.query(
+            "SELECT readiness,maneuvers_today,last_maneuver_date FROM game_maneuver_stats WHERE owner_id=$1 FOR UPDATE",
+            [ctx.from.id],
+          )
+        ).rows[0],
+        today =
+          m.last_maneuver_date &&
+          new Date(m.last_maneuver_date).toISOString().slice(0, 10) ===
+            new Date().toISOString().slice(0, 10)
+            ? Number(m.maneuvers_today)
+            : 0;
+      if (today >= 1) {
+        await say(ctx, "⛔ سهمیه مانور امروز استفاده شده است؛ فردا دوباره امکان اجرا دارید.");
+        return;
+      }
+      const me = (
+        await pool.query(
+          "SELECT treasury,oil_stock,morale,stability FROM game_players WHERE telegram_id=$1",
+          [ctx.from.id],
+        )
+      ).rows[0];
+      if (!me || Number(me.treasury) < 1000000 || Number(me.oil_stock) < 100) {
+        await say(ctx, "منابع کافی نیست. نیاز: $1,000,000 و 100 بشکه نفت.");
+        return;
+      }
+      await pool.query(
+        "UPDATE game_players SET treasury=treasury-1000000,oil_stock=oil_stock-100,morale=LEAST(100,morale+4),stability=LEAST(100,stability+2),legitimacy=LEAST(100,legitimacy+1) WHERE telegram_id=$1",
+        [ctx.from.id],
+      );
+      await pool.query(
+        "UPDATE game_maneuver_stats SET readiness=LEAST(100,readiness+5),maneuvers_today=CASE WHEN last_maneuver_date=CURRENT_DATE THEN maneuvers_today+1 ELSE 1 END,last_maneuver_date=CURRENT_DATE WHERE owner_id=$1",
+        [ctx.from.id],
+      );
+      await pool.query("INSERT INTO game_maneuver_history(owner_id,country_id) VALUES($1,$2)", [
+        ctx.from.id,
+        p.country_id,
+      ]);
+      await pool.query(
+        "INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,-1000000,$3)",
+        [ctx.from.id, "اجرای مانور رزمی", Number(me.treasury) - 1000000],
+      );
+      return say(
+        ctx,
+        "✅ مانور رزمی با موفقیت برگزار شد.\nآمادگی رزمی +5٪، روحیه +4، ثبات +2، مشروعیت +1.\nهزینه: $1,000,000 و 100 بشکه نفت.",
+        strategicMenu(),
+      );
+    }
+    if (d === "str:command") {
+      const roles = [
+        "رئیس ستاد مشترک نیروهای مسلح",
+        "مدیر اطلاعات و عملیات (CIC)",
+        "فرمانده نیروی هوایی",
+        "فرمانده نیروی دریایی",
+        "فرمانده پدافند یکپارچه هوایی",
+      ];
+      const body = roles
+        .map((x, i) => "<b>" + (i + 1) + ". " + x + "</b>\n🟢 وضعیت: فعال و در حال خدمت")
+        .join("\n\n");
+      return edit(
+        ctx,
+        "<b>🏅 کادر فرماندهی و ستاد نظامی — " +
+          (country(p.country_id)?.[1] || p.country_id) +
+          "</b>\n━━━━━━━━━━━━━━━━━━\n\n" +
+          body +
+          "\n\n✅ زنجیره فرماندهی کشور فعال است؛ تمام جایگاه‌های ستادی در وضعیت آماده‌به‌خدمت قرار دارند.",
+        K([
+          [{ text: "↩️ بازگشت به سازمان اطلاعات", callback_data: "str:intel" }],
+          [{ text: "↩️ بازگشت به ستاد راهبردی", callback_data: "n:strategy" }],
+        ]),
+      );
+    }
+
+    if (d === "str:mybases" || d === "str:territory") {
+      const r =
+        d === "str:mybases"
+          ? await pool.query(
+              "SELECT host_country_id,base_name FROM game_strategic_bases WHERE owner_id=$1 ORDER BY id DESC",
+              [ctx.from.id],
+            )
+          : await pool.query(
+              "SELECT owner_id,base_name FROM game_strategic_bases WHERE host_country_id=$1 ORDER BY id DESC",
+              [p.country_id],
+            );
+      const body = r.rows
+        .map(
+          (x, i) =>
+            "• " +
+            (i + 1) +
+            ". " +
+            x.base_name +
+            " — " +
+            (d === "str:mybases"
+              ? country(x.host_country_id)?.[1] || keyLabel(x.host_country_id)
+              : Number(x.owner_id) === Number(ctx.from.id)
+                ? "متعلق به شما"
+                : "متعلق به کشور دیگر"),
+        )
+        .join("\n");
+      return edit(
+        ctx,
+        d === "str:mybases"
+          ? "<b>📍 پایگاه‌های عملیاتی من</b>\n\n" + (body || "هنوز پایگاهی ندارید.")
+          : "<b>🗺️ پایگاه‌های مستقر در خاک کشور من</b>\n\n" +
+              (body || "در خاک کشور شما پایگاهی ثبت نشده است."),
+        strategicMenu(),
+      );
+    }
+    if (d === "str:allybases") {
+      const r = await pool.query(
+        "SELECT r.other_id,pl.country_id,pl.display_name FROM game_relations r JOIN game_players pl ON pl.telegram_id=r.other_id WHERE r.player_id=$1 AND r.relation='alliance' AND pl.approved=TRUE",
+        [ctx.from.id],
+      );
+      const rows = r.rows.map((x) => [
+        {
+          text: "🤝 " + (country(x.country_id)?.[1] || x.display_name),
+          callback_data: "str:ally:" + x.other_id,
+        },
+      ]);
+      if (!rows.length)
+        rows.push([{ text: "ابتدا اتحاد فعال برقرار کنید", callback_data: "n:diplomacy" }]);
+      rows.push([{ text: "↩️ ستاد راهبردی", callback_data: "n:strategy" }]);
+      return edit(ctx, "<b>پایگاه در کشور متحد</b>\nهزینه: $50,000 و 250 آهن", K(rows));
+    }
+    if (d === "str:navy")
+      return edit(
+        ctx,
+        "<b>⚓ گشت و استقرار ناوگان</b>\nهزینه هر واحد: $15,000 و 200 بشکه نفت.",
+        K([
+          [
+            { text: "دریای شمال", callback_data: "str:sea:north" },
+            { text: "دریای بالتیک", callback_data: "str:sea:baltic" },
+          ],
+          [
+            { text: "مدیترانه", callback_data: "str:sea:med" },
+            { text: "اقیانوس اطلس", callback_data: "str:sea:atlantic" },
+          ],
+          [{ text: "اقیانوس آرام", callback_data: "str:sea:pacific" }],
+          [{ text: "↩️ ستاد راهبردی", callback_data: "n:strategy" }],
+        ]),
+      );
+    if (d === "str:base") {
+      const rows = Object.keys(continentNames).map((k) => [
+        { text: continentNames[k], callback_data: "str:basecontinent:" + k },
+      ]);
+      rows.push([{ text: "↩️ بازگشت به ستاد راهبردی", callback_data: "n:strategy" }]);
+      return edit(
+        ctx,
+        "<b>🏗️ ساخت پایگاه عملیاتی خارجی</b>\n\nقاره‌ی کشور میزبان را انتخاب کنید. ساخت پایگاه در کشور بازیکن دیگر نیازمند تأیید رهبر آن کشور است.",
+        K(rows),
+      );
+    }
+    if (d.startsWith("str:ally:")) {
+      const ally = d.startsWith("str:ally:") ? Number(d.split(":")[2]) : null,
+        host = ally ? await get(ally) : p;
+      if (
+        !host?.approved ||
+        (ally &&
+          (
+            await pool.query(
+              "SELECT relation FROM game_relations WHERE player_id=$1 AND other_id=$2",
+              [ctx.from.id, ally],
+            )
+          ).rows[0]?.relation !== "alliance")
+      ) {
+        await say(ctx, "کشور مقصد معتبر نیست یا اتحاد فعال ندارید.");
+        return;
+      }
+      const cost = ally ? 50000 : 75000,
+        iron = ally ? 250 : 300,
+        me = (
+          await pool.query("SELECT treasury,iron FROM game_players WHERE telegram_id=$1", [
+            ctx.from.id,
+          ])
+        ).rows[0];
+      if (!me || Number(me.treasury) < cost || Number(me.iron) < iron) {
+        await say(ctx, "منابع کافی نیست؛ نیاز: " + money(cost) + " و " + fmt(iron) + " آهن.");
+        return;
+      }
+      await pool.query(
+        "UPDATE game_players SET treasury=treasury-$2,iron=iron-$3 WHERE telegram_id=$1",
+        [ctx.from.id, cost, iron],
+      );
+      await pool.query(
+        "INSERT INTO game_strategic_bases(owner_id,host_country_id,base_name) VALUES($1,$2,$3)",
+        [ctx.from.id, host.country_id, ally ? "پایگاه مشترک" : "پایگاه عملیاتی"],
+      );
+      await pool.query(
+        "INSERT INTO game_buildings(telegram_id,building_key,level) VALUES($1,'forward_base',1) ON CONFLICT(telegram_id,building_key) DO UPDATE SET level=game_buildings.level+1",
+        [ctx.from.id],
+      );
+      await pool.query(
+        "INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,$3,$4)",
+        [ctx.from.id, "ساخت پایگاه عملیاتی", -cost, Number(me.treasury) - cost],
+      );
+      return say(
+        ctx,
+        "✅ پایگاه عملیاتی ساخته شد و در دارایی‌های کشور ثبت شد.\nمحل: " +
+          (country(host.country_id)?.[1] || host.country_id),
+        strategicMenu(),
+      );
+    }
+    if (d.startsWith("str:sea:")) {
+      const zone = {
+        north: "دریای شمال",
+        baltic: "دریای بالتیک",
+        med: "مدیترانه",
+        atlantic: "اقیانوس اطلس",
+        pacific: "اقیانوس آرام",
+      }[d.split(":")[2]];
+      const active = Number(
+          (
+            await pool.query(
+              "SELECT COALESCE(SUM(units),0)::int n FROM game_naval_deployments WHERE owner_id=$1 AND status='active'",
+              [ctx.from.id],
+            )
+          ).rows[0].n,
+        ),
+        me = (
+          await pool.query(
+            "SELECT treasury,oil_stock,navy FROM game_players WHERE telegram_id=$1",
+            [ctx.from.id],
+          )
+        ).rows[0];
+      if (
+        !me ||
+        Number(me.navy) - active < 1 ||
+        Number(me.treasury) < 15000 ||
+        Number(me.oil_stock) < 200
+      ) {
+        await say(ctx, "نیاز: یک واحد ناوگان، $15,000 و 200 بشکه نفت.");
+        return;
+      }
+      await pool.query(
+        "UPDATE game_players SET treasury=treasury-15000,oil_stock=oil_stock-200 WHERE telegram_id=$1",
+        [ctx.from.id],
+      );
+      await pool.query("INSERT INTO game_naval_deployments(owner_id,zone,units) VALUES($1,$2,1)", [
+        ctx.from.id,
+        zone,
+      ]);
+      await pool.query(
+        "INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,-15000,$3)",
+        [ctx.from.id, "گشت ناوگان در " + zone, Number(me.treasury) - 15000],
+      );
+      return say(
+        ctx,
+        "⚓ گشت دریایی در " + zone + " ثبت شد. واحدهای مستقر: " + (active + 1),
+        strategicMenu(),
+      );
+    }
+    const cfg = {
+      exercise: [
+        "رزمایش نظامی",
+        20000,
+        100,
+        0,
+        "UPDATE game_players SET treasury=treasury-$2,oil_stock=oil_stock-$3,morale=LEAST(100,morale+6),stability=LEAST(100,stability+2) WHERE telegram_id=$1",
+        "روحیه +6 و ثبات +2",
+      ],
+      intel: [
+        "اطلاعات و امنیت ملی",
+        30000,
+        0,
+        100,
+        "UPDATE game_players SET treasury=treasury-$2,iron=iron-$3,technology=LEAST(100,technology+2) WHERE telegram_id=$1",
+        "فناوری +2",
+      ],
+      command: [
+        "فرماندهی کل قوا",
+        40000,
+        0,
+        150,
+        "UPDATE game_players SET treasury=treasury-$2,iron=iron-$3,morale=LEAST(100,morale+3),legitimacy=LEAST(100,legitimacy+2) WHERE telegram_id=$1",
+        "روحیه +3 و مشروعیت +2",
+      ],
+      nuclear: [
+        "برنامه توسعه هسته‌ای",
+        250000,
+        0,
+        500,
+        "UPDATE game_players SET treasury=treasury-$2,iron=iron-$3,coal=coal-1000,technology=LEAST(100,technology+3) WHERE telegram_id=$1",
+        "فناوری +3",
+      ],
+    }[d.split(":")[1]];
+    if (!cfg) {
+      await say(ctx, "اقدام نامعتبر است.");
+      return;
+    }
+    const [title, cost, oil, iron, sql, effect] = cfg,
+      me = (
+        await pool.query(
+          "SELECT treasury,oil_stock,iron,coal,technology FROM game_players WHERE telegram_id=$1",
+          [ctx.from.id],
+        )
+      ).rows[0];
+    if (
+      !me ||
+      Number(me.treasury) < cost ||
+      Number(me.oil_stock) < oil ||
+      Number(me.iron) < iron ||
+      (d === "str:nuclear" && (Number(me.coal) < 1000 || Number(me.technology) < 20))
+    ) {
+      await say(
+        ctx,
+        "منابع یا فناوری کافی نیست. نیاز: " +
+          money(cost) +
+          ", نفت " +
+          fmt(oil) +
+          ", آهن " +
+          fmt(iron) +
+          (d === "str:nuclear" ? "، زغال 1000 و فناوری 20" : ""),
+      );
+      return;
+    }
+    if (d === "str:exercise") await pool.query(sql, [ctx.from.id, cost, oil]);
+    else await pool.query(sql, [ctx.from.id, cost, iron]);
+    await pool.query(
+      "INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,$3,$4)",
+      [ctx.from.id, "اقدام راهبردی: " + title, -cost, Number(me.treasury) - cost],
+    );
+    return say(
+      ctx,
+      "✅ " + title + " انجام شد.\nاثر: " + effect + "\nهزینه: " + money(cost),
+      strategicMenu(),
+    );
+  },
+);
+bot.on("callback_query:data", async (ctx) => {
+  const raw = ctx.callbackQuery?.data || "";
+  const answer = raw.match(
+    /^dipanswer:(accept|reject):(\d+):(alliance|nonaggression|trade_pact|ceasefire)$/,
+  );
+  if (answer) {
+    try {
+      await ctx.answerCallbackQuery();
+    } catch {}
+    const ok = answer[1] === "accept",
+      other = Number(answer[2]),
+      type = answer[3],
+      pending = (
+        await pool.query("SELECT relation FROM game_relations WHERE player_id=$1 AND other_id=$2", [
+          other,
+          ctx.from.id,
+        ])
+      ).rows[0];
+    if (pending?.relation !== "proposal_" + type) {
+      await say(ctx, "این پیشنهاد دیگر فعال نیست یا قبلاً بررسی شده است.");
+      return;
+    }
+    const rel = ok ? (type === "ceasefire" ? "neutral" : type) : "neutral",
+      trust = ok ? { alliance: 25, nonaggression: 15, trade_pact: 20, ceasefire: 10 }[type] : 0;
+    for (const [a, b] of [
+      [ctx.from.id, other],
+      [other, ctx.from.id],
+    ])
+      await pool.query(
+        "INSERT INTO game_relations(player_id,other_id,relation,trust) VALUES($1,$2,$3,$4) ON CONFLICT(player_id,other_id) DO UPDATE SET relation=EXCLUDED.relation,trust=LEAST(100,game_relations.trust+EXCLUDED.trust)",
+        [a, b, rel, trust],
+      );
+    const titles = {
+        alliance: "اتحاد",
+        nonaggression: "عدم تعرض",
+        trade_pact: "پیمان تجاری",
+        ceasefire: "آتش‌بس",
+      },
+      result = ok
+        ? "✅ پیشنهاد " + titles[type] + " پذیرفته شد."
+        : "❌ پیشنهاد " + titles[type] + " رد شد.";
+    await say(
+      ctx,
+      result,
+      K([
+        [{ text: "📨 پیشنهادهای دریافتی", callback_data: "dipinbox" }],
+        [{ text: "📜 دفتر روابط", callback_data: "diprelations" }],
+        [{ text: "↩️ دیپلماسی", callback_data: "n:diplomacy" }],
+      ]),
+    );
+    try {
+      await bot.api.sendMessage(other, "📬 پاسخ به پیشنهاد دیپلماتیک شما:\n" + result);
+    } catch {}
+    return;
+  }
+  try {
+    await ctx.answerCallbackQuery({ text: "منوی به‌روز بازی باز شد." });
+  } catch {}
+  const p = await get(ctx.from.id);
+  if (String(ctx.from.id) === ownerTelegramId) {
+    await ctx.reply("🌐 پنل به‌روز سازمان بین‌الملل", { reply_markup: adminReply() });
+    await showAdminPanel(ctx);
+    return;
+  }
+  if (p?.approved) {
+    await ctx.reply("🔄 دکمه‌ی قبلی به نسخه‌ی فعلی بازی هدایت شد.", {
+      reply_markup: nationReply(),
+    });
+    await say(ctx, "🏛️ دربار و کشور — منوی فعلی", nation());
+  } else {
+    await ctx.reply("🔄 منوی فعلی بازی باز شد.", { reply_markup: mainReply() });
+    await say(ctx, "منوی اصلی شاه شاهان", main());
+  }
+});
+let settlementLoopRunning = false;
+setInterval(async () => {
+  if (settlementLoopRunning) return;
+  settlementLoopRunning = true;
+  try {
+    const ids = (await pool.query("SELECT telegram_id FROM game_players WHERE approved=TRUE")).rows;
+    let cursor = 0;
+    const worker = async () => {
+      while (cursor < ids.length) {
+        const row = ids[cursor++];
+        try {
+          const result = await settleOne(row.telegram_id);
+          if (result) {
+            const fresh = await get(row.telegram_id);
+            await bot.api.sendMessage(row.telegram_id, settlementReport(result, fresh), {
+              parse_mode: "HTML",
+            });
+          }
+        } catch (e) {
+          console.error("Settlement processing failed for", row.telegram_id, e);
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(5, ids.length) }, () => worker()));
+  } catch (e) {
+    console.error("Automatic settlement error:", e);
+  } finally {
+    settlementLoopRunning = false;
+  }
+}, 60000).unref();
+bot.catch((e) => console.error("Bot error", e));
+const server = http.createServer((req, res) => {
+  res.writeHead(200, { "content-type": "application/json" });
+  res.end(JSON.stringify({ status: "ok", game: "shah-shahanshah" }));
+});
+await db();
+server.listen(PORT, () => console.log("Shah Shahanshah health server on", PORT));
+await bot.start({ onStart: (info) => console.log("Bot started:", info.username) });
