@@ -1733,7 +1733,8 @@ bot.on("message:text", async (ctx) => {
       return;
     }
     if (tradeState.step === "price") {
-      if (val > 100000000) {
+      const price = val * 1000;
+      if (!Number.isSafeInteger(price) || val > 100000000) {
         await ctx.reply("قیمت واحد بیش از حد بزرگ است؛ مبلغ کمتری وارد کنید.");
         return;
       }
@@ -1765,7 +1766,7 @@ bot.on("message:text", async (ctx) => {
         const offer = (
           await client.query(
             "INSERT INTO game_trade(seller_id,resource,quantity,unit_price) VALUES($1,$2,$3,$4) RETURNING id",
-            [ctx.from.id, tradeState.resource, tradeState.quantity, val],
+            [ctx.from.id, tradeState.resource, tradeState.quantity, price],
           )
         ).rows[0];
         await client.query("COMMIT");
