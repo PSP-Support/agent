@@ -43,7 +43,9 @@ test("weapon production consumes class-appropriate resources", () => {
 
 test("cash deductions in gameplay code remain limited to trade and markets", async () => {
   const source = await readFile(new URL("../index.js", import.meta.url), "utf8");
-  const deductions = [...source.matchAll(/treasury\s*=\s*treasury\s*-\s*(?:\$[0-9]+|[0-9]+)/g)];
+  const market = await readFile(new URL("../handlers/market.js", import.meta.url), "utf8");
+  const gameplaySource = source + "\\n" + market;
+  const deductions = [...gameplaySource.matchAll(/treasury\s*=\s*treasury\s*-\s*(?:\$[0-9]+|[0-9]+)/g)];
   assert.equal(deductions.length, 6);
   for (const match of deductions) {
     const context = gameplaySource.slice(Math.max(0, match.index - 300), match.index + 350);
