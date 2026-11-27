@@ -436,7 +436,7 @@ async function settleOne(id){
   await client.query("BEGIN");
   const row=(await client.query("SELECT * FROM game_players WHERE telegram_id=$1 FOR UPDATE",[id])).rows[0];
   if(!row?.approved){await client.query("COMMIT");return null;}
-  const ticks=Math.min(8,Math.floor((Date.now()-new Date(row.last_settlement).getTime())/period));
+  const ticks=Math.min(56,Math.floor((Date.now()-new Date(row.last_settlement).getTime())/period));
   if(ticks<1){await client.query("COMMIT");return null;}
   const buildings=(await client.query("SELECT building_key,level FROM game_buildings WHERE telegram_id=$1",[id])).rows.reduce((o,x)=>(o[x.building_key]=Number(x.level),o),{});
   const lv=k=>Number(buildings[k]||0),scale=ticks/8;
@@ -477,7 +477,7 @@ async function settleOne(id){
   const shortages=(grainUsed<grainNeed?1:0)+(coalUsed<coalNeed?1:0)+(ironUsed<ironNeed?1:0)+(clothUsed<clothNeed?1:0)+(electricityUsed<electricityNeed?1:0)+(oilShortage>0?1:0);
   const stability=Math.max(0,Math.min(100,Number(row.stability||0)-(grainUsed<grainNeed?3:0)-(shortages>2?1:0)+(shortages===0?1:0)));
   const populationChange=grainUsed<grainNeed?-Math.ceil(population*0.00001*scale):Math.round(lv("housing")*5*scale);
-  await client.query("UPDATE game_players SET treasury=$2,oil_stock=$3,oil_reserves=GREATEST(0,oil_reserves-$4),gold_stock=gold_stock+$5,iron=GREATEST(0,iron-$6)+$7,coal=GREATEST(0,coal-$8)+$9,grain=GREATEST(0,grain-$10)+$11,cloth=GREATEST(0,cloth-$12),electricity_stock=GREATEST(0,electricity_stock-$13)+$14,fuel_stock=fuel_stock+$15,population=GREATEST(1000,population+$16),stability=$17,last_settlement=NOW() WHERE telegram_id=$1",[id,balance,oilStock,oilProduced,goldMade,ironUsed,ironMade,coalUsed,coalMade,grainUsed,grainMade,clothUsed,electricityUsed,electricityMade,fuelMade,populationChange,stability]);
+  await client.query("UPDATE game_players SET treasury=$2,oil_stock=$3,oil_reserves=GREATEST(0,oil_reserves-$4),gold_stock=gold_stock+$5,iron=GREATEST(0,iron-$6)+$7,coal=GREATEST(0,coal-$8)+$9,grain=GREATEST(0,grain-$10)+$11,cloth=GREATEST(0,cloth-$12),electricity_stock=GREATEST(0,electricity_stock-$13)+$14,fuel_stock=fuel_stock+$15,population=GREATEST(1000,population+$16),stability=$17,last_settlement=last_settlement+make_interval(hours => $18::int * 3) WHERE telegram_id=$1",[id,balance,oilStock,oilProduced,goldMade,ironUsed,ironMade,coalUsed,coalMade,grainUsed,grainMade,clothUsed,electricityUsed,electricityMade,fuelMade,populationChange,stability,ticks]);
   await client.query("INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,$3,$4)",[id,"درآمد و مصرف منابع در "+ticks+" نوبت",net,balance]);
   await client.query("COMMIT");return {ticks,net,balance,buildingIncome:Math.round(dailyBuildingIncome*scale),grainNeed,grainUsed,coalNeed,coalUsed,ironNeed,ironUsed,clothNeed,clothUsed,electricityNeed,electricityUsed,oilNeed,oilConsumed,shortages};
  }catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
@@ -529,15 +529,26 @@ bot.callbackQuery(/^str:(exercise|exercise:begin|intel|command|nuclear|base|myba
  if(!cfg){await say(ctx,"اقدام نامعتبر است.");return;}const [title,cost,oil,iron,sql,effect]=cfg,me=(await pool.query("SELECT treasury,oil_stock,iron,coal,technology FROM game_players WHERE telegram_id=$1",[ctx.from.id])).rows[0];if(!me||Number(me.treasury)<cost||Number(me.oil_stock)<oil||Number(me.iron)<iron||(d==="str:nuclear"&&(Number(me.coal)<1000||Number(me.technology)<20))){await say(ctx,"منابع یا فناوری کافی نیست. نیاز: "+money(cost)+", نفت "+fmt(oil)+", آهن "+fmt(iron)+(d==="str:nuclear"?"، زغال 1000 و فناوری 20":""));return;}if(d==="str:exercise")await pool.query(sql,[ctx.from.id,cost,oil]);else await pool.query(sql,[ctx.from.id,cost,iron]);await pool.query("INSERT INTO game_ledger(telegram_id,description,amount,balance) VALUES($1,$2,$3,$4)",[ctx.from.id,"اقدام راهبردی: "+title,-cost,Number(me.treasury)-cost]);return say(ctx,"✅ "+title+" انجام شد.\nاثر: "+effect+"\nهزینه: "+money(cost),strategicMenu());
 });
 bot.on("callback_query:data",async ctx=>{const raw=ctx.callbackQuery?.data||"";const answer=raw.match(/^dipanswer:(accept|reject):(\d+):(alliance|nonaggression|trade_pact|ceasefire)$/);if(answer){try{await ctx.answerCallbackQuery();}catch{}const ok=answer[1]==="accept",other=Number(answer[2]),type=answer[3],pending=(await pool.query("SELECT relation FROM game_relations WHERE player_id=$1 AND other_id=$2",[other,ctx.from.id])).rows[0];if(pending?.relation!=="proposal_"+type){await say(ctx,"این پیشنهاد دیگر فعال نیست یا قبلاً بررسی شده است.");return;}const rel=ok?(type==="ceasefire"?"neutral":type):"neutral",trust=ok?({alliance:25,nonaggression:15,trade_pact:20,ceasefire:10}[type]):0;for(const [a,b] of [[ctx.from.id,other],[other,ctx.from.id]])await pool.query("INSERT INTO game_relations(player_id,other_id,relation,trust) VALUES($1,$2,$3,$4) ON CONFLICT(player_id,other_id) DO UPDATE SET relation=EXCLUDED.relation,trust=LEAST(100,game_relations.trust+EXCLUDED.trust)",[a,b,rel,trust]);const titles={alliance:"اتحاد",nonaggression:"عدم تعرض",trade_pact:"پیمان تجاری",ceasefire:"آتش‌بس"},result=ok?"✅ پیشنهاد "+titles[type]+" پذیرفته شد.":"❌ پیشنهاد "+titles[type]+" رد شد.";await say(ctx,result,K([[{text:"📨 پیشنهادهای دریافتی",callback_data:"dipinbox"}],[{text:"📜 دفتر روابط",callback_data:"diprelations"}],[{text:"↩️ دیپلماسی",callback_data:"n:diplomacy"}]]));try{await bot.api.sendMessage(other,"📬 پاسخ به پیشنهاد دیپلماتیک شما:\n"+result);}catch{}return;}try{await ctx.answerCallbackQuery({text:"منوی به‌روز بازی باز شد."});}catch{}const p=await get(ctx.from.id);if(String(ctx.from.id)===ownerTelegramId){await ctx.reply("🌐 پنل به‌روز سازمان بین‌الملل",{reply_markup:adminReply()});await showAdminPanel(ctx);return;}if(p?.approved){await ctx.reply("🔄 دکمه‌ی قبلی به نسخه‌ی فعلی بازی هدایت شد.",{reply_markup:nationReply()});await say(ctx,"🏛️ دربار و کشور — منوی فعلی",nation());}else{await ctx.reply("🔄 منوی فعلی بازی باز شد.",{reply_markup:mainReply()});await say(ctx,"منوی اصلی شاه شاهان",main());}});
+ let settlementLoopRunning=false;
  setInterval(async()=>{
- try{
-  const ids=(await pool.query("SELECT telegram_id FROM game_players WHERE approved=TRUE")).rows;
-  for(const row of ids){
-   const result=await settleOne(row.telegram_id);
-   if(result)try{const fresh=await get(row.telegram_id);await bot.api.sendMessage(row.telegram_id,settlementReport(result,fresh),{parse_mode:"HTML"});}catch(e){console.error("Settlement notification failed",e.message)}
-  }
- }catch(e){console.error("Automatic settlement error:",e);}
-},60000).unref();
+  if(settlementLoopRunning)return;
+  settlementLoopRunning=true;
+  try{
+   const ids=(await pool.query("SELECT telegram_id FROM game_players WHERE approved=TRUE")).rows;
+   let cursor=0;
+   const worker=async()=>{
+    while(cursor<ids.length){
+     const row=ids[cursor++];
+     try{
+      const result=await settleOne(row.telegram_id);
+      if(result){const fresh=await get(row.telegram_id);await bot.api.sendMessage(row.telegram_id,settlementReport(result,fresh),{parse_mode:"HTML"});}
+     }catch(e){console.error("Settlement processing failed for",row.telegram_id,e);}
+    }
+   };
+   await Promise.all(Array.from({length:Math.min(5,ids.length)},()=>worker()));
+  }catch(e){console.error("Automatic settlement error:",e);}
+  finally{settlementLoopRunning=false;}
+ },60000).unref();
 bot.catch(e=>console.error("Bot error",e));
 const server=http.createServer((req,res)=>{res.writeHead(200,{"content-type":"application/json"});res.end(JSON.stringify({status:"ok",game:"shah-shahanshah"}));});
 await db();server.listen(PORT,()=>console.log("Shah Shahanshah health server on",PORT));await bot.start({onStart:info=>console.log("Bot started:",info.username)});
