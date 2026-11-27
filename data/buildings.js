@@ -80,7 +80,7 @@ export const storeCats = storeCatsBase.map((category) => ({
     effect,
   ]),
 }));
-onst storeItems = () => storeCats.flatMap((c) => c.items);
+const storeItems = () => storeCats.flatMap((c) => c.items);
 export const storeDetails = {
   gold_mine:
     "🪙 استخراج طلا برای ذخیره و تجارت. تولید ۳۵ واحد طلا در روز بازی؛ نگهداری ۲۵۰٬۰۰۰ دلار در هر نوبت سه‌ساعته. طلا در تجارت بین کشورها قابل عرضه است.",
