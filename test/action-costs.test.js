@@ -29,12 +29,12 @@ test("weapon production consumes class-appropriate resources", () => {
     iron: 1,
     coal: 1,
   });
-  assert.deepEqual(weaponResourceCosts(["plane", "هواپیمای آلباتروس", 85000]), {
+  assert.deepEqual(weaponResourceCosts(["plane", "هواپیمای آلباتروس", 85000000]), {
     iron: 85,
     cloth: 43,
     fuel_stock: 9,
   });
-  assert.deepEqual(weaponResourceCosts(["battleship", "ناو جنگی", 2300000]), {
+  assert.deepEqual(weaponResourceCosts(["battleship", "ناو جنگی", 2300000000]), {
     iron: 2300,
     coal: 1150,
     fuel_stock: 230,
